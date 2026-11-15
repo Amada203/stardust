@@ -1,3 +1,4 @@
+import { useWorkbenchExperience } from "../../workbenchExperience";
 import { uiText } from "~/i18n";
 import type { ChatComposerProps } from "./ChatComposer";
 import type { PromptUltrathink } from "./TraitsPicker";
@@ -23,7 +24,12 @@ import {
 import type { EffortDisplay } from "@t3tools/contracts/settings";
 import { cn } from "~/lib/utils";
 import { resolveComposerTraitsInput } from "./composerProviderState";
-import { ComposerEffortMenu, describeComposerEffort } from "./ComposerModelEffort";
+import {
+  ComposerEffortMenu,
+  ComposerEffortColumn,
+  ComposerPickerFooter,
+  describeComposerEffort,
+} from "./ComposerModelEffort";
 import type { useComposerProviderModel } from "./useComposerProviderModel";
 import { resolveComposerControlsOwnership } from "./composerControlsOwnership";
 
@@ -86,6 +92,7 @@ export function ComposerControlsBar(props: {
   modelPickerIconClassName: string | undefined;
   getModelDisabledReason: ChatComposerProps["getModelDisabledReason"];
 }) {
+  const clawdExperience = useWorkbenchExperience((state) => state.experience === "clawd");
   const {
     environmentId,
     routeKind,
@@ -187,6 +194,24 @@ export function ComposerControlsBar(props: {
   // Its own element, so typing (which rebuilds the controls around it) leaves it cached.
   const composerModelPicker = (
     <ComposerModelPicker
+      {...(clawdExperience
+        ? {
+            triggerSuffix: effort.suffix,
+            triggerDetail: effort.detail,
+            triggerShortcuts: pickerOwnsModeShortcut
+              ? "composer.effort composer.mode"
+              : "composer.effort",
+            effortColumn: <ComposerEffortColumn traits={traitsInput} />,
+            footer: (
+              <ComposerPickerFooter
+                traits={traitsInput}
+                runtimeMode={compatibleRuntimeMode}
+                runtimeModeOptions={compatibleRuntimeModeOptions}
+                onRuntimeModeChange={handleRuntimeModeChange}
+              />
+            ),
+          }
+        : {})}
       environmentId={environmentId}
       compact={false}
       isComposerOwned
@@ -252,22 +277,24 @@ export function ComposerControlsBar(props: {
   ) : (
     <>
       {composerModelPicker}
-      <ComposerEffortMenu
-        traits={traitsInput}
-        modelLabel={
-          selectedProviderModels.find((model) => model.slug === selectedModel)?.name ??
-          selectedModel
-        }
-        suffix={effort.suffix}
-        detail={effort.detail}
-        size={controlSize}
-        hidden={composerControlsHidden}
-        disabled={providerCatalogPending || isSendBusy}
-        ownsModeShortcut={pickerOwnsModeShortcut}
-        runtimeMode={compatibleRuntimeMode}
-        runtimeModeOptions={compatibleRuntimeModeOptions}
-        onRuntimeModeChange={handleRuntimeModeChange}
-      />
+      {!clawdExperience && (
+        <ComposerEffortMenu
+          traits={traitsInput}
+          modelLabel={
+            selectedProviderModels.find((model) => model.slug === selectedModel)?.name ??
+            selectedModel
+          }
+          suffix={effort.suffix}
+          detail={effort.detail}
+          size={controlSize}
+          hidden={composerControlsHidden}
+          disabled={providerCatalogPending || isSendBusy}
+          ownsModeShortcut={pickerOwnsModeShortcut}
+          runtimeMode={compatibleRuntimeMode}
+          runtimeModeOptions={compatibleRuntimeModeOptions}
+          onRuntimeModeChange={handleRuntimeModeChange}
+        />
+      )}
 
       <>
         {restingBlockDefs.map((def, index) => {

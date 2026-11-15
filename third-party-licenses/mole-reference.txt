@@ -1,0 +1,6 @@
+Mole (https://github.com/tw93/Mole), tw93 and contributors.
+Reference reviewed 2026-11-15: README, lib/clean/dev.sh, lib/core/file_ops.sh.
+Current upstream LICENSE is GPL-3.0, not MIT as the initial implementation brief stated.
+No Mole source code or binary is included. The cleanup allowlist, UI and TypeScript scanner
+are independently implemented. This notice credits product/workflow inspiration only.
+Historical MIT provenance was not verified; do not relabel current upstream code as MIT.

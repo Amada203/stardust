@@ -24,9 +24,10 @@ const snap = (displayName: string, extra: Partial<SidebarProjectSnapshot> = {}) 
 const names = (list: SidebarProjectSnapshot[]) => list.map((project) => project.displayName);
 
 describe("preferences", () => {
-  it("defaults to project grouping and only reads 'model' as the opt-out", () => {
-    expect(parseSidebarGrouping(null)).toBe("project");
-    expect(parseSidebarGrouping("garbage")).toBe("project");
+  it("defaults to category grouping and keeps explicit project or model choices", () => {
+    expect(parseSidebarGrouping(null)).toBe("category");
+    expect(parseSidebarGrouping("garbage")).toBe("category");
+    expect(parseSidebarGrouping("project")).toBe("project");
     expect(parseSidebarGrouping("model")).toBe("model");
   });
   it("ignores corrupt or duplicate pinned entries and round-trips pin/unpin", () => {

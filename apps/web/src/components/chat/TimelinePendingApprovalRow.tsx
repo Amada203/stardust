@@ -37,7 +37,9 @@ export const TimelinePendingApprovalRow = memo(function TimelinePendingApprovalR
 }: {
   approval: PendingApproval;
 }) {
-  const { respondingRequestIds, canOperateThread, onRespondToApproval } = use(TimelineRowCtx);
+  const { respondingRequestIds, canOperateThread, onRespondToApproval, approvalsInTaskTrail } =
+    use(TimelineRowCtx);
+  if (approvalsInTaskTrail) return null;
   const presentation = APPROVAL_PRESENTATION[approval.requestKind];
   const canRespond = approval.responseCapability === "live";
   return (

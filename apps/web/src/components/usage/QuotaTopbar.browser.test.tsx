@@ -5,6 +5,7 @@ import { page } from "vite-plus/test/browser";
 import { render } from "../../../test/render";
 import { useLocalStorage } from "../../hooks/useLocalStorage";
 import "~/index.css";
+import { applyThemePalette } from "~/themePalette";
 import { QuotaTopbarView } from "./QuotaTopbar";
 import {
   DEFAULT_QUOTA_PREFERENCES,
@@ -211,4 +212,61 @@ describe("quota topbar interactions", () => {
       expect(usage).toHaveBeenCalledOnce();
     },
   );
+});
+
+it("uses remaining quota arcs and the Apple 30 percent threshold without changing other themes", async () => {
+  const fresh = accounts.slice(0, 4).map((account, index) => ({
+    ...account,
+    limits:
+      index === 3
+        ? undefined
+        : {
+            ...account.limits!,
+            windows: account.limits!.windows.map((window) => ({
+              ...window,
+              usedPercent: [100, 70, 69][index]!,
+            })),
+          },
+  }));
+  const root = document.documentElement;
+  const before = root.getAttribute("data-theme-id");
+  const beforeStyle = root.getAttribute("style");
+  await using screen = await render(
+    <QuotaTopbarView
+      accounts={fresh}
+      now={now}
+      preferences={{ ...DEFAULT_QUOTA_PREFERENCES, pins: ["0", "1", "2", "3"] }}
+      onPreferences={noop}
+      onRefresh={noop}
+      onUsage={noop}
+    />,
+  );
+  const rings = [
+    ...screen.container.querySelectorAll<HTMLElement>("[data-quota-id] [data-compact]"),
+  ];
+  const baseline = rings.map((ring) => getComputedStyle(ring).backgroundImage);
+  try {
+    applyThemePalette("apple", "light");
+    expect(rings.map((ring) => ring.style.getPropertyValue("--quota-progress"))).toEqual([
+      "0%",
+      "30%",
+      "31%",
+      "0%",
+    ]);
+    expect(rings.map((ring) => ring.hasAttribute("data-apple-low"))).toEqual([
+      true,
+      true,
+      false,
+      false,
+    ]);
+    expect(rings[3]!.hasAttribute("data-remaining")).toBe(false);
+    expect(getComputedStyle(rings[1]!).backgroundImage).toContain("30%");
+    expect(getComputedStyle(rings[2]!).backgroundImage).toContain("52, 199, 89");
+  } finally {
+    if (beforeStyle === null) root.removeAttribute("style");
+    else root.setAttribute("style", beforeStyle);
+    if (before === null) root.removeAttribute("data-theme-id");
+    else root.setAttribute("data-theme-id", before);
+  }
+  expect(rings.map((ring) => getComputedStyle(ring).backgroundImage)).toEqual(baseline);
 });

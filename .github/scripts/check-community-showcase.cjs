@@ -74,7 +74,10 @@ function check() {
       }
       if (feature.id === "overview") {
         const line = text.slice(0, image.index).split("\n").length;
-        if (images[0] !== image || line > 18) {
+        const firstContentImage = images.find(
+          (entry) => entry[2] !== "assets/community/c67/icon-128.png",
+        );
+        if (firstContentImage !== image || line > 18) {
           fail(`${readme.path}: overview must be the first image within the opening 18 lines`);
         }
       }

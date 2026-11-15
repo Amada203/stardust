@@ -646,7 +646,7 @@ function PermissionsMenu(props: {
 }
 
 /** The model picker's footer: speed stays one click away, permissions sit one menu deeper. */
-function ComposerPickerFooter(props: {
+export function ComposerPickerFooter(props: {
   traits: TraitsSelectionInput | null;
   runtimeMode: RuntimeMode;
   runtimeModeOptions: ReadonlyArray<RuntimeModeOption>;

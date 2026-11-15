@@ -1,4 +1,16 @@
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { effectiveSnoozed } from "@t3tools/client-runtime/state/thread-settled";
+import { useNowMinute } from "../../hooks/useNowMinute";
+import { type BoardTask } from "../../taskBoard.logic";
+import {
+  boardResumeReason,
+  boardResumeToken,
+  linkedBoardThread,
+  threadResumeToken,
+  resumeRequestHidden,
+} from "../../resumeCard";
+import { useResumeCardStore } from "../../resumeCardStore";
+import { InboxProgress } from "./InboxProgress";
+import { useTaskBoard, type InboxThreadRequest } from "../../taskBoard";
 import { useAtomValue } from "@effect/atom-react";
 import { primaryServerKeybindingsAtom } from "../../state/server";
 import { resolveShortcutCommand, shortcutLabelForCommand } from "../../keybindings";
@@ -7,9 +19,8 @@ import { isEditableFocused } from "../../lib/editableFocus";
 import { isCommandPaletteOpen } from "../../commandPaletteBus";
 import { isModelPickerOpen } from "../../modelPickerVisibility";
 import { sidebarProviderLabel } from "../../sidebarProviderGrouping";
-import { InboxStatusMark } from "./InboxStatusMark";
-import { useEffect, useId, useState } from "react";
-import { BookmarkIcon, InboxIcon, XIcon } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { BookmarkIcon, XIcon } from "lucide-react";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import type { ScopedThreadRef } from "@t3tools/contracts";
 import type { SidebarThreadSummary } from "../../types";
@@ -33,6 +44,7 @@ import {
   sortedAttentionThreads,
   sidebarRelativeTime,
 } from "../../sidebarInboxPresentation";
+import { useInboxCountBounce, useInboxExitRows } from "~/lib/workbenchMotion";
 import { ActiveWorkOverview } from "./ActiveWorkOverview";
 import { onOpenRecentWork } from "../../workbenchNavigation";
 import { threadEnvironment } from "../../state/threads";
@@ -40,7 +52,7 @@ import { useAtomCommand } from "../../state/use-atom-command";
 import { isAtomCommandInterrupted } from "@t3tools/client-runtime/state/runtime";
 import { Button } from "../ui/button";
 import { Dialog, DialogPopup, DialogTitle, DialogClose } from "../ui/dialog";
-import { SidebarMenu, SidebarMenuItem, SidebarMenuButton } from "../ui/sidebar";
+import { SidebarMenu, SidebarMenuItem } from "../ui/sidebar";
 
 // Read the clock only from event handlers and the committed-navigation effect.
 const visitTimestamp = () => new Date().toISOString();
@@ -56,20 +68,31 @@ export function WorkbenchInbox({
   activeKey: string | null;
   navigate: (ref: ScopedThreadRef) => void;
 }) {
-  const inboxId = useId();
+  const boardTasks = useTaskBoard((s) => (s.error ? null : s.data));
+  const hidden = useResumeCardStore((state) => state.hidden);
+  const hiddenUntil = useResumeCardStore((state) => state.hiddenUntil);
+  const nowMinute = useNowMinute();
+  const now = Date.parse(`${nowMinute}:00Z`);
+  const boardAttention =
+    boardTasks?.tasks.filter(
+      (task) =>
+        !task.snoozed &&
+        (task.state === "user" || task.state === "blocked") &&
+        linkedBoardThread(task, threads) !== null &&
+        !resumeRequestHidden(
+          `board:${task.folder}`,
+          boardResumeToken(task),
+          hidden,
+          hiddenUntil,
+          now,
+        ),
+    ) ?? [];
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
   const nextShortcut = shortcutLabelForCommand(keybindings, "inbox.next");
   const [view, setView] = useState<"resume" | null>(null);
+  const [showAllAttention, setShowAllAttention] = useState(false);
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Subscribe to the command that opens the recent-work dialog.
   useEffect(() => onOpenRecentWork(() => setView("resume")), []);
-  const [expanded, setExpanded] = useState(() => {
-    try {
-      return localStorage.getItem("t3code:inbox-expanded") !== "false";
-    } catch {
-      return true;
-    }
-  });
-  const [showAll, setShowAll] = useState(false);
   const visitThread = useAtomCommand(threadEnvironment.visit, { reportFailure: false });
   const [storageError, setStorageError] = useState(false);
   const { saved, visits, acknowledgedErrors, update } = useWorkbenchInboxStore();
@@ -99,15 +122,29 @@ export function WorkbenchInbox({
         inboxReason(thread, localVisits[inboxThreadKey(thread)]),
       ]),
     ))();
-  const actionable = threads.filter((thread) =>
-    ["待授权", "待回答"].includes(reasons.get(inboxThreadKey(thread)) ?? ""),
-  );
-  const errors = threads.filter(
+  const attention = sortedAttentionThreads(threads, acknowledgedErrors, localVisits).filter(
     (thread) =>
-      reasons.get(inboxThreadKey(thread)) === "运行失败" &&
-      acknowledgedErrors[inboxThreadKey(thread)] !== thread.latestRun?.runId,
+      !effectiveSnoozed(thread, { now: `${nowMinute}:00Z` }) &&
+      !resumeRequestHidden(
+        inboxThreadKey(thread),
+        threadResumeToken(thread, reasons.get(inboxThreadKey(thread)) ?? "有新结果"),
+        hidden,
+        hiddenUntil,
+        now,
+      ),
   );
-  const attention = (() => sortedAttentionThreads(threads, acknowledgedErrors, localVisits))();
+  const openThread = (thread: SidebarThreadSummary) => {
+    const reason = reasons.get(inboxThreadKey(thread)) ?? "有新结果";
+    const ref = scopeThreadRef(thread.environmentId, thread.id);
+    useResumeCardStore.getState().open({
+      key: inboxThreadKey(thread),
+      token: threadResumeToken(thread, reason),
+      ref,
+      title: thread.title,
+      reason,
+    });
+    navigate(ref);
+  };
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Keep the inbox keyboard shortcut listener in sync with current actionable threads.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -124,13 +161,58 @@ export function WorkbenchInbox({
       if (!target) return;
       event.preventDefault();
       event.stopPropagation();
-      navigate(scopeThreadRef(target.environmentId, target.id));
+      const reason = reasons.get(inboxThreadKey(target)) ?? "有新结果";
+      const ref = scopeThreadRef(target.environmentId, target.id);
+      useResumeCardStore.getState().open({
+        key: inboxThreadKey(target),
+        token: threadResumeToken(target, reason),
+        ref,
+        title: target.title,
+        reason,
+      });
+      navigate(ref);
     };
     // Handle inbox navigation before rich-text keymaps consume shifted Mod-I.
     window.addEventListener("keydown", onKeyDown, true);
     return () => window.removeEventListener("keydown", onKeyDown, true);
-  }, [attention, activeKey, keybindings, navigate]);
-  const page = attentionPage(attention, showAll);
+  }, [attention, activeKey, keybindings, navigate, reasons]);
+  // Same rule as the right-panel "待回复" tab: things that need an answer, not unread results.
+  const requestCount =
+    attention.filter((thread) => reasons.get(inboxThreadKey(thread)) !== "有新结果").length +
+    boardAttention.length;
+  const badgeRef = useInboxCountBounce(requestCount);
+  const requests: InboxThreadRequest[] = attention.map((thread) => {
+    const key = inboxThreadKey(thread);
+    const reason = reasons.get(key) ?? "有新结果";
+    const project = projectByThread.get(key);
+    const label = attentionThreadLabel(thread, threads, reason);
+    return {
+      key,
+      ref: scopeThreadRef(thread.environmentId, thread.id),
+      title: label.title,
+      reason,
+      place:
+        label.detail ??
+        `${project?.displayName ?? "项目"} · ${project?.providerLabel ?? sidebarProviderLabel(thread.modelSelection.instanceId)}`,
+      dismissLabel: reason === "运行失败" ? "已知悉" : reason === "有新结果" ? "已看" : null,
+      dismiss:
+        reason === "运行失败"
+          ? () => change("acknowledgedErrors", thread, thread.latestRun?.runId ?? null)
+          : reason === "有新结果"
+            ? () => void markSeen(thread)
+            : null,
+    };
+  });
+  const requestSignature = JSON.stringify(
+    requests.map((request) => [request.key, request.reason, request.title, request.place]),
+  );
+  const publishedSignature = useRef<string | null>(null);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Publish conversation requests to the right-panel inbox whenever their visible content changes.
+  useEffect(() => {
+    if (publishedSignature.current === requestSignature) return;
+    publishedSignature.current = requestSignature;
+    useTaskBoard.setState({ threadRequests: requests });
+  });
   const markSeen = async (thread: SidebarThreadSummary) => {
     const visitedAt = visitTimestamp();
     const result = await visitThread({
@@ -261,6 +343,50 @@ export function WorkbenchInbox({
       </div>
     </DialogPopup>
   );
+  const openBoardTask = (task: BoardTask) => {
+    const thread = linkedBoardThread(task, threads);
+    if (!thread) return;
+    const ref = scopeThreadRef(thread.environmentId, thread.id);
+    useResumeCardStore.getState().open({
+      key: `board:${task.folder}`,
+      token: boardResumeToken(task),
+      ref,
+      title: task.title,
+      reason: boardResumeReason(task),
+      boardFolder: task.folder,
+    });
+    navigate(ref);
+  };
+  const threadRows = attention.map((thread) => {
+    const key = inboxThreadKey(thread);
+    const reason = reasons.get(key) ?? "有新结果";
+    const label = attentionThreadLabel(thread, threads, reason);
+    return {
+      key,
+      thread,
+      boardTask: null as BoardTask | null,
+      reason,
+      label,
+      timestamp: attentionTimestamp(thread),
+      detail: label.detail,
+    };
+  });
+  const boardRows = boardAttention.map((task) => ({
+    key: `board:${task.folder}`,
+    thread: linkedBoardThread(task, threads),
+    boardTask: task,
+    reason: boardResumeReason(task),
+    label: { title: task.title },
+    timestamp: task.state_since ?? "",
+    detail: task.judge?.trim() || task.blocked?.trim() || task.next?.trim() || null,
+  }));
+  const allRows = [...threadRows, ...boardRows];
+  const page = attentionPage(allRows, showAllAttention);
+  const rows = page.rows.map((row, index) => ({ ...row, index }));
+  const allKeys = new Set(allRows.map((row) => row.key));
+  const exiting = useInboxExitRows(rows, allKeys);
+  const displayedRows = [...rows];
+  for (const row of exiting) displayedRows.splice(row.index, 0, row);
   return (
     <>
       <ActiveWorkOverview
@@ -272,150 +398,94 @@ export function WorkbenchInbox({
       />
       <SidebarMenu>
         {/* Nothing counted and nothing listed: the row stays out of the way. */}
-        {shouldShowInboxRow(actionable.length + errors.length, attention.length) ? (
+        {exiting.length > 0 ||
+        shouldShowInboxRow(requestCount, attention.length + boardAttention.length) ? (
           <SidebarMenuItem>
-            <SidebarMenuButton
-              aria-expanded={expanded}
-              aria-controls={`${inboxId}-attention`}
-              title={nextShortcut ? `下一条待我处理 (${nextShortcut})` : "待我处理"}
-              onClick={() => {
-                const next = !expanded;
-                try {
-                  localStorage.setItem("t3code:inbox-expanded", String(next));
-                  setExpanded(next);
-                } catch {
-                  setStorageError(true);
-                }
-              }}
+            <div
+              className="group/inbox-cap flex items-center gap-1.5 px-2 pt-2 pb-1 text-2xs tracking-wider text-sidebar-muted-foreground"
+              data-sidebar-cap=""
             >
-              <InboxIcon />
-              <span className="flex-1">待我处理</span>
+              <span>待我处理</span>
+              {nextShortcut && attention.length > 0 ? (
+                <span className="tracking-normal opacity-0 transition-opacity group-hover/inbox-cap:opacity-70 motion-reduce:transition-none">
+                  下一条 {nextShortcut}
+                </span>
+              ) : null}
               <span
-                className={`text-xs tabular-nums ${actionable.length + errors.length ? "text-primary" : "text-muted-foreground"}`}
+                ref={badgeRef}
+                aria-label={`需要回答 ${requestCount} 条`}
+                className={`ml-auto min-w-5 rounded-full px-1.5 text-center font-semibold tracking-normal tabular-nums ${requestCount ? "bg-warning text-background" : ""}`}
               >
-                {actionable.length + errors.length}
+                {requestCount}
               </span>
-            </SidebarMenuButton>
-            {(expanded && attention.length > 0) || incomplete || storageError ? (
-              <div id={`${inboxId}-attention`} className="ml-4 border-l border-sidebar-border pl-2">
-                {incomplete ? (
-                  <p role="status" className="py-1 text-xs text-muted-foreground">
-                    部分连接尚未就绪，以下可能是上次同步的记录；数量不代表全部。
-                  </p>
+            </div>
+            {displayedRows.length > 0 ? (
+              <ul aria-label="待我处理的会话" className="space-y-px">
+                {displayedRows.map(
+                  ({ key, thread, boardTask, reason, label, detail, timestamp }) => {
+                    const failed = reason === "运行失败";
+                    const leaving = !allKeys.has(key);
+                    return (
+                      <li
+                        key={key}
+                        inert={leaving}
+                        aria-hidden={leaving || undefined}
+                        className={leaving ? "workbench-inbox-exit" : undefined}
+                      >
+                        <button
+                          type="button"
+                          data-inbox-thread={thread?.id}
+                          data-inbox-task={boardTask?.folder}
+                          onClick={() => {
+                            if (boardTask) openBoardTask(boardTask);
+                            else if (thread) openThread(thread);
+                          }}
+                          aria-current={activeKey === key ? "page" : undefined}
+                          className="relative block w-full min-w-0 rounded-lg py-1.5 pr-2 pl-5.5 text-left outline-none hover:bg-sidebar-row-hover focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring aria-[current=page]:bg-sidebar-row-active"
+                        >
+                          <span
+                            aria-hidden
+                            className={`absolute top-3.25 left-2.25 size-1.5 rounded-full ${failed ? "bg-destructive" : "bg-warning"}`}
+                          />
+                          <span className="flex min-w-0 items-baseline gap-2">
+                            <span className="min-w-0 flex-1 truncate text-sm text-sidebar-foreground">
+                              {label.title}
+                            </span>
+                            <span className="shrink-0 text-2xs tabular-nums text-sidebar-muted-foreground">
+                              {sidebarRelativeTime(timestamp)}
+                            </span>
+                          </span>
+                          {thread ? (
+                            <InboxProgress
+                              thread={thread}
+                              board={boardTask}
+                              reason={reason}
+                              detail={detail}
+                            />
+                          ) : null}
+                        </button>
+                      </li>
+                    );
+                  },
+                )}
+                {allRows.length > page.rows.length || showAllAttention ? (
+                  <li>
+                    <button
+                      type="button"
+                      aria-expanded={showAllAttention}
+                      onClick={() => setShowAllAttention(!showAllAttention)}
+                      className="w-full rounded-lg py-1 pr-2 pl-5.5 text-left text-xs text-sidebar-muted-foreground outline-none hover:bg-sidebar-row-hover hover:text-sidebar-foreground focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring"
+                    >
+                      {showAllAttention ? "收起" : `更多 ${page.hidden}`}
+                    </button>
+                  </li>
                 ) : null}
-                {storageError ? (
-                  <p role="alert" className="py-1 text-xs text-destructive">
-                    本机记录保存失败，请检查浏览器存储空间后重试。
-                  </p>
-                ) : null}
-                {expanded && attention.length ? (
-                  <>
-                    <ul className="max-h-64 overflow-y-auto" aria-label="待我处理会话">
-                      {page.rows.map((thread) => {
-                        const key = inboxThreadKey(thread),
-                          reason = reasons.get(key);
-                        const label = attentionThreadLabel(thread, threads, reason ?? null);
-                        const project = projectByThread.get(key);
-                        const provider =
-                          project?.providerLabel ??
-                          sidebarProviderLabel(thread.modelSelection.instanceId);
-                        return (
-                          <li
-                            key={key}
-                            data-inbox-thread={thread.id}
-                            className="group/inbox flex min-w-0 items-center gap-1 rounded-md p-1 hover:bg-accent/50 focus-within:bg-accent/50"
-                          >
-                            {reason ? <InboxStatusMark reason={reason} /> : null}
-                            <Tooltip>
-                              <TooltipTrigger
-                                render={
-                                  <button
-                                    type="button"
-                                    className="min-w-0 flex-1 text-left outline-hidden focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring"
-                                    onClick={() =>
-                                      navigate(scopeThreadRef(thread.environmentId, thread.id))
-                                    }
-                                  >
-                                    <span className="block truncate text-sm">{label.title}</span>
-                                    <span className="flex min-w-0 items-center gap-1 text-xs text-muted-foreground">
-                                      {label.detail ? (
-                                        <span className="min-w-0 truncate">{label.detail}</span>
-                                      ) : (
-                                        <>
-                                          <span className="min-w-0 shrink truncate">
-                                            {project?.displayName ?? "项目"}
-                                          </span>
-                                          <span className="shrink-0">·</span>
-                                          <span className="shrink-0">{provider}</span>
-                                          <span className="shrink-0">·</span>
-                                          <span className="shrink-0">{reason}</span>
-                                        </>
-                                      )}
-                                    </span>
-                                  </button>
-                                }
-                              />
-                              <TooltipPopup>
-                                <p>{label.title}</p>
-                                <p>
-                                  {label.detail ??
-                                    `${project?.displayName ?? "项目"} · ${provider} · ${reason}`}
-                                </p>
-                              </TooltipPopup>
-                            </Tooltip>
-                            <div className="shrink-0 text-xs">
-                              <span className="text-muted-foreground group-hover/inbox:hidden group-focus-within/inbox:hidden">
-                                {sidebarRelativeTime(attentionTimestamp(thread))}
-                              </span>
-                              <div className="hidden items-center group-hover/inbox:flex group-focus-within/inbox:flex">
-                                {reason === "运行失败" ? (
-                                  <Button
-                                    size="xs"
-                                    variant="ghost"
-                                    onClick={() =>
-                                      change(
-                                        "acknowledgedErrors",
-                                        thread,
-                                        thread.latestRun?.runId ?? null,
-                                      )
-                                    }
-                                  >
-                                    已知悉
-                                  </Button>
-                                ) : null}
-                                {reason === "有新结果" ? (
-                                  <Button
-                                    size="xs"
-                                    variant="ghost"
-                                    onClick={() => void markSeen(thread)}
-                                  >
-                                    已看
-                                  </Button>
-                                ) : null}
-                                <Button
-                                  size="xs"
-                                  variant="ghost"
-                                  aria-pressed={Boolean(saved[key])}
-                                  onClick={() =>
-                                    change("saved", thread, saved[key] ? null : visitTimestamp())
-                                  }
-                                >
-                                  {saved[key] ? "取消稍后" : "稍后"}
-                                </Button>
-                              </div>
-                            </div>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                    {attention.length > 5 ? (
-                      <Button size="xs" variant="ghost" onClick={() => setShowAll(!showAll)}>
-                        {showAll ? "收起" : `更多 ${page.hidden}`}
-                      </Button>
-                    ) : null}
-                  </>
-                ) : null}
-              </div>
+              </ul>
+            ) : null}
+            {storageError ? (
+              <p role="alert" className="px-2 py-1 text-xs text-destructive">
+                本机记录保存失败，请检查浏览器存储空间后重试。
+              </p>
             ) : null}
           </SidebarMenuItem>
         ) : null}

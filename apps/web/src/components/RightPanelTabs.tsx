@@ -1,3 +1,5 @@
+import { TaskBoardBadge } from "./TaskBoardPanel";
+import { ListChecks } from "lucide-react";
 import { uiText } from "~/i18n";
 import { sourceControlClients } from "@t3tools/client-runtime/source-control-clients";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
@@ -135,6 +137,7 @@ export interface RightPanelTabsProps {
   /** Keep separate from the DOM click handler so a MouseEvent cannot become a profile id. */
   onAddBrowserInProfile: (profileId: string) => void;
   onAddTerminal: () => void;
+  onAddTasks?: (() => void) | undefined;
   onAddDiff: () => void;
   onAddFiles: () => void;
   onAddPullRequest: () => void;
@@ -309,6 +312,7 @@ function RightPanelEmptyState(props: {
     readonly name: string;
   }>;
   onAddTerminal: () => void;
+  onAddTasks?: (() => void) | undefined;
   onAddDiff: () => void;
   onAddFiles: () => void;
   onAddPullRequest: () => void;
@@ -566,6 +570,8 @@ function surfaceTitle(
   terminalLabelsById: ReadonlyMap<string, string>,
 ): string {
   switch (surface.kind) {
+    case "tasks":
+      return "任务";
     case "diff":
       return uiText("Diff");
     case "files":
@@ -649,6 +655,8 @@ function SurfaceIcon({
   switch (surface.kind) {
     case "preview":
       return <PreviewFavicon capturedUrl={previewCapturedUrl} url={previewUrl} />;
+    case "tasks":
+      return <ListChecks className="size-3 shrink-0" />;
     case "diff":
       return <FileDiff className="size-3 shrink-0" />;
     case "files":
@@ -905,25 +913,31 @@ function RightPanelTab(
   const sideChatState = sideChatTabState(sideChatShell);
   const content = (
     <>
-      <PanelTabCloseButton
-        label={uiText("Close {0}", { "0": title })}
-        onClick={() => onClose(surface)}
+      <span
+        className={
+          surface.kind === "tasks" ? "flex w-4 shrink-0 items-center overflow-hidden" : "contents"
+        }
       >
-        <SurfaceIcon
-          surface={surface}
-          previewUrl={props.previewUrl}
-          previewCapturedUrl={props.previewCapturedUrl}
-          theme={props.theme}
-          environmentId={props.environmentId}
-          pullRequestStatusSeed={props.pullRequestStatusSeed}
-        />
-        {props.pending ? (
-          <span
-            className="absolute -right-0.5 -bottom-0.5 size-1.5 rounded-full bg-current"
-            aria-hidden
+        <PanelTabCloseButton
+          label={uiText("Close {0}", { "0": title })}
+          onClick={() => onClose(surface)}
+        >
+          <SurfaceIcon
+            surface={surface}
+            previewUrl={props.previewUrl}
+            previewCapturedUrl={props.previewCapturedUrl}
+            theme={props.theme}
+            environmentId={props.environmentId}
+            pullRequestStatusSeed={props.pullRequestStatusSeed}
           />
-        ) : null}
-      </PanelTabCloseButton>
+          {props.pending ? (
+            <span
+              className="absolute -right-0.5 -bottom-0.5 size-1.5 rounded-full bg-current"
+              aria-hidden
+            />
+          ) : null}
+        </PanelTabCloseButton>
+      </span>
       {audio === "none" || !audioRuntimeTabId ? null : (
         <Tooltip>
           <TooltipTrigger
@@ -980,11 +994,12 @@ function RightPanelTab(
                 onDoubleClick={() => {
                   if (surface.kind === "device" && props.canRename) onStartRename(surface.id);
                 }}
-                className="cursor-pointer flex min-w-0 items-center"
+                className="cursor-pointer flex min-w-0 items-center gap-1"
                 aria-label={sideChatState === null ? undefined : `${title}, ${sideChatState}`}
                 onClick={() => onActivate(surface)}
               >
                 <span className="truncate">{title}</span>
+                {surface.kind === "tasks" ? <TaskBoardBadge /> : null}
               </button>
             }
           />
@@ -1015,6 +1030,7 @@ function RightPanelTab(
       style={{ transform: CSS.Translate.toString(transform), transition }}
       className={cn(
         "cursor-pointer group/tab flex h-6 max-w-36 shrink-0 items-center gap-0.5 rounded-md pr-2 pl-1.5 text-xs",
+        surface.kind === "tasks" && "gap-1.5",
         props.ownsDesktopTitleBar && "[-webkit-app-region:no-drag]",
         props.active
           ? "bg-accent text-foreground"
@@ -1522,6 +1538,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
             onAddBrowserInProfile={props.onAddBrowserInProfile}
             browserProfiles={browserProfiles}
             onAddTerminal={props.onAddTerminal}
+            onAddTasks={props.onAddTasks}
             onAddDiff={props.onAddDiff}
             onAddFiles={props.onAddFiles}
             onAddPullRequest={props.onAddPullRequest}

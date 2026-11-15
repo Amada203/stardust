@@ -1,10 +1,11 @@
-import { uiText } from "~/i18n";
-import { usePreparedConnection } from "../../state/session";
 import type { EnvironmentId, ThreadId, WallArtifact } from "@t3tools/contracts";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { animateWorkbenchOnce, workbenchEase } from "~/lib/workbenchMotion";
 import {
   CheckIcon,
   ChevronLeftIcon,
+  FolderOpenIcon,
+  PlusIcon,
   ChevronRightIcon,
   FileIcon,
   GlobeIcon,
@@ -21,15 +22,19 @@ import {
   artifactRevisionPrompt,
   artifactVersionKey,
 } from "../../artifactWall";
-import { artifactFileUrl, fileFromArtifact, loadWallArtifacts } from "../../lib/artifactWallClient";
+import { artifactFileUrl, fileFromArtifact } from "../../lib/artifactWallClient";
+import { useWallArtifacts } from "../../useWallArtifacts";
+import { artifactsSince } from "../../artifactShelf";
+import { useQuietThreadShell } from "../../state/entities";
+import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { shellEnvironment } from "../../state/shell";
-import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { cn } from "~/lib/utils";
 import { Dialog, DialogPopup, DialogTitle } from "../ui/dialog";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { Toggle, ToggleGroup } from "../ui/toggle-group";
 
 export function ArtifactWall({
   environmentId,
@@ -49,15 +54,9 @@ export function ArtifactWall({
   active?: boolean;
   onCount?: (count: number) => void;
 }) {
-  const preparedConnection = usePreparedConnection(environmentId);
   const [scope, setScope] = useState<"thread" | "project">("thread");
   const [filter, setFilter] = useState<"all" | WallArtifact["kind"]>("all");
-  const [state, setState] = useState<{
-    key: string;
-    artifacts: readonly WallArtifact[];
-    error: string | null;
-    loading: boolean;
-  }>({ key: "", artifacts: [], error: null, loading: true });
+  const state = useWallArtifacts(environmentId, threadId, scope);
   const [durations, setDurations] = useState<Record<string, number>>({});
   const [visible, setVisible] = useState(40);
   const [selected, setSelected] = useState<WallArtifact | null>(null);
@@ -68,50 +67,53 @@ export function ArtifactWall({
   const [thumbCount, setThumbCount] = useState(40);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [retry, setRetry] = useState(0);
   // ⌘/Ctrl-click or the corner check picks up to two images to compare.
   const [picked, setPicked] = useState<string[]>([]);
   const [menuFor, setMenuFor] = useState<string | null>(null);
+  const [featuredVersion, setFeaturedVersion] = useState<string | null>(null);
   const filmstrip = useRef<HTMLDivElement | null>(null);
   const loadMore = useRef<HTMLDivElement | null>(null);
   const scrollRoot = useRef<HTMLDivElement | null>(null);
   const openInEditor = useAtomCommand(shellEnvironment.openInEditor, { reportFailure: false });
   const key = `${environmentId}:${threadId}:${scope}`;
-  const artifacts = state.key === key ? state.artifacts : [];
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Keep an abortable polling subscription to the selected remote artifact collection.
-  useEffect(() => {
-    const controller = new AbortController();
-    let active = true;
-    const load = async () => {
-      try {
-        const artifacts = await loadWallArtifacts(
-          environmentId,
-          threadId,
-          scope,
-          controller.signal,
-        );
-        if (active) setState({ key, artifacts, error: null, loading: false });
-      } catch (error) {
-        if (active && !controller.signal.aborted)
-          setState((s) => ({
-            key,
-            artifacts: s.key === key ? s.artifacts : [],
-            error: error instanceof Error ? error.message : "暂时无法读取产物",
-            loading: false,
-          }));
-      }
-    };
-    void load();
-    const timer = window.setInterval(() => {
-      if (document.visibilityState === "visible") void load();
-    }, 15_000);
+  const artifacts = state.artifacts;
+  const arrivalHistory = useRef<{ key: string; ids: Set<string> } | null>(null);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Compare successful collection snapshots and animate only newly committed, visible DOM rows.
+  useLayoutEffect(() => {
+    if (!active) {
+      arrivalHistory.current = null;
+      return;
+    }
+    if (state.loading || state.error) return;
+    const before = arrivalHistory.current;
+    arrivalHistory.current = { key, ids: new Set(artifacts.map((artifact) => artifact.id)) };
+    if (!before || before.key !== key) return;
+    const stops: (() => void)[] = [];
+    for (const row of scrollRoot.current?.querySelectorAll<HTMLElement>("[data-artifact-id]") ??
+      []) {
+      if (before.ids.has(row.dataset.artifactId!)) continue;
+      stops.push(
+        animateWorkbenchOnce(
+          row,
+          [
+            { opacity: 0, transform: "translateY(-6px)" },
+            { opacity: 1, transform: "none" },
+          ],
+          { duration: 450, easing: workbenchEase },
+        ),
+      );
+      stops.push(
+        animateWorkbenchOnce(row, [{ opacity: 1 }, { opacity: 0 }], {
+          duration: 450,
+          easing: workbenchEase,
+          pseudoElement: "::before",
+        }),
+      );
+    }
     return () => {
-      active = false;
-      controller.abort();
-      window.clearInterval(timer);
+      for (const stop of stops) stop();
     };
-    // oxlint-disable-next-line react/exhaustive-effect-dependencies -- Connection replacement and explicit retry both restart the polling subscription.
-  }, [environmentId, threadId, scope, key, preparedConnection, retry]);
+  }, [active, key, artifacts, state.loading, state.error]);
   const viewKey = `${key}:${filter}`;
   const [previousViewKey, setPreviousViewKey] = useState(viewKey);
   if (previousViewKey !== viewKey) {
@@ -121,6 +123,7 @@ export function ArtifactWall({
     setComparison(null);
     setActionError(null);
     setPicked([]);
+    setFeaturedVersion(null);
   }
   const filtered = (() => artifacts.filter((a) => filter === "all" || a.kind === filter))();
   const counts = artifactCounts(artifacts);
@@ -130,6 +133,31 @@ export function ArtifactWall({
   }, [counts.all, onCount]);
   const groups = groupArtifacts(filtered.slice(0, visible));
   const images = (() => artifacts.filter((a) => a.kind === "image"))();
+  const newestImage =
+    filter === "all" || filter === "image"
+      ? (images.toSorted((a, b) =>
+          (b.modifiedAt ?? b.createdAt).localeCompare(a.modifiedAt ?? a.createdAt),
+        )[0] ?? null)
+      : null;
+  // Versions only when the listing really holds several files at the same path.
+  const featuredVersions = newestImage
+    ? images
+        .filter((a) => a.path === newestImage.path)
+        .toSorted((a, b) =>
+          (a.modifiedAt ?? a.createdAt).localeCompare(b.modifiedAt ?? b.createdAt),
+        )
+    : [];
+  const featured =
+    featuredVersions.find((a) => artifactVersionKey(a) === featuredVersion) ?? newestImage;
+  // "新": touched since this thread's latest run began (same rule as the composer shelf).
+  const latestRun = useQuietThreadShell(scopeThreadRef(environmentId, threadId))?.latestRun;
+  const newArtifactKeys = new Set(
+    scope === "thread"
+      ? artifactsSince(artifacts, latestRun?.startedAt ?? latestRun?.requestedAt ?? null).map(
+          artifactVersionKey,
+        )
+      : [],
+  );
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Keep the browser intersection observer attached to the current pagination sentinel.
   useEffect(() => {
     const element = loadMore.current;
@@ -314,30 +342,23 @@ export function ArtifactWall({
   if (!active) return null;
   return (
     <section aria-label="产物" className="min-w-0 px-3 pt-2 pb-2" data-artifact-wall>
-      <div className="mb-2 flex min-w-0 items-center justify-end gap-1">
-        <div className="flex gap-1" aria-label="产物范围">
-          {(
-            [
-              ["thread", "本会话"],
-              ["project", "本项目"],
-            ] as const
-          ).map(([value, label]) => (
-            <Button
-              key={value}
-              size="xs"
-              variant={scope === value ? "secondary" : "ghost"}
-              aria-pressed={scope === value}
-              onClick={() => {
-                setScope(value);
-                setFilter("all");
-              }}
-            >
-              {label}
-            </Button>
-          ))}
-        </div>
+      <div className="mb-2 flex min-w-0 items-center gap-1">
+        <ToggleGroup
+          aria-label="产物范围"
+          variant="segmented"
+          value={[scope]}
+          onValueChange={(next) => {
+            const value = next[0];
+            if (value !== "thread" && value !== "project") return;
+            setScope(value);
+            setFilter("all");
+          }}
+        >
+          <Toggle value="thread">本会话</Toggle>
+          <Toggle value="project">本项目</Toggle>
+        </ToggleGroup>
       </div>
-      {!(state.key === key && state.error && artifacts.length === 0) && (
+      {!(state.error && artifacts.length === 0) && (
         <div className="mb-2 flex flex-nowrap gap-0.5" aria-label="产物类型">
           {(
             [
@@ -367,26 +388,100 @@ export function ArtifactWall({
           {actionError}
         </p>
       ) : null}
+      {featured && !state.loading && !state.error ? (
+        // The newest image as a preview card above the scrolling list (mockup .pv): 16:10 media, title, meta, versions
+        // when the same file has several, then two equal-height actions.
+        <div
+          className="@container mb-3 overflow-hidden rounded-xl border border-border/70 bg-card shadow-sm"
+          data-artifact-featured={featured.id}
+        >
+          <button
+            type="button"
+            aria-label={`预览 ${featured.name}`}
+            className="block aspect-16/10 w-full cursor-zoom-in overflow-hidden bg-muted/50 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+            onClick={() => compare(featured)}
+          >
+            {thumb(featured, "size-full object-cover")}
+          </button>
+          <div className="px-3 pt-2.5 pb-3">
+            <p className="truncate text-sm font-semibold text-foreground">{featured.name}</p>
+            <p className="mt-0.5 truncate text-xs text-muted-foreground">
+              {featured.width && featured.height
+                ? `${featured.width} × ${featured.height}`
+                : `${Math.ceil(featured.sizeBytes / 1024)} KB`}
+              {" · "}
+              {new Date(featured.modifiedAt ?? featured.createdAt).toLocaleString(undefined, {
+                month: "numeric",
+                day: "numeric",
+                hour: "2-digit",
+                minute: "2-digit",
+              })}
+            </p>
+            {featuredVersions.length > 1 ? (
+              <div className="mt-2 flex flex-wrap gap-0.75" aria-label="版本">
+                {featuredVersions.map((version, index) => {
+                  const current = artifactVersionKey(version) === artifactVersionKey(featured);
+                  return (
+                    <button
+                      type="button"
+                      key={artifactVersionKey(version)}
+                      aria-pressed={current}
+                      onClick={() => setFeaturedVersion(artifactVersionKey(version))}
+                      className={cn(
+                        "h-6.5 min-w-7.5 rounded-md px-1.5 text-xs tabular-nums outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring",
+                        current
+                          ? "bg-foreground text-background"
+                          : "bg-muted text-muted-foreground hover:text-foreground",
+                      )}
+                    >
+                      v{index + 1}
+                    </button>
+                  );
+                })}
+              </div>
+            ) : null}
+            <div className="mt-2.5 grid grid-cols-2 gap-1.5">
+              <button
+                type="button"
+                disabled={busy}
+                aria-label={`把 ${featured.name} 附加到输入框`}
+                onClick={() => void attach(featured)}
+                className="inline-flex h-8 min-w-0 items-center justify-center gap-1.5 rounded-lg bg-foreground px-2 text-xs font-medium text-background outline-none transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring disabled:opacity-60"
+              >
+                <PlusIcon aria-hidden className="hidden size-3.5 shrink-0 @2xs:block" />
+                <span className="truncate">{busy ? "正在附加…" : "附加到输入框"}</span>
+              </button>
+              <button
+                type="button"
+                aria-label={`在 Finder 中显示 ${featured.name}`}
+                onClick={() => void reveal(featured)}
+                className="inline-flex h-8 min-w-0 items-center justify-center gap-1.5 rounded-lg bg-muted px-2 text-xs font-medium text-foreground outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+              >
+                <FolderOpenIcon aria-hidden className="hidden size-3.5 shrink-0 @2xs:block" />
+                <span className="truncate">在 Finder 中显示</span>
+              </button>
+            </div>
+            <p className="mt-2 text-2xs leading-normal text-muted-foreground">
+              {featured.verification?.label
+                ? `${featured.verification.label}。此项为检查命令记录，不代表用户验收或已部署。`
+                : "文件存在不代表检查通过。完成检查后，由 Agent 关联相应执行记录。"}
+            </p>
+          </div>
+        </div>
+      ) : null}
       <div
         ref={scrollRoot}
         className="max-h-[min(52dvh,28rem)] min-w-0 overflow-y-auto overscroll-contain"
         data-artifact-scroll
       >
-        {state.key !== key || state.loading ? (
+        {state.loading ? (
           <p className="py-2 text-2xs text-muted-foreground">正在读取产物…</p>
         ) : state.error ? (
           <div className="py-2">
             <p role="alert" className="text-2xs text-muted-foreground">
               {state.error}
             </p>
-            <Button
-              size="xs"
-              variant="ghost"
-              onClick={() => {
-                setState((current) => ({ ...current, loading: true, error: null }));
-                setRetry((n) => n + 1);
-              }}
-            >
+            <Button size="xs" variant="ghost" onClick={state.retry}>
               重试
             </Button>
           </div>
@@ -399,177 +494,150 @@ export function ArtifactWall({
                 : "这个项目还没有产物"}
           </p>
         ) : null}
-        {groups.map((group) => {
-          const isMedia = (a: WallArtifact) => a.kind === "image" || isArtifactVideo(a);
-          const media = group.artifacts.filter(isMedia);
-          const files = group.artifacts.filter((a) => !isMedia(a));
-          return (
-            <div key={group.label}>
-              <p className="my-2 text-2xs text-muted-foreground">{group.label}</p>
-              {media.length > 0 ? (
-                <div
-                  className="grid grid-cols-[repeat(auto-fill,minmax(7rem,1fr))] gap-2"
-                  data-artifact-media-grid
-                >
-                  {media.map((a) => {
-                    const isPicked = picked.includes(a.id);
-                    return (
-                      <div
-                        key={a.id}
-                        className="group min-w-0"
-                        draggable
-                        onDragStart={(event) => dragArtifact(event, a)}
-                        onContextMenu={(event) => {
-                          event.preventDefault();
-                          setMenuFor(a.id);
-                        }}
-                        data-artifact-id={a.id}
+        {groups.map((group) => (
+          // One row per artifact (mockup .alist/.ai): thumbnail or type, name, "新", time.
+          <div key={group.label}>
+            <p className="px-1 pt-1.5 pb-1 text-2xs tracking-wider text-muted-foreground">
+              {group.label}
+            </p>
+            <ul className="flex flex-col" data-artifact-list>
+              {group.artifacts.map((a) => {
+                const isPicked = picked.includes(a.id);
+                const isNew = newArtifactKeys.has(artifactVersionKey(a));
+                const open = (event: React.MouseEvent) => {
+                  if (a.kind === "image" && (event.metaKey || event.ctrlKey)) {
+                    togglePick(a);
+                    return;
+                  }
+                  if (a.kind === "image" || isArtifactVideo(a)) compare(a);
+                  else if (a.kind === "page") openPage(a);
+                  else void reveal(a);
+                };
+                return (
+                  <li
+                    key={a.id}
+                    className={cn(
+                      "artifact-wall-row group relative flex min-w-0 items-center rounded-lg hover:bg-accent/50 focus-within:bg-accent/50",
+                      isPicked && "bg-accent",
+                    )}
+                    draggable
+                    onDragStart={(event) => dragArtifact(event, a)}
+                    onContextMenu={(event) => {
+                      event.preventDefault();
+                      setMenuFor(a.id);
+                    }}
+                    data-artifact-id={a.id}
+                  >
+                    <Tooltip>
+                      <TooltipTrigger
+                        render={
+                          <button
+                            type="button"
+                            aria-label={
+                              a.kind === "image"
+                                ? `查看 ${a.name}`
+                                : isArtifactVideo(a)
+                                  ? `播放 ${a.name}`
+                                  : `打开 ${a.name}`
+                            }
+                            className="flex min-w-0 flex-1 cursor-pointer items-center gap-2.5 rounded-lg px-1.5 py-1.5 text-left outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring"
+                            onClick={open}
+                          />
+                        }
                       >
-                        <div
+                        {a.kind === "image" ? (
+                          <img
+                            src={artifactFileUrl(environmentId, a.id) ?? undefined}
+                            alt=""
+                            loading="lazy"
+                            decoding="async"
+                            className="h-6 w-9.5 shrink-0 rounded-sm bg-muted object-cover ring-1 ring-border"
+                          />
+                        ) : (
+                          <span className="w-9.5 shrink-0 truncate text-3xs font-semibold tracking-wide text-muted-foreground">
+                            {isArtifactVideo(a)
+                              ? `▶ ${
+                                  durations[a.id] !== undefined
+                                    ? artifactVideoDuration(durations[a.id]!)
+                                    : a.extension.toUpperCase()
+                                }`
+                              : a.extension.toUpperCase()}
+                          </span>
+                        )}
+                        <span className="min-w-0 flex-1 truncate text-xs text-foreground/85 group-hover:text-foreground">
+                          {a.name}
+                        </span>
+                        {isNew ? (
+                          <span className="shrink-0 text-2xs font-semibold text-primary">新</span>
+                        ) : null}
+                        <span className="shrink-0 text-2xs tabular-nums text-muted-foreground group-hover:invisible group-focus-within:invisible">
+                          {new Date(a.modifiedAt ?? a.createdAt).toLocaleTimeString("zh-CN", {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipPopup>{artifactTooltip(a)}</TooltipPopup>
+                    </Tooltip>
+                    {/* Row tools sit over the time on hover/focus; the layout never shifts. */}
+                    <div
+                      className={cn(
+                        "absolute top-1/2 right-1 flex -translate-y-1/2 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 has-data-popup-open:opacity-100 pointer-coarse:opacity-100 motion-reduce:transition-none",
+                        isPicked && "opacity-100",
+                      )}
+                    >
+                      {a.kind === "image" ? (
+                        <button
+                          type="button"
+                          aria-label={isPicked ? `取消选择 ${a.name}` : `选择 ${a.name} 用于对比`}
+                          aria-pressed={isPicked}
+                          onClick={() => togglePick(a)}
                           className={cn(
-                            "relative aspect-square overflow-hidden rounded-lg border border-border bg-muted",
-                            isPicked && "ring-2 ring-primary ring-offset-2 ring-offset-background",
+                            "flex size-5 items-center justify-center rounded-full border outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring",
+                            isPicked
+                              ? "border-primary bg-primary text-primary-foreground"
+                              : "border-border bg-card text-muted-foreground hover:text-foreground",
                           )}
                         >
-                          <Tooltip>
-                            <TooltipTrigger
-                              render={
-                                <button
-                                  type="button"
-                                  aria-label={
-                                    isArtifactVideo(a) ? `播放 ${a.name}` : `查看 ${a.name}`
-                                  }
-                                  className="block size-full cursor-zoom-in"
-                                  onClick={(event) => {
-                                    if (a.kind === "image" && (event.metaKey || event.ctrlKey)) {
-                                      togglePick(a);
-                                      return;
-                                    }
-                                    compare(a);
-                                  }}
-                                />
-                              }
-                            >
-                              {thumb(
-                                a,
-                                "size-full object-cover transition-transform duration-300 ease-out group-hover:scale-[1.03]",
-                              )}
-                            </TooltipTrigger>
-                            <TooltipPopup>{artifactTooltip(a)}</TooltipPopup>
-                          </Tooltip>
-                          {a.kind === "image" ? (
-                            <button
-                              type="button"
-                              aria-label={
-                                isPicked ? `取消选择 ${a.name}` : `选择 ${a.name} 用于对比`
-                              }
-                              aria-pressed={isPicked}
-                              onClick={() => togglePick(a)}
-                              className={cn(
-                                "absolute top-1.5 left-1.5 flex size-5 items-center justify-center rounded-full border-2 text-white shadow-sm transition-opacity focus-visible:opacity-100",
-                                isPicked
-                                  ? "border-primary bg-primary text-primary-foreground opacity-100"
-                                  : "border-white/90 bg-black/25 opacity-0 group-hover:opacity-100",
-                              )}
-                            >
-                              {isPicked ? <CheckIcon className="size-3" strokeWidth={3} /> : null}
-                            </button>
-                          ) : null}
-                          {isArtifactVideo(a) ? (
-                            <span className="pointer-events-none absolute right-1.5 bottom-1.5 rounded bg-black/60 px-1 text-2xs text-white">
-                              ▶{" "}
-                              {durations[a.id] !== undefined
-                                ? artifactVideoDuration(durations[a.id]!)
-                                : a.extension.toUpperCase()}
-                            </span>
-                          ) : null}
-                          <Menu
-                            open={menuFor === a.id}
-                            onOpenChange={(open) => setMenuFor(open ? a.id : null)}
-                          >
-                            <MenuTrigger
-                              render={
-                                <button
-                                  type="button"
-                                  aria-label={`更多操作 ${a.name}`}
-                                  className="absolute top-1.5 right-1.5 flex size-6 items-center justify-center rounded-full bg-black/45 text-white opacity-0 backdrop-blur-sm transition-opacity group-hover:opacity-100 focus-visible:opacity-100 data-popup-open:opacity-100"
-                                />
-                              }
-                            >
-                              <MoreHorizontalIcon className="size-3.5" />
-                            </MenuTrigger>
-                            <MenuPopup align="end">
-                              <MenuItem onClick={() => void attach(a)}>附加到输入框</MenuItem>
-                              <MenuItem onClick={() => void reveal(a)}>在 Finder 中显示</MenuItem>
-                              <MenuItem onClick={() => void copyPath(a)}>复制路径</MenuItem>
-                              {a.kind === "image" ? (
-                                <MenuItem onClick={() => togglePick(a)}>
-                                  {isPicked ? "取消对比选择" : "选来对比"}
-                                </MenuItem>
-                              ) : null}
-                            </MenuPopup>
-                          </Menu>
-                        </div>
-                        <p className="mt-1 truncate text-2xs text-muted-foreground">{a.name}</p>
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : null}
-              {files.length > 0 ? (
-                <ul className={cn("flex flex-col", media.length > 0 && "mt-1.5")}>
-                  {files.map((a) => (
-                    <li
-                      key={a.id}
-                      className="group flex min-w-0 items-center gap-1 rounded-md px-1 hover:bg-accent/50 focus-within:bg-accent/50"
-                      draggable
-                      onDragStart={(event) => dragArtifact(event, a)}
-                      data-artifact-id={a.id}
-                    >
-                      <Tooltip>
-                        <TooltipTrigger
+                          {isPicked ? <CheckIcon className="size-3" strokeWidth={3} /> : null}
+                        </button>
+                      ) : null}
+                      <Menu
+                        open={menuFor === a.id}
+                        onOpenChange={(open) => setMenuFor(open ? a.id : null)}
+                      >
+                        <MenuTrigger
                           render={
                             <button
                               type="button"
-                              aria-label={`打开 ${a.name}`}
-                              className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 py-1 text-left outline-hidden focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring"
-                              onClick={() => (a.kind === "page" ? openPage(a) : void reveal(a))}
+                              aria-label={`更多操作 ${a.name}`}
+                              className="flex size-6 items-center justify-center rounded-md text-muted-foreground outline-none hover:bg-accent hover:text-foreground focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring"
                             />
                           }
                         >
-                          <Badge size="sm" variant="secondary">
-                            {a.extension.toUpperCase()}
-                          </Badge>
-                          <span className="min-w-0 flex-1 truncate text-xs">{a.name}</span>
-                          <span className="shrink-0 text-2xs text-muted-foreground group-hover:hidden group-focus-within:hidden">
-                            {new Date(a.modifiedAt ?? a.createdAt).toLocaleTimeString("zh-CN", {
-                              hour: "2-digit",
-                              minute: "2-digit",
-                            })}
-                          </span>
-                        </TooltipTrigger>
-                        <TooltipPopup>{artifactTooltip(a)}</TooltipPopup>
-                      </Tooltip>
-                      <Button
-                        size="xs"
-                        variant="ghost"
-                        className="hidden shrink-0 group-hover:inline-flex group-focus-within:inline-flex"
-                        onClick={() => (a.kind === "page" ? openPage(a) : void reveal(a))}
-                        aria-label={
-                          a.kind === "page"
-                            ? `打开 ${a.name}`
-                            : uiText("在 Finder 中显示 {0}", { "0": a.name })
-                        }
-                      >
-                        {a.kind === "page" ? "打开" : "Finder"}
-                      </Button>
-                    </li>
-                  ))}
-                </ul>
-              ) : null}
-            </div>
-          );
-        })}
+                          <MoreHorizontalIcon className="size-3.5" />
+                        </MenuTrigger>
+                        <MenuPopup align="end">
+                          {a.kind === "page" ? (
+                            <MenuItem onClick={() => openPage(a)}>打开</MenuItem>
+                          ) : null}
+                          <MenuItem onClick={() => void attach(a)}>附加到输入框</MenuItem>
+                          <MenuItem onClick={() => void reveal(a)}>在 Finder 中显示</MenuItem>
+                          <MenuItem onClick={() => void copyPath(a)}>复制路径</MenuItem>
+                          {a.kind === "image" ? (
+                            <MenuItem onClick={() => togglePick(a)}>
+                              {isPicked ? "取消对比选择" : "选来对比"}
+                            </MenuItem>
+                          ) : null}
+                        </MenuPopup>
+                      </Menu>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        ))}
         {visible < filtered.length ? (
           <div ref={loadMore} className="py-2">
             <Button size="xs" variant="ghost" onClick={() => setVisible((n) => n + 40)}>

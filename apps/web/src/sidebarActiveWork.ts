@@ -49,3 +49,13 @@ export function activeWorkPreview(groups: ReturnType<typeof collectActiveWork>) 
     return { ...group, children };
   });
 }
+
+/** "已运行 X 分" from the run's start, at minute precision. */
+export function activeWorkElapsed(startedAt: string, nowMs: number) {
+  const minutes = Math.floor((nowMs - Date.parse(startedAt)) / 60_000);
+  if (!Number.isFinite(minutes)) return null;
+  if (minutes < 1) return "刚开始";
+  if (minutes < 60) return `已运行 ${minutes} 分`;
+  const hours = Math.floor(minutes / 60);
+  return `已运行 ${hours} 时${minutes % 60 ? ` ${minutes % 60} 分` : ""}`;
+}

@@ -177,20 +177,22 @@ function createSidebarOpenStore(defaultOpen: boolean) {
 
 function SidebarProvider({
   defaultOpen = true,
+  suspended = false,
+  onResume,
   className,
   style,
   children,
   ...props
 }: React.ComponentProps<"div"> & {
   defaultOpen?: boolean;
+  suspended?: boolean;
+  onResume?: () => void;
 }) {
   const isMobile = useMediaQuery(SIDEBAR_MOBILE_QUERY);
   const [store] = React.useState(() => createSidebarOpenStore(defaultOpen));
-  const { open, openMobile } = React.useSyncExternalStore(
-    store.subscribe,
-    store.getSnapshot,
-    store.getSnapshot,
-  );
+  const stored = React.useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
+  const open = !suspended && stored.open;
+  const openMobile = !suspended && stored.openMobile;
   const [mobileSheetMounted, setMobileSheetMounted] = React.useState(false);
   const setMobileSheetElement = (element: HTMLDivElement | null) => {
     setMobileSheetMounted(element !== null);
@@ -207,7 +209,7 @@ function SidebarProvider({
     setOpen: store.setOpen,
     setOpenMobile: store.setOpenMobile,
     state,
-    toggleSidebar: store.toggle,
+    toggleSidebar: suspended ? () => onResume?.() : store.toggle,
     onCollapse: store.onCollapse,
   };
 

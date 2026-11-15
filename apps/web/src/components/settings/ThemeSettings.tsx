@@ -1,3 +1,5 @@
+import { WorkbenchModeSettings } from "./WorkbenchModeSettings";
+import { SKIN_THEMES } from "@t3tools/shared/themePalettes";
 import { uiText } from "~/i18n";
 import {
   CheckIcon,
@@ -28,8 +30,6 @@ import {
   GROVE_THEME,
   IRIS_THEME,
   OCEAN_THEME,
-  HARBOR_THEME,
-  MIST_THEME,
 } from "../../themePalette";
 import {
   AlertDialog,
@@ -57,8 +57,7 @@ import {
 } from "./ThemePreviewCircles";
 import { ThemeWireframe } from "./ThemeWireframe";
 const MAINTAINER_THEMES: ReadonlyArray<ThemeDefinition> = [
-  HARBOR_THEME,
-  MIST_THEME,
+  ...SKIN_THEMES,
   T3_CHAT_THEME,
   GROVE_THEME,
   OCEAN_THEME,
@@ -831,6 +830,7 @@ export function ThemeLibrary({
   );
   return (
     <div className="space-y-3">
+      <WorkbenchModeSettings />
       <h3 className="flex min-h-7 items-center px-3 text-base font-semibold text-foreground sm:px-4">
         {searchableSetting("color-scheme").title}
       </h3>

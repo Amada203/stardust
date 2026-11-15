@@ -1,6 +1,9 @@
-import type { ThreadStructure } from "@t3tools/client-runtime/state/shell";
+import { useArchivedThreadSnapshots } from "../../lib/archivedThreadsState";
+import { presentThreadShell, type ThreadStructure } from "@t3tools/client-runtime/state/shell";
 import { RunInspector } from "./RunInspector";
-import { uiText } from "~/i18n";
+import { useQuietThreadProjection, useThreadShells } from "../../state/entities";
+import { deriveThreadTurnSubagents } from "@t3tools/client-runtime/state/thread-subagents";
+import { availableInspectorTabs, hasContinuationRecords } from "./threadDetailsTabs";
 import { ContinuationHistoryPanel } from "./ContinuationHistoryPanel";
 import { ArtifactWall } from "./ArtifactWall";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
@@ -110,14 +113,37 @@ export function ThreadDetailsPanel(props: ThreadDetailsPanelProps) {
   );
   const activeThreadRef = { environmentId: props.environmentId, threadId: props.threadId };
   const artifactRevisionEnabled = useClientSettings((settings) => settings.artifactRevisionEnabled);
-  const hasHistory = !props.draftId && props.continuation !== undefined;
+  const structure =
+    useQuietThreadProjection(!props.draftId ? activeThreadRef : null)?.projection ?? null;
+  const shells = useThreadShells();
+  const archived = useArchivedThreadSnapshots(
+    !props.draftId && props.continuation ? [props.environmentId] : [],
+  );
+  const hasHistory =
+    !props.draftId &&
+    !!props.continuation &&
+    hasContinuationRecords(props.continuation.thread, [
+      ...shells.filter((thread) => thread.environmentId === props.environmentId),
+      ...archived.snapshots.flatMap((entry) =>
+        entry.snapshot.threads.map((thread) => presentThreadShell(entry.environmentId, thread)),
+      ),
+    ]);
+  const hasSubtasks =
+    !props.draftId &&
+    !!structure &&
+    (deriveThreadTurnSubagents(structure)?.subagents.length ?? 0) > 0;
+  const hasProject =
+    !!props.activeProjectName ||
+    props.isGitRepo ||
+    !!props.activeProjectScripts?.length ||
+    fileScripts.length > 0;
   const hasArtifacts = !props.draftId && props.onAttachArtifactFiles !== undefined;
-  const availableTabs: InspectorTab[] = [
-    ...(hasArtifacts ? (["artifacts"] as const) : []),
-    ...(hasHistory ? (["history"] as const) : []),
-    ...(!props.draftId ? (["run"] as const) : []),
-    "project",
-  ];
+  const availableTabs = availableInspectorTabs({
+    hasArtifacts,
+    hasHistory,
+    hasSubtasks,
+    hasProject,
+  });
   const [storedTab, setStoredTab] = useInspectorTab();
   const tab = resolveInspectorTab(storedTab, availableTabs);
   const countKey = `${props.environmentId}:${props.threadId}`;
@@ -125,7 +151,7 @@ export function ThreadDetailsPanel(props: ThreadDetailsPanelProps) {
   const tabLabels: Record<InspectorTab, string> = {
     artifacts: artifactCount?.key === countKey ? `产物 ${artifactCount.count}` : "产物",
     history: "续聊",
-    run: uiText("Run"),
+    subtasks: "子任务",
     project: "项目",
   };
   const branchToolbarProps = {
@@ -223,7 +249,7 @@ export function ThreadDetailsPanel(props: ThreadDetailsPanelProps) {
                 }
               />
             ) : null}
-            {tab === "run" ? (
+            {tab === "subtasks" ? (
               <RunInspector environmentId={props.environmentId} threadId={props.threadId} />
             ) : null}
             {tab === "project" ? (

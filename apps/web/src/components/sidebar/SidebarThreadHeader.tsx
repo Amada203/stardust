@@ -102,12 +102,18 @@ export function SidebarThreadHeader({
         {hasProjects ? (
           <>
             {projectScope}
-            <SidebarHeaderIconButton label={uiText("Add project")} onClick={onNewProject}>
+            <SidebarHeaderIconButton
+              data-workbench-action="add-project"
+              label={uiText("Add project")}
+              onClick={onNewProject}
+            >
               <FolderPlusIcon />
             </SidebarHeaderIconButton>
           </>
         ) : null}
         <SidebarHeaderIconButton
+          data-workbench-action="new-thread"
+          data-workbench-shortcut={newThreadShortcutLabel ?? ""}
           label={uiText("New thread")}
           tooltip={
             showNewThreadInProjectHint ? (

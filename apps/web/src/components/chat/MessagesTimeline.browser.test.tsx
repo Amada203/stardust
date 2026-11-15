@@ -1609,4 +1609,8 @@ it("keeps concurrent approvals actionable outside collapsed work and restores se
   await expect
     .element(screen.getByRole("button", { name: "Open the current tab", exact: true }))
     .toBeVisible();
+  await screen.rerender(ui({ approvalsInTaskTrail: true }));
+  expect(screen.container.querySelector('[data-v2-item-type="approval_request"]')).toBeNull();
+  await screen.rerender(ui({ approvalsInTaskTrail: false }));
+  await expect.element(screen.getByRole("group", { name: "Command approval" })).toBeVisible();
 });

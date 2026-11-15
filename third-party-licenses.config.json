@@ -226,6 +226,13 @@
           ]
         }
       ]
+    },
+    {
+      "name": "T3 Clawd (unofficial community theme)",
+      "bundles": ["web", "desktop"],
+      "license": "MIT",
+      "sourceUrl": "https://github.com/rohit3a/t3-clawd",
+      "noticeFile": "third-party-licenses/LICENSE.t3-clawd"
     }
   ],
   "packageOverrides": [
@@ -321,7 +328,9 @@
       "version": "0.4.0",
       "license": "Apache-2.0 AND OFL-1.1",
       "generatedNotices": [
-        { "licenseId": "Apache-2.0" },
+        {
+          "licenseId": "Apache-2.0"
+        },
         {
           "licenseId": "OFL-1.1",
           "copyrights": [

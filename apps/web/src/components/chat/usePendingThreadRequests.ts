@@ -143,6 +143,7 @@ export function usePendingThreadRequests(input: {
   const dismissThreadUserInput = useAtomCommand(threadEnvironment.dismissUserInput, {
     reportFailure: false,
   });
+  const approvalResponsesInFlight = useRef(new Set<string>());
   const userInputResponsesInFlight = useRef(new Set<string>());
   const [respondingRequestIds, setRespondingRequestIds] = useState<RuntimeRequestId[]>([]);
   const [respondingUserInputRequestIds, setRespondingUserInputRequestIds] = useState<
@@ -272,6 +273,9 @@ export function usePendingThreadRequests(input: {
     )
       return;
 
+    const responseKey = `${environmentId}:${activeThreadId}:${requestId}`;
+    if (approvalResponsesInFlight.current.has(responseKey)) return;
+    approvalResponsesInFlight.current.add(responseKey);
     setRespondingRequestIds((existing) =>
       existing.includes(requestId) ? existing : [...existing, requestId],
     );
@@ -283,6 +287,9 @@ export function usePendingThreadRequests(input: {
         decision,
         ...(feedback === undefined ? {} : { feedback }),
       },
+    }).finally(() => {
+      approvalResponsesInFlight.current.delete(responseKey);
+      setRespondingRequestIds((existing) => existing.filter((id) => id !== requestId));
     });
     if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
       const error = squashAtomCommandFailure(result);
@@ -291,7 +298,6 @@ export function usePendingThreadRequests(input: {
         error instanceof Error ? error.message : "Failed to submit approval decision.",
       );
     }
-    setRespondingRequestIds((existing) => existing.filter((id) => id !== requestId));
     return result;
   };
   const onRespondToApprovalStable = useStableCallback(onRespondToApproval);

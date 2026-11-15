@@ -1,3 +1,4 @@
+import { cleanupText } from "./cleanupText";
 import { uiText } from "~/i18n";
 import type { KeybindingCommand, ResolvedKeybindingsConfig } from "@t3tools/contracts";
 import type { UsageChartMetric } from "./UsageProviderChart";
@@ -8,7 +9,7 @@ export const METRIC_OPTIONS = [
   { value: "cost", label: uiText("Cost"), command: "usage.cost" },
   { value: "tokens", label: uiText("Tokens"), command: "usage.tokens" },
   { value: "limits", label: uiText("Limits"), command: "usage.limits" },
-  { value: "disk", label: uiText("Disk"), command: "usage.disk" },
+  { value: "disk", label: cleanupText("Cleanup", "清理与整理"), command: "usage.disk" },
 ] as const satisfies readonly { value: UsageMetric; label: string; command: KeybindingCommand }[];
 
 export const WINDOW_OPTIONS = [

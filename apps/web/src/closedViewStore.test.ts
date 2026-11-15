@@ -91,6 +91,11 @@ describe("closedViewStore", () => {
 
   it("removes private metadata and malformed entries from history saved by earlier versions", async () => {
     const store = useClosedViewStore.getState();
+    const tasksId = store.remember({
+      kind: "panel-tab",
+      threadRef: refA,
+      surface: { id: "tasks", kind: "tasks" },
+    });
     const sideChatId = store.remember({
       kind: "panel-tab",
       threadRef: refA,
@@ -127,6 +132,7 @@ describe("closedViewStore", () => {
       browserId,
       publicId,
       sideChatId,
+      tasksId,
     ]);
     const saved = JSON.stringify(await storage!.getItem(name!));
     expect(saved).not.toContain("private.example");

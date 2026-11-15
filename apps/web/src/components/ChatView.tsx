@@ -1,3 +1,9 @@
+import { ThreadResumeCard } from "./chat/ThreadResumeCard";
+import { canSnooze } from "@t3tools/client-runtime/state/thread-settled";
+import { useWorkbenchMode } from "../workbenchMode";
+import { useTaskBoard, autoLinkBoardTask } from "../taskBoard";
+import { isBoardTaskPath } from "../taskBoard.logic";
+import { collectToolFilePaths } from "@t3tools/shared/toolActivity";
 import { SimilarThreadsHint } from "./chat/SimilarThreadsHint";
 import { ChildThreadApprovals } from "./chat/ChildThreadApprovals";
 import { workspaceAreaProps } from "../lib/workspaceFocus";
@@ -279,8 +285,6 @@ import type { MessagesTimelineHistoryControls } from "./chat/MessagesTimeline";
 import { ThreadTimeline } from "./chat/ThreadTimeline";
 import { NativeChildWorkDialog } from "./chat/NativeChildWorkDialog";
 import { ProviderSubagentBar } from "./chat/ProviderSubagentBar";
-import { SkinActivityBand } from "./chat/SkinActivityBand";
-import { deriveThreadTurnSubagents } from "@t3tools/client-runtime/state/thread-subagents";
 import { getTriggerDisplayModelName } from "./chat/providerIconUtils";
 import { resolveScrollToEndClearance } from "./composerFooterLayout";
 import { ChatHeader } from "./chat/ChatHeader";
@@ -367,6 +371,13 @@ import { ChatRightPanel } from "./chat/ChatRightPanel";
 import { useDraftEnvironmentRouting } from "./chat/useDraftEnvironmentRouting";
 import { branchMismatchBannerItem } from "./chat/ThreadActivityBanners";
 import { ThreadNow } from "./chat/ThreadNow";
+import { ThreadTaskTrail } from "./chat/ThreadTaskTrail";
+import { artifactShelfBannerItem } from "./chat/ComposerArtifactShelf";
+import { artifactFileUrl } from "../lib/artifactWallClient";
+import { taskProgressSnapshot } from "../taskProgress";
+import { artifactsSince } from "../artifactShelf";
+import { useWallArtifacts } from "../useWallArtifacts";
+import { useInspectorTab } from "../inspectorTabs";
 import type { ThreadStructure } from "@t3tools/client-runtime/state/shell";
 import { useDelayedStatus } from "../hooks/useDelayedStatus";
 import { useTimelineFollow } from "./chat/useTimelineFollow";
@@ -451,6 +462,12 @@ export default function ChatView(props: ChatViewProps) {
     reportFailure: false,
   });
   const setThreadInteractionMode = useOrchestrationCommand(threadEnvironment.setInteractionMode, {
+    reportFailure: false,
+  });
+  const snoozeResumeThread = useOrchestrationCommand(threadEnvironment.snooze, {
+    reportFailure: false,
+  });
+  const settleResumeThread = useOrchestrationCommand(threadEnvironment.settle, {
     reportFailure: false,
   });
   const startThreadTurn = useOrchestrationCommand(threadEnvironment.startTurn, {
@@ -820,12 +837,6 @@ export default function ChatView(props: ChatViewProps) {
     serverProjection === null ? null : deriveRunlessWorkStartedAt(serverProjection);
   const providerSubagentStatus =
     serverProjection === null ? null : deriveProviderSubagentStatus(serverProjection);
-  const skinTurnSubagents =
-    serverProjection === null ? null : deriveThreadTurnSubagents(serverProjection);
-  const skinSubagentsTotal =
-    skinTurnSubagents?.latestTurn === true ? skinTurnSubagents.subagents.length : 0;
-  const skinSubagentsSettled =
-    skinTurnSubagents?.latestTurn === true ? skinTurnSubagents.settledCount : 0;
   const isProviderSubagent =
     serverThread !== null && isProviderNativeSubagentThread(serverThread.source);
   const supportsProviderSwitchingViaHandoff = threadSupportsProviderHandoff(serverProjection);
@@ -1076,7 +1087,8 @@ export default function ChatView(props: ChatViewProps) {
   );
   const canReuseTerminal = activeThreadKnownSessionsRaw !== null;
   const previewPanelOpen = activeRightPanelKind === "preview" && browserAvailable;
-  const rightPanelOpen = rightPanelState.isOpen;
+  const workbenchFocused = useWorkbenchMode((state) => state.mode === "focus");
+  const rightPanelOpen = rightPanelState.isOpen && !workbenchFocused;
   const { active: panelAnimationsActive, durationMs: panelAnimationDurationMs } =
     usePanelAnimationSettings();
   const rightPanelPresenceValue = {
@@ -1560,6 +1572,49 @@ export default function ChatView(props: ChatViewProps) {
       }) as const,
   );
   const timelineEntries = isServerThread ? serverTimelineEntries : draftTimelineEntries;
+  const boardTasksForLinking = useTaskBoard((s) => s.data?.tasks);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Persist links inferred from the current run's structured tool file activity.
+  useEffect(() => {
+    if (!activeActivityRun || !activeThreadRef || !boardTasksForLinking) return;
+    for (const item of timelineEntries) {
+      if (item.kind !== "work" || item.entry.runId !== activeActivityRun.runId) continue;
+      const entry = item.entry;
+      const payload = entry.structuredPayload;
+      const input = payload?.type === "dynamic_tool" ? payload.input : entry.toolData;
+      const record =
+        typeof input === "object" && input !== null ? (input as Record<string, unknown>) : {};
+      const toolCwd =
+        typeof record.cwd === "string"
+          ? record.cwd
+          : typeof record.workdir === "string"
+            ? record.workdir
+            : null;
+      const base = toolCwd ?? activeThread?.worktreePath ?? activeProject?.workspaceRoot;
+      const paths = [
+        ...(entry.changedFiles ?? []),
+        ...collectToolFilePaths({ input }),
+        ...(toolCwd ? [toolCwd] : []),
+      ];
+      for (const task of boardTasksForLinking) {
+        if (task.sessions.includes(activeThreadRef.threadId)) continue;
+        if (
+          paths.some((path) => {
+            const absolute = path.startsWith("/") ? path : base ? `${base}/${path}` : "";
+            return !absolute.split("/").includes("..") && isBoardTaskPath(task.folder, absolute);
+          })
+        )
+          void autoLinkBoardTask(task.folder, activeThreadRef.threadId, activeThread?.title ?? "");
+      }
+    }
+  }, [
+    timelineEntries,
+    activeActivityRun,
+    activeThreadRef,
+    activeThread?.worktreePath,
+    activeThread?.title,
+    activeProject?.workspaceRoot,
+    boardTasksForLinking,
+  ]);
   const timelineMessages = timelineEntries.flatMap((entry) =>
     entry.kind === "message" ? [entry.message] : [],
   );
@@ -1696,6 +1751,14 @@ export default function ChatView(props: ChatViewProps) {
     null,
     DismissedFallbackWindowSchema,
   );
+  const [, setInspectorTab] = useInspectorTab();
+  const { artifacts: threadArtifacts } = useWallArtifacts(
+    environmentId,
+    threadId,
+    "thread",
+    routeKind === "server",
+  );
+  const [dismissedArtifactShelfKey, setDismissedArtifactShelfKey] = useState<string | null>(null);
   const providerStatusBannerKey = getProviderStatusBannerKey(activeProviderStatus);
   const [dismissedProviderStatusBannerKey, setDismissedProviderStatusBannerKey] = useState<
     string | null
@@ -1866,8 +1929,8 @@ export default function ChatView(props: ChatViewProps) {
     scheduleComposerFocus();
   };
   const insertArtifactTemplateStable = useStableCallback(insertArtifactTemplate);
-  const sendAppMessage = async (text: string) => {
-    if (!isServerThread || activeThreadId === null) {
+  const sendAppMessage = async (text: string, useComposerSettings = false) => {
+    if (!isServerThread || activeThreadId === null || !activeThread) {
       throw new Error("Messages from apps need a started thread.");
     }
     const result = await startThreadTurn({
@@ -1875,6 +1938,13 @@ export default function ChatView(props: ChatViewProps) {
       input: {
         threadId: activeThreadId,
         message: { messageId: newMessageId(), role: "user", text, attachments: [] },
+        ...(useComposerSettings
+          ? {
+              modelSelection:
+                composerRef.current?.getSendContext().selectedModelSelection ??
+                activeThread.modelSelection,
+            }
+          : {}),
         runtimeMode,
         interactionMode,
         dispatchMode: "queue",
@@ -1886,6 +1956,30 @@ export default function ChatView(props: ChatViewProps) {
     }
   };
   const sendAppMessageStable = useStableCallback(sendAppMessage);
+  const continueResumeCard = async (text: string) => {
+    await sendAppMessage(text, true);
+  };
+  const continueResumeCardStable = useStableCallback(continueResumeCard);
+  const snoozeResumeCard = async () => {
+    if (!activeThread || !canSnooze(activeThread, { now: new Date().toISOString() })) return;
+    const until = Date.now() + 3600000;
+    const result = await snoozeResumeThread({
+      environmentId,
+      input: { threadId: activeThread.id, snoozedUntil: new Date(until).toISOString() },
+    });
+    if (result._tag === "Failure") throw squashAtomCommandFailure(result);
+    return until;
+  };
+  const snoozeResumeCardStable = useStableCallback(snoozeResumeCard);
+  const dismissResumeCard = async () => {
+    if (!activeThread) return;
+    const result = await settleResumeThread({
+      environmentId,
+      input: { threadId: activeThread.id },
+    });
+    if (result._tag === "Failure") throw squashAtomCommandFailure(result);
+  };
+  const dismissResumeCardStable = useStableCallback(dismissResumeCard);
   const queuedRunsControlRef = useRef<QueuedRunsControlHandle>(null);
   const {
     activatePanelTerminalStable,
@@ -1952,7 +2046,7 @@ export default function ChatView(props: ChatViewProps) {
         detailsCardMeasurement: state.detailsCardMeasurement,
         threadRef: activeThreadRef,
         preview: canvasPreview,
-        detailsCardInlineOpen: threadPanelInlineOpen,
+        detailsCardInlineOpen: threadPanelInlineOpen && !workbenchFocused,
       }).detailsCardMode,
   );
   const threadPanelOpen = useRightPanelStore((state) =>
@@ -2637,6 +2731,34 @@ export default function ChatView(props: ChatViewProps) {
       }),
     ];
   })() as ComposerBannerStackItem[];
+  const turnArtifacts = isServerThread
+    ? artifactsSince(
+        threadArtifacts,
+        serverLatestRun?.startedAt ?? serverLatestRun?.requestedAt ?? null,
+      )
+    : [];
+  // Dismissal holds for this turn's current set; a new artifact or a new turn shows it again.
+  const artifactShelfKeyForTurn =
+    turnArtifacts.length === 0
+      ? null
+      : `${serverLatestRun?.runId ?? ""}:${turnArtifacts.map((artifact) => `${artifact.id}:${artifact.modifiedAt ?? artifact.createdAt}:${artifact.sizeBytes}`).join(",")}`;
+  const composerBannerItemsWithShelf =
+    artifactShelfKeyForTurn === null || artifactShelfKeyForTurn === dismissedArtifactShelfKey
+      ? composerBannerItems
+      : [
+          ...composerBannerItems,
+          artifactShelfBannerItem({
+            artifacts: turnArtifacts,
+            imageUrl: (artifact) => artifactFileUrl(environmentId, artifact.id),
+            onView: () => {
+              setInspectorTab("artifacts");
+              const panel = useRightPanelStore.getState();
+              panel.setThreadPanelOpen(routeThreadRef, "inline", true);
+              panel.setThreadPanelOpen(routeThreadRef, "popover", true);
+            },
+            onDismiss: () => setDismissedArtifactShelfKey(artifactShelfKeyForTurn),
+          }),
+        ];
   if (
     terminalUiLaunchContext !== null &&
     (terminalUiLaunchContext.threadId !== activeThreadId ||
@@ -3095,15 +3217,57 @@ export default function ChatView(props: ChatViewProps) {
     [childInputNow?.waitingLabel ?? null, queuedRunCount === 0 ? null : `${queuedRunCount} queued`]
       .filter((part) => part !== null)
       .join(" \u00B7 ") || null;
-  // The end of the timeline holds the thread's present and next turns: what it is doing now,
-  // its lifecycle status, guest messages awaiting you, then your queued messages.
+  // The same snapshot the Run tab and sidebar read, so the three never disagree.
+  const taskTrailProgress =
+    isServerThread && serverProjection !== null
+      ? taskProgressSnapshot(serverProjection, serverThreadShell, !activeEnvironmentUnavailable)
+      : null;
+  const taskTrail =
+    taskTrailProgress !== null && taskTrailProgress.total > 0 ? (
+      <ThreadTaskTrail
+        key={`${routeThreadKey}:${serverLatestRun?.runId ?? ""}`}
+        threadRef={routeThreadRef}
+        progress={taskTrailProgress}
+        projection={serverProjection}
+        approvals={{
+          pending: pendingApprovals,
+          respondingRequestIds,
+          heldRequestIds: heldApprovalRequestIds,
+          disabled:
+            !canOperateThread ||
+            activeEnvironmentUnavailable ||
+            isEnvironmentChanging ||
+            isRevertingCheckpoint,
+          onRespond: onRespondToApprovalStable,
+        }}
+        onOpenFile={openFileSurfaceStable}
+        {...(activePendingUserInput && activePendingProgress?.activeQuestion
+          ? {
+              decision: {
+                requestId: activePendingUserInput.requestId,
+                question: activePendingProgress.activeQuestion,
+                selectedValues: activePendingProgress.selectedOptionValues,
+                disabled: activePendingIsResponding || activeEnvironmentUnavailable,
+                canAdvance: activePendingProgress.canAdvance,
+                onSelect: onSelectActivePendingUserInputOptionStable,
+                onAdvance: onAdvanceActivePendingUserInputStable,
+                onFocus: focusComposerStable,
+              },
+            }
+          : {})}
+      />
+    ) : null;
+  // The end of the timeline holds the thread's present and next turns: the run's step trail,
+  // what it is doing now, its lifecycle status, guest messages awaiting you, then queued messages.
   const timelineFooter =
+    taskTrail === null &&
     pendingHandoff === null &&
     !hasThreadNow &&
     threadStatusLine === null &&
     pendingGuestMessageCount === 0 &&
     !hasQueuedTurns ? null : (
       <>
+        {taskTrail}
         {pendingHandoff === null ? null : (
           <div className="chat-content-lane">
             <HandoffRow
@@ -3381,6 +3545,7 @@ export default function ChatView(props: ChatViewProps) {
             >
               <WorkspaceMutationIdContext value={workspaceMutationId}>
                 <ThreadTimeline
+                  approvalsInTaskTrail={taskTrail !== null}
                   pendingApprovals={pendingApprovals}
                   heldApprovalRequestIds={heldApprovalRequestIds}
                   respondingRequestIds={respondingRequestIds}
@@ -3610,13 +3775,48 @@ export default function ChatView(props: ChatViewProps) {
                                 contextControlsHost,
                               )
                             : null}
-                          {!composerMounted ? null : (
-                            <SkinActivityBand
-                              working={isWorking}
-                              subagentsSettled={skinSubagentsSettled}
-                              subagentsTotal={skinSubagentsTotal}
+                          {isServerThread && composerMounted ? (
+                            <ThreadResumeCard
+                              key={routeThreadKey}
+                              threadRef={routeThreadRef}
+                              progress={taskTrailProgress}
+                              approval={activePendingApproval}
+                              approvalDisabled={
+                                !canOperateThread ||
+                                activeEnvironmentUnavailable ||
+                                isEnvironmentChanging ||
+                                isRevertingCheckpoint ||
+                                Boolean(
+                                  activePendingApproval &&
+                                  respondingRequestIds.includes(activePendingApproval.requestId),
+                                ) ||
+                                heldApprovalRequestIds.has(activePendingApproval?.requestId ?? "")
+                              }
+                              onRespondToApproval={onRespondToApprovalStable}
+                              lastAssistant={
+                                serverProjection?.messages.findLast(
+                                  (message) => message.role === "assistant",
+                                )?.text
+                              }
+                              disabled={
+                                !canOperateThread ||
+                                isSendBusy ||
+                                isRevertingCheckpoint ||
+                                threadDetailLoading ||
+                                activeEnvironmentUnavailable ||
+                                isEnvironmentChanging ||
+                                worktreeSetupBlocksSend ||
+                                Boolean(projectCloneSendBlockReason)
+                              }
+                              onContinue={continueResumeCardStable}
+                              onSnooze={serverConfig ? snoozeResumeCardStable : undefined}
+                              onDismiss={
+                                serverConfig && phase !== "running"
+                                  ? dismissResumeCardStable
+                                  : undefined
+                              }
                             />
-                          )}
+                          ) : null}
                           {!composerMounted ? null : (
                             <ChatComposer
                               canOperateThread={canOperateThread}
@@ -3677,9 +3877,9 @@ export default function ChatView(props: ChatViewProps) {
                               }
                               isPreparingWorktree={isPreparingWorktree && !sendQueuesBehindSetup}
                               bannerItems={
-                                isDraftHeroState || composerBannerItems.length === 0
+                                isDraftHeroState || composerBannerItemsWithShelf.length === 0
                                   ? EMPTY_COMPOSER_BANNER_ITEMS
-                                  : composerBannerItems
+                                  : composerBannerItemsWithShelf
                               }
                               resumeCompactionTokens={resumeCompactionTokens}
                               keepFullHistory={keepFullHistory}
@@ -3886,98 +4086,102 @@ export default function ChatView(props: ChatViewProps) {
                   onConfirm={handleSwitchCheckoutToThreadStable}
                 />
 
-                <ThreadDetailsPanel
-                  continuation={{
-                    thread: activeThread,
-                    projection: serverProjection ?? null,
-                    onQuote: (text) => {
-                      if (!activeThreadRef) return false;
-                      const inserted = composerRef.current?.insertTextAtCursor(text) ?? false;
-                      if (inserted) {
-                        useRightPanelStore
-                          .getState()
-                          .setThreadPanelOpen(activeThreadRef, "popover", false);
-                        scheduleComposerFocus();
-                      }
-                      return inserted;
-                    },
-                  }}
-                  onAttachArtifactFiles={(files) => {
-                    if (artifactDraftTargetRef.current !== artifactDraftKey)
-                      throw new Error(
-                        "\u4F1A\u8BDD\u5DF2\u5207\u6362\uFF0C\u8BF7\u56DE\u5230\u539F\u4F1A\u8BDD\u91CD\u65B0\u9644\u52A0",
-                      );
-                    composerRef.current?.addDroppedFiles(files);
-                    scheduleComposerFocus();
-                  }}
-                  anchor={threadPanelPopoverAnchorRef}
-                  handle={threadPanelPopoverHandle}
-                  forceNewWorktree={multipleModelSelections !== null}
-                  environmentId={activeThread.environmentId}
-                  threadId={activeThread.id}
-                  projectId={activeThread.projectId}
-                  worktreePath={activeThread.worktreePath}
-                  isServerThread={isServerThread}
-                  {...(draftId ? { draftId } : {})}
-                  activeProjectName={activeProject?.title}
-                  activeProjectScripts={activeProject ? activeProjectScripts : undefined}
-                  preferredScriptId={
-                    activeProject ? (lastInvokedScriptByProjectId[activeProject.id] ?? null) : null
-                  }
-                  keybindings={keybindings}
-                  availableEditors={availableEditors}
-                  showOpenInPicker={showOpenInPicker}
-                  openInShortcutEnabled={
-                    !(
-                      rightPanelOpen &&
-                      renderedRightPanelSurface?.kind === "file" &&
-                      renderedRightPanelSurface.attachment === undefined
-                    )
-                  }
-                  gitCwd={gitCwd}
-                  isGitRepo={isGitRepo}
-                  envLocked={envLocked}
-                  availableEnvironments={logicalProjectEnvironments}
-                  autoEnvironmentLabel={autoEnvironmentLabel}
-                  onAutoEnvironment={
-                    draftId &&
-                    !envLocked &&
-                    canAutoBalanceEnvironments &&
-                    loadBalancingSettings.loadBalancingEnabled
-                      ? onAutoEnvironmentStable
-                      : undefined
-                  }
-                  {...(canChangeEnvironment
-                    ? { onEnvironmentChange: onEnvironmentChangeStable }
-                    : {})}
-                  onEnvModeChange={onEnvModeChangeStable}
-                  envMode={envMode}
-                  {...(canOverrideServerThreadEnvMode
-                    ? {
-                        activeThreadBranchOverride: activeThreadBranch,
-                        onActiveThreadBranchOverrideChange: setPendingServerThreadBranch,
-                      }
-                    : {})}
-                  startFromOrigin={startFromOrigin}
-                  onStartFromOriginChange={onStartFromOriginChange}
-                  {...(canCheckoutPullRequestIntoThread
-                    ? { onCheckoutPullRequestRequest: openPullRequestDialogStable }
-                    : {})}
-                  onComposerFocusRequest={scheduleComposerFocusStable}
-                  {...(isServerThread && isGitRepo
-                    ? { onOpenChanges: openChangesFromThreadPanelStable }
-                    : {})}
-                  onRunProjectScript={runProjectScriptStable}
-                  onAddProjectScript={saveProjectScriptStable}
-                  onUpdateProjectScript={updateProjectScriptStable}
-                  onDeleteProjectScript={deleteProjectScriptStable}
-                  usage={{
-                    providerInstanceId: activeProviderInstanceId,
-                    providers: providerStatuses,
-                    sources: serverConfig?.usageLimitSources ?? EMPTY_USAGE_LIMIT_SOURCES,
-                    contextWindow: activeContextWindow,
-                  }}
-                />
+                {!workbenchFocused && (
+                  <ThreadDetailsPanel
+                    continuation={{
+                      thread: activeThread,
+                      projection: serverProjection ?? null,
+                      onQuote: (text) => {
+                        if (!activeThreadRef) return false;
+                        const inserted = composerRef.current?.insertTextAtCursor(text) ?? false;
+                        if (inserted) {
+                          useRightPanelStore
+                            .getState()
+                            .setThreadPanelOpen(activeThreadRef, "popover", false);
+                          scheduleComposerFocus();
+                        }
+                        return inserted;
+                      },
+                    }}
+                    onAttachArtifactFiles={(files) => {
+                      if (artifactDraftTargetRef.current !== artifactDraftKey)
+                        throw new Error(
+                          "\u4F1A\u8BDD\u5DF2\u5207\u6362\uFF0C\u8BF7\u56DE\u5230\u539F\u4F1A\u8BDD\u91CD\u65B0\u9644\u52A0",
+                        );
+                      composerRef.current?.addDroppedFiles(files);
+                      scheduleComposerFocus();
+                    }}
+                    anchor={threadPanelPopoverAnchorRef}
+                    handle={threadPanelPopoverHandle}
+                    forceNewWorktree={multipleModelSelections !== null}
+                    environmentId={activeThread.environmentId}
+                    threadId={activeThread.id}
+                    projectId={activeThread.projectId}
+                    worktreePath={activeThread.worktreePath}
+                    isServerThread={isServerThread}
+                    {...(draftId ? { draftId } : {})}
+                    activeProjectName={activeProject?.title}
+                    activeProjectScripts={activeProject ? activeProjectScripts : undefined}
+                    preferredScriptId={
+                      activeProject
+                        ? (lastInvokedScriptByProjectId[activeProject.id] ?? null)
+                        : null
+                    }
+                    keybindings={keybindings}
+                    availableEditors={availableEditors}
+                    showOpenInPicker={showOpenInPicker}
+                    openInShortcutEnabled={
+                      !(
+                        rightPanelOpen &&
+                        renderedRightPanelSurface?.kind === "file" &&
+                        renderedRightPanelSurface.attachment === undefined
+                      )
+                    }
+                    gitCwd={gitCwd}
+                    isGitRepo={isGitRepo}
+                    envLocked={envLocked}
+                    availableEnvironments={logicalProjectEnvironments}
+                    autoEnvironmentLabel={autoEnvironmentLabel}
+                    onAutoEnvironment={
+                      draftId &&
+                      !envLocked &&
+                      canAutoBalanceEnvironments &&
+                      loadBalancingSettings.loadBalancingEnabled
+                        ? onAutoEnvironmentStable
+                        : undefined
+                    }
+                    {...(canChangeEnvironment
+                      ? { onEnvironmentChange: onEnvironmentChangeStable }
+                      : {})}
+                    onEnvModeChange={onEnvModeChangeStable}
+                    envMode={envMode}
+                    {...(canOverrideServerThreadEnvMode
+                      ? {
+                          activeThreadBranchOverride: activeThreadBranch,
+                          onActiveThreadBranchOverrideChange: setPendingServerThreadBranch,
+                        }
+                      : {})}
+                    startFromOrigin={startFromOrigin}
+                    onStartFromOriginChange={onStartFromOriginChange}
+                    {...(canCheckoutPullRequestIntoThread
+                      ? { onCheckoutPullRequestRequest: openPullRequestDialogStable }
+                      : {})}
+                    onComposerFocusRequest={scheduleComposerFocusStable}
+                    {...(isServerThread && isGitRepo
+                      ? { onOpenChanges: openChangesFromThreadPanelStable }
+                      : {})}
+                    onRunProjectScript={runProjectScriptStable}
+                    onAddProjectScript={saveProjectScriptStable}
+                    onUpdateProjectScript={updateProjectScriptStable}
+                    onDeleteProjectScript={deleteProjectScriptStable}
+                    usage={{
+                      providerInstanceId: activeProviderInstanceId,
+                      providers: providerStatuses,
+                      sources: serverConfig?.usageLimitSources ?? EMPTY_USAGE_LIMIT_SOURCES,
+                      contextWindow: activeContextWindow,
+                    }}
+                  />
+                )}
 
                 <PullRequestThreadDialogHost
                   threadKey={activeThreadKey}

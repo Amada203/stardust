@@ -1239,3 +1239,24 @@ describe("rightPanelStore", () => {
     expect(store.getUserActionRevision(refA)).toBe(revision);
   });
 });
+
+it("retires persisted task surfaces and ignores legacy task open requests", () => {
+  const state = migratePersistedRightPanelState({
+    byThreadKey: {
+      legacy: {
+        isOpen: true,
+        activeSurfaceId: "tasks",
+        surfaces: [{ id: "tasks", kind: "tasks" }],
+      },
+    },
+  });
+  expect(state.byThreadKey.legacy).toMatchObject({
+    isOpen: false,
+    activeSurfaceId: null,
+    surfaces: [],
+  });
+  useRightPanelStore.getState().open(refA, "tasks");
+  expect(
+    selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA).surfaces,
+  ).toEqual([]);
+});

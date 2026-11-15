@@ -1,3 +1,4 @@
+import { applyThemeCss } from "./themeCss";
 import { pipe } from "effect/Function";
 import type { EnvironmentTheme } from "@t3tools/contracts";
 import * as Equal from "effect/Equal";
@@ -23,7 +24,7 @@ import {
   type ThemeAppearance,
   type ThemeColorRole,
   type ThemeColors,
-  type ThemeDefinition,
+  type ThemeDefinition as BaseThemeDefinition,
   type ThemeVariants,
 } from "@t3tools/shared/themePalettes";
 import {
@@ -45,7 +46,8 @@ export {
   T3_CHAT_THEME,
   THEME_COLOR_ROLES,
 };
-export type { ThemeAppearance, ThemeColorRole, ThemeColors, ThemeDefinition, ThemeVariants };
+export type { ThemeAppearance, ThemeColorRole, ThemeColors, ThemeVariants };
+export type ThemeDefinition = BaseThemeDefinition & Readonly<{ css?: string }>;
 
 const T3_CHAT_THEME_ID = "t3-chat" as const;
 const GROVE_THEME_ID = "grove" as const;
@@ -77,7 +79,13 @@ export type ThemeFile = Readonly<{
   variants?: ThemeVariantOverrides;
   collection?: ThemeCollection;
   managed?: boolean;
+  css?: string;
 }>;
+
+const THEME_CSS_MAX_LENGTH = 50000;
+function isThemeCss(value: unknown): value is string {
+  return typeof value === "string" && value.length <= THEME_CSS_MAX_LENGTH;
+}
 
 const customThemeListeners = new Set<() => void>();
 type CustomThemeLibrarySnapshot =
@@ -196,6 +204,7 @@ function parseStoredTheme(value: unknown): ThemeDefinition | null {
     ...(variants ? { variants } : {}),
     ...(collection ? { collection } : {}),
     ...(value.managed === true ? { managed: true } : {}),
+    ...(isThemeCss(value.css) && value.css ? { css: value.css } : {}),
   };
 }
 
@@ -1500,6 +1509,9 @@ export function parseThemeFile(value: unknown): ThemeDefinition {
     throw new Error("Theme collections need a valid id and label.");
   }
 
+  if (value.css !== undefined && !isThemeCss(value.css)) {
+    throw new Error(`Theme CSS must be text of ${THEME_CSS_MAX_LENGTH} characters or fewer.`);
+  }
   const fallback = getDefaultThemeColors(appearance);
   const variants: Partial<Record<ThemeAppearance, ThemeColors>> = {};
   if (value.variants !== undefined) {
@@ -1527,6 +1539,7 @@ export function parseThemeFile(value: unknown): ThemeDefinition {
     ...(Object.keys(variants).length > 0 ? { variants } : {}),
     ...(collection ? { collection } : {}),
     ...(value.managed === true ? { managed: true } : {}),
+    ...(isThemeCss(value.css) && value.css ? { css: value.css } : {}),
   };
 }
 
@@ -1541,6 +1554,7 @@ export function serializeThemeFile(theme: ThemeDefinition): string {
     ...(canonicalTheme.variants ? { variants: canonicalTheme.variants } : {}),
     ...(canonicalTheme.collection ? { collection: canonicalTheme.collection } : {}),
     ...(canonicalTheme.managed ? { managed: true } : {}),
+    ...(canonicalTheme.css ? { css: canonicalTheme.css } : {}),
   };
   return `${JSON.stringify(file, null, 2)}\n`;
 }
@@ -1638,6 +1652,7 @@ export function applyThemePalette(theme: ThemePreference, appearance?: ThemeAppe
 
   setThemePreviewAppearance(null);
   const palette = getThemeDefinition(theme);
+  applyThemeCss(palette?.css);
 
   if (palette) {
     root.dataset.themeId = palette.id;

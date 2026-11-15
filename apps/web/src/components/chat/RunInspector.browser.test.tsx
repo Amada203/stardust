@@ -21,3 +21,41 @@ it("labels failed cached windows as last known", async () => {
   expect(screen.container.textContent).toContain("40% remaining");
   expect(screen.container.textContent).toContain("Temporarily unreadable");
 });
+
+it("shows only child task rows and navigates into the child conversation", async () => {
+  const { SubtaskList } = await import("./RunInspector");
+  const { EnvironmentId, NodeId, ProviderDriverKind, ProviderInstanceId, ThreadId } =
+    await import("@t3tools/contracts");
+  const DateTime = await import("effect/DateTime");
+  const env = EnvironmentId.make("c64-local");
+  const task = {
+    id: NodeId.make("child"),
+    threadId: ThreadId.make("parent"),
+    runId: null,
+    parentNodeId: NodeId.make("parent"),
+    origin: "app_owned" as const,
+    createdBy: "agent" as const,
+    driver: ProviderDriverKind.make("codex"),
+    providerInstanceId: ProviderInstanceId.make("codex"),
+    providerThreadId: null,
+    childThreadId: ThreadId.make("child-thread"),
+    nativeTaskRef: null,
+    prompt: "Review",
+    title: "复核配色",
+    model: null,
+    status: "waiting" as const,
+    result: null,
+    startedAt: null,
+    completedAt: null,
+    updatedAt: DateTime.makeUnsafe("2026-01-01T00:00:00Z"),
+  };
+  await using screen = await render(
+    <SubtaskList tasks={[task]} environmentId={env} providers={[]} />,
+  );
+  expect(screen.container.querySelector(".combo-trail")).toBeNull();
+  expect(screen.container.querySelector("details")).toBeNull();
+  await screen.getByRole("button", { name: /复核配色/ }).click();
+  expect(screen.router?.state.location.pathname).toBe("/c64-local/child-thread");
+  await screen.rerender(<SubtaskList tasks={[]} environmentId={env} providers={[]} />);
+  expect(screen.container.querySelector("section")).toBeNull();
+});

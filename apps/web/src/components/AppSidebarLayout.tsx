@@ -1,8 +1,11 @@
+import { useWorkbenchExperience, syncWorkbenchExperience } from "../workbenchExperience";
+import { useWorkbenchMode } from "../workbenchMode";
 import { uiText } from "~/i18n";
 import { useAtomValue } from "@effect/atom-react";
 import * as Schema from "effect/Schema";
 import {
   useEffect,
+  useLayoutEffect,
   useState,
   useSyncExternalStore,
   type CSSProperties,
@@ -360,7 +363,7 @@ function SidebarControl() {
     <div
       ref={appShellCommandsRef}
       className={cn(
-        "pointer-events-none fixed left-[var(--workspace-controls-left)] top-[var(--workspace-controls-top)] z-50 ml-px flex h-[var(--workspace-topbar-height)] items-center",
+        "pointer-events-none fixed left-[var(--workspace-controls-left)] top-[var(--workspace-controls-top)] z-50 ml-px aria-hidden:hidden flex h-[var(--workspace-topbar-height)] items-center",
         isMobile && mobileSheetMounted && "hidden",
       )}
       data-sidebar-control=""
@@ -387,6 +390,12 @@ function SidebarControl() {
   );
 }
 export function AppSidebarLayout({ children }: { children: ReactNode }) {
+  const { mode: workbenchMode, setMode: setWorkbenchMode } = useWorkbenchMode();
+  const experience = useWorkbenchExperience((state) => state.experience);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Sync the external stylesheet before paint, preserving chat state.
+  useLayoutEffect(() => {
+    syncWorkbenchExperience(experience);
+  }, [experience]);
   const sidebarArea = workspaceAreaProps("sidebar", 0, "Threads");
   const [sidebarRouteReveal] = useState<SidebarRouteReveal>(() => ({
     observedKey: null,
@@ -435,6 +444,8 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
         className="h-dvh! min-h-0!"
         data-panel-animations={routePanelAnimationsActive ? "true" : "false"}
         defaultOpen
+        suspended={workbenchMode === "focus" && !pathname.startsWith("/settings")}
+        onResume={() => setWorkbenchMode(useWorkbenchMode.getState().resumeMode)}
         style={sidebarProviderStyle}
       >
         <SidebarBrandWidthProbe isElectron={isElectron} onWidthChange={setBrandWidth} />
@@ -461,7 +472,7 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
               <SidebarChromeHeader isElectron={isElectron} />
               <SettingsSidebarNav pathname={pathname} />
             </>
-          ) : legacySidebarEnabled ? (
+          ) : legacySidebarEnabled && experience !== "clawd" && workbenchMode !== "full" ? (
             <LegacyThreadSidebar routeReveal={sidebarRouteReveal} />
           ) : (
             <ThreadSidebar routeReveal={sidebarRouteReveal} />

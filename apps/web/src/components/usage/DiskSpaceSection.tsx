@@ -7,6 +7,7 @@ import { uiText } from "~/i18n";
 import { formatBytes } from "../../lib/formatBytes";
 import { serverEnvironment } from "../../state/server";
 import { DISK_SPACE_KINDS, categoryFor, summarizeGrowth } from "./diskSpaceModel";
+import { cleanupText } from "./cleanupText";
 import { StorageManagementPanel } from "./StorageManagementPanel";
 
 export function DiskSpaceSection({
@@ -57,21 +58,29 @@ function DiskSpaceEnvironment({
   return (
     <section className="flex min-w-0 flex-col gap-6">
       {label ? <h2 className="text-sm font-medium">{label}</h2> : null}
-      {report ? (
-        <DiskSpaceReportView report={report} />
-      ) : (
-        <p role="status" className="text-xs text-muted-foreground">
-          {uiText(
-            result._tag === "Failure"
-              ? "This environment could not report disk usage."
-              : "Measuring disk usage. You can inspect items below meanwhile.",
-          )}
-        </p>
-      )}
       <StorageManagementPanel
         key={`${environmentId}:${refreshTick}`}
         environmentId={environmentId}
+        onOperationFinished={refresh}
       />
+      <details>
+        <summary className="cursor-pointer text-xs text-muted-foreground">
+          {cleanupText("Usage, history & measurement scope", "空间构成、历史与测量范围")}
+        </summary>
+        {report ? (
+          <div className="mt-4">
+            <DiskSpaceReportView report={report} />
+          </div>
+        ) : (
+          <p role="status" className="text-xs text-muted-foreground">
+            {uiText(
+              result._tag === "Failure"
+                ? "This environment could not report disk usage."
+                : "Measuring disk usage. You can inspect items below meanwhile.",
+            )}
+          </p>
+        )}
+      </details>
     </section>
   );
 }
@@ -120,7 +129,7 @@ function DiskSpaceReportView({ report }: { readonly report: DiskSpaceReport }) {
           {uiText("Storage breakdown and measurement scope")}
         </summary>
         <div className="mt-3 space-y-3">
-          {DISK_SPACE_KINDS.map(({ kind, label, color }) => {
+          {DISK_SPACE_KINDS.map(({ kind, label }) => {
             const category = categoryFor(report, kind);
             return (
               <div
@@ -133,7 +142,7 @@ function DiskSpaceReportView({ report }: { readonly report: DiskSpaceReport }) {
                     className="h-full rounded-full"
                     style={{
                       width: `${((category?.bytes ?? 0) / largest) * 100}%`,
-                      backgroundColor: color,
+                      backgroundColor: "var(--primary)",
                     }}
                   />
                 </div>

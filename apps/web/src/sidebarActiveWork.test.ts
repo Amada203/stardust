@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 import { EnvironmentId, ProviderInstanceId, ThreadId } from "@t3tools/contracts";
 import { makeThreadFixture } from "./test-fixtures";
-import { activeWorkStatus, collectActiveWork } from "./sidebarActiveWork";
+import { activeWorkElapsed, activeWorkStatus, collectActiveWork } from "./sidebarActiveWork";
 
 const runtime = (status: "running" | "idle" | "queued" | "failed" | "waiting") => ({
   status,
@@ -85,5 +85,17 @@ describe("cross-provider active work", () => {
     });
     const b = child("b", { lineage: { ...a.lineage, parentThreadId: a.id } });
     expect(collectActiveWork([a, b])).toHaveLength(2);
+  });
+});
+
+describe("activeWorkElapsed", () => {
+  it.each([
+    ["2026-11-15T10:00:30.000Z", "刚开始"],
+    ["2026-11-15T09:48:00.000Z", "已运行 12 分"],
+    ["2026-11-15T09:00:00.000Z", "已运行 1 时"],
+    ["2026-11-15T07:55:00.000Z", "已运行 2 时 5 分"],
+    ["not a date", null],
+  ])("formats a run started at %s", (startedAt, expected) => {
+    expect(activeWorkElapsed(startedAt, Date.parse("2026-11-15T10:00:00.000Z"))).toBe(expected);
   });
 });

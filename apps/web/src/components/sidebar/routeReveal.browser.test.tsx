@@ -142,3 +142,20 @@ describe("useActiveRowReveal", () => {
     await expect.element(screen.getByText("thread-40", { exact: true })).toBeInViewport();
   });
 });
+
+it("does not scroll an off-screen category when a top overview entry opened the thread", async () => {
+  const reveal: SidebarRouteReveal = {
+    observedKey: null,
+    pendingKey: null,
+    overviewKey: "thread-40",
+  };
+  await using screen = await render(
+    <RevealList reveal={reveal} rowKeys={rowKeys(50)} activeKey="thread-0" />,
+    // No router: overview navigation arrives through activeKey.
+    { router: false },
+  );
+  reveal.overviewKey = "thread-40";
+  using scroll = vi.spyOn(Element.prototype, "scrollIntoView");
+  await screen.rerender(<RevealList reveal={reveal} rowKeys={rowKeys(50)} activeKey="thread-40" />);
+  expect(scroll).not.toHaveBeenCalled();
+});

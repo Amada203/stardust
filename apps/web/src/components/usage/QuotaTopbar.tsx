@@ -96,6 +96,8 @@ function QuotaIcon({
       data-dim={dim || undefined}
       data-compact={compact || undefined}
       data-driver={account.driver}
+      data-remaining={remaining ?? undefined}
+      data-apple-low={remaining !== null && remaining <= 30 ? "" : undefined}
       aria-hidden={compact || undefined}
       style={{ "--quota-progress": `${remaining ?? 0}%` } as CSSProperties}
     >

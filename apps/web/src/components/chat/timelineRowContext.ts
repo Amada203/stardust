@@ -44,6 +44,7 @@ export interface TurnItemSource {
 
 export interface TimelineRowSharedState {
   pendingApprovals: ReadonlyMap<RuntimeRequestId, PendingApproval>;
+  approvalsInTaskTrail?: boolean;
   respondingRequestIds: ReadonlyArray<RuntimeRequestId>;
   canOperateThread: boolean;
   onRespondToApproval:

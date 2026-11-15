@@ -1,0 +1,252 @@
+/* All material overrides disappear when another palette is selected. */
+html:root[data-theme-id="apple"] {
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", sans-serif;
+  --surface-grain: none;
+  --radius: 0.75rem;
+  --control-radius: 0.5rem;
+  --success: #34c759;
+  --success-foreground: #248a3d;
+  --info: #007aff;
+  --info-foreground: #007aff;
+  --apple-fill: rgba(120, 120, 128, 0.09);
+  --apple-secondary: #ececf4;
+  --apple-slider: #fff;
+  --apple-card-shadow:
+    0 0 0 0.5px rgba(0, 0, 0, 0.07), 0 1px 2px rgba(0, 0, 0, 0.04), 0 6px 18px rgba(0, 0, 0, 0.06);
+  --apple-slider-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.06), 0 1px 3px rgba(0, 0, 0, 0.12);
+  --liquid-sidebar-inset: 7px;
+  --liquid-backdrop: var(--background);
+  --liquid-sidebar: var(--sidebar);
+  --liquid-inspector: var(--card);
+  --liquid-material: var(--card);
+  --liquid-selection: var(--apple-fill);
+  --liquid-edge: var(--border);
+  --liquid-highlight: transparent;
+  --liquid-shadow: var(--apple-card-shadow);
+}
+html:root[data-theme-id="apple"].dark {
+  --success: #30d158;
+  --success-foreground: #30d158;
+  --info: #0a84ff;
+  --info-foreground: #0a84ff;
+  --apple-fill: rgba(120, 120, 128, 0.2);
+  --apple-secondary: #2c2c32;
+  --apple-slider: #636366;
+  --apple-card-shadow: 0 0 0 0.5px rgba(255, 255, 255, 0.07), 0 6px 18px rgba(0, 0, 0, 0.35);
+}
+html:root[data-theme-id="apple"] {
+  body {
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+  [data-slot="sidebar-container"][data-app-sidebar] {
+    padding: 7px;
+    border-inline-end: 0;
+    background: transparent;
+  }
+  [data-slot="sidebar-inner"],
+  [data-slot="sheet-popup"][data-sidebar="sidebar"] {
+    border: 0;
+    border-radius: 12px;
+    background: var(--sidebar);
+    background-image: none;
+    box-shadow:
+      0 0 0 0.5px var(--border),
+      0 8px 24px rgba(0, 0, 0, 0.08);
+    -webkit-backdrop-filter: blur(40px) saturate(1.8);
+    backdrop-filter: blur(40px) saturate(1.8);
+  }
+  [data-sidebar-cap],
+  [data-sidebar="group-label"] {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--sidebar-muted-foreground);
+  }
+  [data-sidebar-row].bg-sidebar-row-active,
+  [data-sidebar-row].bg-sidebar-row-selected,
+  [data-sidebar="menu-sub-button"][data-active="true"] {
+    background: var(--card);
+    border-radius: 8px;
+    box-shadow: var(--apple-card-shadow);
+  }
+  [data-sidebar="sidebar"]
+    :is(.text-warning, .text-warning-foreground, .text-info-foreground, .text-destructive) {
+    font-weight: 600;
+  }
+  [data-sidebar="sidebar"] .text-warning-foreground {
+    color: var(--warning);
+  }
+  [data-sidebar="sidebar"] span[aria-label] > .bg-sidebar-foreground {
+    background: var(--sidebar-muted-foreground);
+  }
+  [data-sidebar="sidebar"] span[aria-label] > .bg-sidebar-border {
+    background: var(--apple-fill);
+  }
+  [data-project-item^="thread-category:"] [aria-hidden="true"].bg-sidebar-control-surface {
+    border-radius: 5px;
+    font-weight: 600;
+  }
+  [data-sidebar="sidebar"] [aria-current="page"] {
+    background: var(--card);
+    box-shadow: var(--apple-card-shadow);
+  }
+  [data-thread-item] button[aria-label] .text-success {
+    color: var(--sidebar-muted-foreground);
+    font-weight: 600;
+  }
+  [data-thread-item] button[aria-label] .bg-current.text-primary {
+    color: var(--warning);
+  }
+  [data-liquid-chat-header] [data-slot="workspace-breadcrumb-text"] {
+    font-weight: 600;
+  }
+  [data-thread-details-card] {
+    border: 0;
+    border-radius: 12px;
+    background: var(--card);
+    background-image: none;
+    box-shadow: var(--apple-card-shadow);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+  .task-trail,
+  .combo-trail,
+  .combo-decision,
+  [data-slot="card"],
+  [data-resume-card] {
+    background: var(--card);
+    border: 0;
+    border-radius: 12px;
+    box-shadow: var(--apple-card-shadow);
+  }
+  [data-message-role="user"] .bg-message {
+    background: var(--card);
+    border-radius: 14px 14px 4px 14px;
+    box-shadow: var(--apple-card-shadow);
+  }
+  [data-slot="composer-shell"],
+  [data-chat-composer-form] {
+    --chat-composer-glass-surface: var(--card);
+    --glass-opacity: 100%;
+    --chat-composer-surface: var(--card);
+    --chat-composer-outline: transparent;
+  }
+  [data-slot="composer-host"] {
+    border-radius: 16px;
+    box-shadow: var(--apple-card-shadow);
+  }
+  [data-slot="composer-shell"]::before,
+  [data-slot="composer-host"]::before,
+  [data-chat-composer-main-surface],
+  [data-chat-composer-form]::before,
+  [data-composer-banner-surface]::before {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+  [data-chat-composer-form] button[type="submit"] {
+    background: var(--primary);
+    color: var(--primary-foreground);
+    border-radius: 50%;
+    box-shadow: 0 2px 6px color-mix(in srgb, var(--primary) 40%, transparent);
+  }
+  [data-context-handoff] {
+    background: var(--apple-fill);
+    color: var(--foreground);
+    border: 0;
+    border-radius: 999px;
+    box-shadow: none;
+  }
+  [data-context-handoff]::before {
+    content: "";
+    position: static;
+    inset: auto;
+    display: block;
+    width: 11px;
+    height: 11px;
+    flex: none;
+    border-radius: 50%;
+    background: conic-gradient(
+      from 0deg,
+      var(--primary) var(--apple-context-progress, 0%),
+      var(--apple-fill) 0
+    );
+    -webkit-mask: radial-gradient(circle, transparent 3px, #000 3.5px);
+    mask: radial-gradient(circle, transparent 3px, #000 3.5px);
+  }
+  .combo-mark[data-mode="done"] {
+    background: var(--primary);
+    border-color: var(--primary);
+    color: var(--primary-foreground);
+  }
+  .combo-segments i[data-mode="done"],
+  [data-resume-card] [aria-label="任务步骤"] > .bg-foreground {
+    background: var(--primary);
+  }
+  .combo-trail[data-mode="done"] .combo-pill {
+    color: var(--success-foreground);
+    background: color-mix(in srgb, var(--success) 12%, transparent);
+  }
+  .combo-options button[aria-pressed="true"] {
+    outline-color: var(--ring);
+  }
+  [data-inspector-tabs],
+  [data-slot="toggle-group"] {
+    background: var(--apple-fill);
+    border-radius: 8px;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    box-shadow: none;
+  }
+  [data-inspector-tabs] > [data-slot="toggle-group"] {
+    background: transparent;
+  }
+  [data-inspector-tab-slider],
+  [data-slot="toggle-group"] [data-slot="toggle"][data-pressed] {
+    background: var(--apple-slider);
+    border-radius: 6px;
+    box-shadow: var(--apple-slider-shadow);
+  }
+  [data-inspector-tabs] [data-slot="toggle"][data-pressed] {
+    background: transparent;
+    box-shadow: none;
+    font-weight: 600;
+  }
+  [data-panel-layout-controls] {
+    background: var(--card);
+    border: 0;
+    border-radius: 999px;
+    box-shadow: var(--apple-card-shadow);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+  [data-panel-layout-controls] [aria-pressed="true"] {
+    background: var(--apple-fill);
+    border-radius: 999px;
+    box-shadow: none;
+  }
+  [data-slot="dialog-popup"],
+  [data-slot="alert-dialog-popup"],
+  [data-slot="menu-popup"],
+  [data-slot="popover-popup"],
+  [data-slot="tooltip-popup"],
+  [data-liquid-quota-popup] {
+    background: var(--popover);
+    border: 0;
+    border-radius: 10px;
+    box-shadow: var(--apple-card-shadow);
+  }
+  :is(button, input, textarea, select, [role="textbox"], [tabindex]):focus-visible {
+    outline: 3px solid color-mix(in srgb, var(--ring) 35%, transparent);
+    outline-offset: 2px;
+  }
+}
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  html:root[data-theme-id="apple"] {
+    [data-slot="sidebar-inner"],
+    [data-slot="sheet-popup"][data-sidebar="sidebar"] {
+      background: var(--apple-secondary);
+      -webkit-backdrop-filter: none;
+      backdrop-filter: none;
+    }
+  }
+}

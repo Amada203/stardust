@@ -44,13 +44,23 @@ export function ComposerBannerStack({
   );
   if (detached) {
     return ordered.map((item) => (
-      <div key={item.id} data-composer-banner-stack="true" className={FADE_IN}>
+      <div
+        key={item.id}
+        data-composer-banner-stack="true"
+        data-artifact-compact={item.id === "turn-artifacts" || undefined}
+        className={item.id === "turn-artifacts" ? "composer-artifact-enter" : FADE_IN}
+      >
         <NoticeCard item={item} detached />
       </div>
     ));
   }
   return ordered.map((item) => (
-    <ComposerBanner.Attachment key={item.id} data-composer-banner-stack="true" className={FADE_IN}>
+    <ComposerBanner.Attachment
+      key={item.id}
+      data-composer-banner-stack="true"
+      data-artifact-compact={item.id === "turn-artifacts" || undefined}
+      className={item.id === "turn-artifacts" ? "composer-artifact-enter" : FADE_IN}
+    >
       <NoticeCard item={item} />
     </ComposerBanner.Attachment>
   ));

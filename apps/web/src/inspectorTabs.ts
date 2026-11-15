@@ -1,10 +1,11 @@
 import { useSyncExternalStore } from "react";
 
-export type InspectorTab = "artifacts" | "history" | "run" | "project";
-const INSPECTOR_TABS: readonly InspectorTab[] = ["artifacts", "history", "run", "project"];
+export type InspectorTab = "artifacts" | "history" | "subtasks" | "project";
+const INSPECTOR_TABS: readonly InspectorTab[] = ["artifacts", "history", "subtasks", "project"];
 export const INSPECTOR_TAB_STORAGE_KEY = "t3code:inspector-tab:v1";
 
 export function parseInspectorTab(raw: string | null): InspectorTab | null {
+  if (raw === "run") return "artifacts";
   return INSPECTOR_TABS.find((tab) => tab === raw) ?? null;
 }
 
@@ -13,7 +14,11 @@ export function resolveInspectorTab(
   stored: InspectorTab | null,
   available: readonly InspectorTab[],
 ): InspectorTab {
-  return stored && available.includes(stored) ? stored : (available[0] ?? "project");
+  return stored && available.includes(stored)
+    ? stored
+    : available.includes("artifacts")
+      ? "artifacts"
+      : (available[0] ?? "artifacts");
 }
 
 const listeners = new Set<() => void>();

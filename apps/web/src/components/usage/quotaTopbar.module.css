@@ -463,3 +463,58 @@
 .quota-ring[data-compact] > span {
   display: none;
 }
+
+/* In the near-black and pure-white themes the border token is too close to the chip to read as
+ * a track; draw the empty part of the ring from the text color instead. */
+:global(html:is([data-theme-id="darkroom"], [data-theme-id="porcelain"])) .quota-ring {
+  background: conic-gradient(
+    from -90deg,
+    color-mix(in srgb, var(--foreground) 65%, transparent) var(--quota-progress),
+    color-mix(in srgb, var(--foreground) 20%, transparent) 0
+  );
+}
+:global(html:is([data-theme-id="darkroom"], [data-theme-id="porcelain"]))
+  .quota-chip[data-low]
+  .quota-ring {
+  background: conic-gradient(
+    from -90deg,
+    var(--warning-foreground) var(--quota-progress),
+    color-mix(in srgb, var(--foreground) 20%, transparent) 0
+  );
+}
+
+:global(html[data-theme-id="apple"]) {
+  .quota-topbar {
+    background: var(--card);
+    border: 0;
+    border-radius: 999px;
+    box-shadow: var(--apple-card-shadow);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+  .quota-summary {
+    color: var(--muted-foreground);
+    font-size: 10.5px;
+  }
+  .quota-chip-name {
+    font-weight: 600;
+  }
+  .quota-chip-value {
+    font-weight: 500;
+    color: var(--muted-foreground);
+  }
+  .quota-ring[data-remaining] {
+    background: conic-gradient(
+      from 0deg,
+      var(--success) var(--quota-progress),
+      var(--apple-fill) 0
+    );
+  }
+  .quota-ring[data-remaining][data-apple-low] {
+    background: conic-gradient(
+      from 0deg,
+      var(--warning) var(--quota-progress),
+      var(--apple-fill) 0
+    );
+  }
+}

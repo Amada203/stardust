@@ -1150,6 +1150,13 @@ export const StorageCleanupReport = Schema.Struct({
 });
 export type StorageCleanupReport = typeof StorageCleanupReport.Type;
 export const StorageCleanupSettings = Schema.Struct({
+  volumeReserveGiB: Schema.optionalKey(
+    Schema.Record(
+      Schema.String,
+      Schema.Number.pipe(Schema.check(Schema.isBetween({ minimum: 40, maximum: 1024 }))),
+    ),
+  ),
+  scanOnOpenDaily: Schema.optionalKey(Schema.Boolean),
   worktreeKeepWhen: WorktreeKeepWhen.pipe(
     Schema.withDecodingDefault(Effect.succeed("uncommitted-changes")),
   ),
@@ -1564,6 +1571,13 @@ export const ServerSettingsPatch = Schema.Struct({
   ),
   storageCleanup: Schema.optionalKey(
     Schema.Struct({
+      volumeReserveGiB: Schema.optionalKey(
+        Schema.Record(
+          Schema.String,
+          Schema.Number.pipe(Schema.check(Schema.isBetween({ minimum: 40, maximum: 1024 }))),
+        ),
+      ),
+      scanOnOpenDaily: Schema.optionalKey(Schema.Boolean),
       worktreeKeepWhen: Schema.optionalKey(WorktreeKeepWhen),
       worktreeAfterDays: Schema.optionalKey(StorageRetentionDays),
       worktreeSettledAfterDays: Schema.optionalKey(SettledWorktreeRetentionDays),

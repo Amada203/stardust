@@ -9,7 +9,7 @@ export function storageTabFor(entry: StorageEntry): StorageTab {
   return "candidates";
 }
 export function storageReleaseEstimate(entries: ReadonlyArray<StorageEntry>) {
-  const eligible = entries.filter((entry) => entry.canRelease);
+  const eligible = entries.filter((entry) => entry.canRelease && entry.destination !== "trash");
   // A workspace includes its descendants; overlapping sizes cannot be added twice.
   const roots = eligible.filter(
     (entry) =>

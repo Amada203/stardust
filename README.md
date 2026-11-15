@@ -1,169 +1,114 @@
-# Xiaoxin T3 Code · 小新定制版
-
-**当前社区正式版：C47 · 额度修正、轻量动效与双皮肤。** 适用于 Apple Silicon Mac。
-
-[下载 C47 · macOS Apple Silicon](https://github.com/zds-xiaoxin/xiaoxin-t3code/releases/latest) · [安装与验证范围](docs/community/c47/RELEASE.zh.md) · [English](README.en.md)
-
-C47 为社区发行编号；内嵌上游 `0.1.7-nightly.20261103.4119` 并定向适配后续修正，不冒充官方 v0.1.9。源码、安装包与构建记录一起提供。
+<p align="center"><img src="assets/community/c67/icon-128.png" width="128" height="128" alt="T3 Stardust 午夜星尘图标"></p>
+<h1 align="center">T3 星尘版 · 站在 T3 Code 肩膀上的中文 AI 桌面工作台</h1>
+<p align="center">把任务步骤、审批、接续与产物，放进一个清楚的工作台。</p>
+<p align="center"><a href="#download">下载</a> · <a href="#features">特性</a> · <a href="README.en.md">English</a></p>
 
 <a id="feature-showcase"></a>
-
 <!-- showcase:overview -->
 
-<p align="center">
-  <a href="assets/community/c47/01-update-card-A.png"><img src="assets/community/c47/01-update-card-A.png" alt="C47 更新总览：数据、改动与真实界面" width="160" /></a>
-  <br />
-  <a href="assets/community/c47/01-update-card-A.png">点击查看完整更新长图</a>
-</p>
+<picture><source media="(prefers-color-scheme: dark)" srcset="assets/community/c67/overview-dark.png"><img src="assets/community/c67/overview-light.png" alt="T3 Stardust actual Apple-theme interface with private content redacted" width="100%"></picture>
 
-_C47 更新长图：实测数据、具体改动与实际 ZIP 解压应用截图。原有图库继续保留，历史截图各自标明版本。_
+_C67 真实隔离运行截图，自动适配深浅色。实色遮挡会话标题、账号额度、文件名与聊天内容；没有重绘 UI。下方局部图来自同批截图。_
 
-## C47 更新：更轻的动效，更可靠的额度状态
+<a id="features"></a>
 
-**C47 源码、可下载安装包和构建证明已一起更新。** 上游内核沿用 `0.1.7-nightly.20261103.4119` 并定向适配后续补丁；不是官方最新稳定版，也不冒充上游 `v0.1.9`。
+## 让每一步都有着落
 
-_白底蓝黑发布长图：数字与柱图按实测值排版，嵌入真实原生应用截图。以下两项降幅只针对动效组件隔离测试，不是整应用、整机或相对官方的提速。_
-
-| 与本机上一版 C45 比          |    C45 | C47 同实现 |            变化 |
-| ---------------------------- | -----: | ---------: | --------------: |
-| 工作动效 · 渲染进程 CPU 均值 | 4.175% |     1.175% | **下降 71.86%** |
-| 工作动效 · GPU 进程 CPU 均值 | 7.675% |     4.425% | **下降 42.35%** |
-
-同一 Chromium 窗口、2 种配色 × 2 轮、每次 8 秒，取 4 次均值。GPU 一行是 GPU **进程的 CPU 使用率**，不是显卡利用率。C47 公开客户端已由最终源码重建；受测动效组件的格式归一化 CSS 和逻辑保持一致。安装后另做严格空闲验证：65 个样本，中位数 **1.0%**、P95 **1.2%**；它与上面的工作动效测试属于不同场景。
-
-### 上一个公开版本 C37 → C47
-
-| 项目                  | C37 已公开结果               | C47 本次结果                                       |
-| --------------------- | ---------------------------- | -------------------------------------------------- |
-| 额外桌面皮肤          | 无星港 / 晨雾                | **新增 2 种**，保留原有 5 套配色                   |
-| 严格空闲 CPU 验证     | 窗口有输入记录，尚未确认有效 | **65 个有效样本通过**                              |
-| Claude 新协议与旧缓存 | 未包含本轮修正               | 原始读取时间、多个窗口事件、拒绝状态与过期读数处理 |
-
-C37 的旧 CPU 窗口无效，不能拿 4.9% 与本轮 1.0% 计算“整应用降低 80%”。本轮也没有把测试总数增长当作速度提升。
-
-### 与官方 v0.1.9 的明确差异
-
-| 可核对项目                                    | 官方 v0.1.9 |                      C47 |
-| --------------------------------------------- | ----------: | -----------------------: |
-| 该主题目录内的预置主题定义                    |           5 | **7（增加星港 / 晨雾）** |
-| 本轮选取的 3 个额度边界样例，映射结果符合预期 |       0 / 3 |                **3 / 3** |
-| 同条件整应用 CPU / 吞吐量测试                 |        未测 |       **不声称优于官方** |
-
-3 个样例为 `unifiedWindows` 无顶层用量、拒绝事件无用量、6 分钟旧启动读数。只比较对应的纯映射函数，不是供应商整体准确率、完整官方测试通过率或生产账号端到端验收。官方 `v0.1.9` 于 2026-11-11 发布，C47 没有因此宣称已升级到该内核。
-
-[测试方法、原始数值和可证伪条件](docs/community/c47/BENCHMARK.zh.md) · [公开测量数据](docs/community/c47/measurements.json)
-
-[查看长图中原始界面截图](assets/community/c47/02-themes-native.png)
-
-_长图已包含真实 C47 原生应用界面，使用独立示例环境；原始截图可单独打开。下面原有 9 项功能展示完整保留，并继续标明各自截图版本。_
-
-### 工作台总览 · C37 历史界面
-
-![C37 实际工作台：中文对话、任务步骤与上下文入口](assets/community/c37/01-workbench.png)
-
-_C37 实际编译界面与独立示例，保留作历史功能展示；当前 C47 变化见上方长图。_
-
-## 特色功能，看图了解
-
-图片直接展示，点击可放大。总览、额度、任务、图片预览、上下文与双风格设置来自 C37 的实际编译界面，使用独立示例数据，未重绘界面。模型、费用与磁盘图保留已有真实运行截图，并标注版本。网页截图不冒充原生窗口截图。
-
-<!-- showcase:allowances -->
-
-### 额度入口与常显设置
-
-从右上角打开额度面板并配置常显项。此截图展示未连接个人账号时的真实空状态；连接后可显示的项目和时间窗口以供应商返回为准。
-
-![未配置常显账号时的实际额度面板](assets/community/c37/02-allowances.png)
-
-_C37 实际额度面板；示例环境未连接个人账号，不展示虚构余额。_
-
+<table><tr><td width="50%">
 <!-- showcase:progress -->
-
-### 任务步骤与侧栏进度
-
-侧栏直接看到完成数和当前阶段，运行面板查看完整步骤，区分执行中、等待确认与已完成。
-
-![任务步骤与侧栏进度](assets/community/c37/03-task-progress.png)
-
-_C37 实际侧栏与运行面板，步骤和状态为独立回放示例。_
-
-<!-- showcase:artifacts -->
-
-### 文件与图片，直接预览
-
-集中查看产物、放大图片，并将修改意见整理为草稿，由你发送后继续处理。下图展示单图查看与意见草稿；双图对比是独立入口，此图没有演示。
-
-![图片预览与修改意见草稿](assets/community/c37/04-image-preview.png)
-
-_C37 实际产物图片查看器与修改意见草稿，使用公开应用图标；没有发送草稿或执行返工。_
-
-<!-- showcase:context -->
-
-### 长会话上下文
-
-查看当前会话的上下文占用、输入与输出、缓存读取与写入；未上报的值显示为 ?，真实零值保留为 0。需要时可交接到新会话。
-
-![紧凑的上下文面板与续聊操作](assets/community/c37/06-context-cache.png)
-
-_C37 实际上下文面板；令牌与缓存为独立回放示例，不是个人消耗或节省率。_
-
-<!-- showcase:models -->
-
-### 更紧凑的模型选择
-
-保留模型搜索、收藏和切换，减少模型菜单底部的常驻设置。
-
-![模型搜索、收藏与紧凑选择菜单](assets/community/c36/compact-model-picker-mac.png)
-
-_C36 Mac 候选的编译界面，使用免费回放通道；模型参数独立展开，可选模型以实际配置为准。_
-
-<!-- showcase:usage -->
-
-### 用量、费用与令牌各自清楚
-
-按时间和模型查看用量，费用模式与令牌模式使用各自的指标和占比。
-
-![费用、模型占比和令牌明细](assets/community/c28/01-cost.png)
-
-_C28 隔离环境实拍，使用合成用量；金额为 API 估算，不是订阅账单或扣款记录。_
-
+<h3>任务步骤，就在对话里</h3>
+<picture><source media="(prefers-color-scheme: dark)" srcset="assets/community/c67/steps-dark.png"><img src="assets/community/c67/steps-light.png" alt="Task step card, private text redacted" width="100%"></picture>
+<p>展开查看步骤与完成状态，不用离开对话。审批进入步骤卡，在对应任务里处理；验收快照没有待审批实例，因此此处只作文字说明。</p>
+</td><td width="50%">
+<h3>中断之后，接得上</h3>
+<picture><source media="(prefers-color-scheme: dark)" srcset="assets/community/c67/resume-dark.png"><img src="assets/community/c67/resume-light.png" alt="Resume card, private task content redacted" width="100%"></picture>
+<p>接续卡说明做到哪里、卡在哪里、你要做什么，以及之后的动作。处理后继续，也可以稍后提醒。</p>
+</td></tr><tr><td width="50%">
 <!-- showcase:storage -->
+<h3>清理之前，先看清楚</h3>
+<picture><source media="(prefers-color-scheme: dark)" srcset="assets/community/c67/cleanup-dark.png"><img src="assets/community/c67/cleanup-light.png" alt="Actual cleanup inventory; values are a historical snapshot" width="100%"></picture>
+<p>按卷查看空间、建议和保护项，先预览路径与去向。占用量不等于可释放量；清理执行器当前支持 macOS。</p>
+</td><td width="50%">
+<h3>苹果主题，深浅都清楚</h3>
+<picture><source media="(prefers-color-scheme: dark)" srcset="assets/community/c67/overview-dark.png"><img src="assets/community/c67/overview-light.png" alt="Apple-inspired light and dark workspace" width="100%"></picture>
+<p>克制的层次、紧凑的控件，搭配「午夜星尘」图标。原有主题仍可选择。</p>
+</td></tr></table>
 
-### 有范围的磁盘整理
+## 工作台里已有的工具
 
-按磁盘和类别查看工作区、依赖、构建产物与日志，先检查和预览具体计划，再处理符合条件的项目。
+_以下保留历史版本功能图库，均为已公开的隔离示例；不是当前主题、模型目录或真实账单。_
 
-![按类别检查磁盘占用与整理计划](assets/community/c28/02-storage.png)
-
-_C28 隔离环境实拍，目录为测试数据；占用不等于可释放量。归档执行器目前支持 macOS。_
-
+<table>
+<tr>
+<td width="50%">
+<!-- showcase:allowances -->
+<h3>额度入口</h3>
+<img src="assets/community/c37/02-allowances.png" alt="Allowance controls" width="100%">
+<p>C37 · 未连接账号的真实空状态</p>
+</td>
+<td width="50%">
+<!-- showcase:artifacts -->
+<h3>文件与图片预览</h3>
+<img src="assets/community/c37/04-image-preview.png" alt="Files and image previews" width="100%">
+<p>C37 · 公开图标与修改草稿</p>
+</td>
+</tr>
+<tr>
+<td width="50%">
+<!-- showcase:context -->
+<h3>长会话上下文</h3>
+<img src="assets/community/c37/06-context-cache.png" alt="Long-session context" width="100%">
+<p>C37 · 回放示例计数</p>
+</td>
+<td width="50%">
+<!-- showcase:models -->
+<h3>模型选择</h3>
+<img src="assets/community/c36/compact-model-picker-mac.png" alt="Model picker" width="100%">
+<p>C36 · 免费回放模型目录</p>
+</td>
+</tr>
+<tr>
+<td width="50%">
+<!-- showcase:usage -->
+<h3>用量与费用</h3>
+<img src="assets/community/c28/01-cost.png" alt="Usage and cost" width="100%">
+<p>C28 · 合成数据，API 标价估算</p>
+</td>
+<td width="50%">
 <!-- showcase:settings -->
+<h3>中文外观设置</h3>
+<img src="assets/community/c37/05-interface-styles.png" alt="Appearance settings" width="100%">
+<p>C37 · 实际设置界面</p>
+</td>
+</tr>
+</table>
 
-### 双界面风格与中文设置
-
-在「外观 → 界面」选择当前风格或 macOS 风格，即时切换并保留配色、字号和侧栏偏好。中文分类、搜索和说明覆盖日常设置。
-
-![中文设置与功能分区](assets/community/c37/05-interface-styles.png)
-
-_C37 实际中文外观设置，展示当前风格 / macOS 风格两个选择。_
+<a id="download"></a>
 
 ## 下载与使用
 
-- **C47 · Mac Apple Silicon：** [下载最新 ZIP](https://github.com/zds-xiaoxin/xiaoxin-t3code/releases/tag/xiaoxin-c47-macos-20261111)，核对发行页 `SHA256SUMS.txt`；[安装与验证说明](docs/community/c47/RELEASE.zh.md)提供源码提交、签名和恢复边界。仅手动更新。
-- **上一个公开 Mac 版 C37：** [历史发行](https://github.com/zds-xiaoxin/xiaoxin-t3code/releases/tag/xiaoxin-c37-macos-test-20261103)。C47 使用 schema79，C37 为 schema78；不要用旧应用打开升级后的数据。
-- **更早 Mac C31：** [历史与回退参考](https://github.com/zds-xiaoxin/xiaoxin-t3code/releases/tag/xiaoxin-c31-20261031)。不要用旧备份覆盖升级后新增的聊天。
-- **Windows x64：** [已有 C35-W2 测试版](https://github.com/zds-xiaoxin/xiaoxin-t3code/releases/tag/xiaoxin-c35-windows-test-20261102)。本轮 C47 安装包仅覆盖 Mac Apple Silicon，未发行新的 Windows / Intel Mac / Linux 包。
-- 升级前结束任务并完全退出，冷备份聊天、登录和配置，保留旧 App；新用户使用自己的 CLI 与账号。包内不含维护者的个人数据。
-- 发布包为 ad-hoc 签名，未经过 Apple 公证。按系统“隐私与安全性”提示处理，无需关闭系统整体安全保护或授予完全磁盘访问。
+**星尘版 1.0（构建 C67）：仅 macOS 13+ / Apple Silicon。** [下载星尘版 ZIP](https://github.com/zds-xiaoxin/xiaoxin-t3code/releases/download/c67-stardust/T3-Stardust-C67-macOS-arm64.zip) · [校验与发行页](https://github.com/zds-xiaoxin/xiaoxin-t3code/releases/tag/c67-stardust) · [发行说明](docs/community/c67/RELEASE.zh.md)。现有 C47 下载属于旧版本。
 
-## 验证与已知事项
+1. 从同一发行页下载 `T3-Stardust-C67-macOS-arm64.zip` 和 `SHA256SUMS.txt`；文件齐全后运行 `shasum -a 256 -c SHA256SUMS.txt`。
+2. 升级前结束任务并完全退出，备份聊天、登录与设置，保留旧 App；解压 ZIP 后将应用复制到 Applications。
+3. 公开包使用 ad-hoc 签名，未经过 Apple 公证；按 macOS「隐私与安全性」提示打开。使用你自己的提供方 CLI 与账号，订阅和 API 费用另计。
 
-C47 ZIP 约190.3MB，比公开 C37 的206.0MB减少7.62%（同架构 ZIP，十进制MB；不是运行速度）。ZIP CRC、164个文件哈希/权限、14个符号链接、解压后严格签名、隐私扫描和隔离原生启动均通过；原生终端模块成功加载并运行示例 shell。
+仅手动更新；本轮没有新的 Intel、Windows 或 Linux 包。[已有 Windows 测试版](https://github.com/zds-xiaoxin/xiaoxin-t3code/releases/tag/xiaoxin-c35-windows-test-20261102)。
 
-[构建与验收记录](docs/community/c47/RELEASE.zh.md) · [测量方法与可复现实例](docs/community/c47/BENCHMARK.zh.md) · [源码 CI 实时结果](https://github.com/zds-xiaoxin/xiaoxin-t3code/actions/runs/43033315668)。未使用真实账号或付费模型做发行验收；真实额度耗尽/恢复及可选 T3 Connect 登录仍有独立验证边界。
+## 空闲 CPU 实测
 
-## 历史与来源
+**中位数 0.0% · P95 7.9% · 65 个样本。** 来自本机已安装 C67 的渲染进程严格空闲窗口；不是整机 CPU，也不是重建公开包在所有设备上的性能承诺。
 
-旧版本仅保留作历史和回退参考，日常下载请使用页面顶部的当前推荐版。
+<details><summary>测量方法与边界</summary>
 
-[全部历史发行](https://github.com/zds-xiaoxin/xiaoxin-t3code/releases) · [C30 更新记录](docs/community/c30/RELEASE.zh.md) · [C29 更新记录](docs/community/c29/RELEASE.zh.md) · [C28 更新记录](docs/community/C28.md) · [上游 T3 Code](https://github.com/pingdotgg/t3code)
+测于 2026-11-15。先静置 30 秒，采样窗口约 90.48 秒；P95 使用 nearest rank。前两个窗口因活动作废，第 3 个窗口有效。采样期间没有截图、CDP、DOM 或任务账本轮询。峰值 31.8%，均值 1.214%；单点尖峰尚未归因。[公开数值证据](docs/community/c67/idle-cpu.json)。
+
+</details>
+
+## 上游与开源致谢
+
+基于 [T3 Code](https://github.com/pingdotgg/t3code)，保留上游 [MIT 许可证](LICENSE)。内嵌内核为 `0.1.7-nightly.20261103.4119`。T3 星尘版是独立社区发行版，不是官方版本。[上游 README](README.upstream.md) · [第三方许可](third-party-licenses)。
+
+公开构建将清理暂存目录改为 `T3CODE_BUILD_STAGING_DIR` 可配置，默认 `~/.t3/build-staging`；不携带维护者用户数据、凭据或私有签名身份。包检查与原生 PTY 证据随发行材料提供。
+
+[C47 历史介绍与实测记录](docs/history/c47/README.md) · [GitHub Releases](https://github.com/zds-xiaoxin/xiaoxin-t3code/releases)

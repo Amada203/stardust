@@ -1,3 +1,4 @@
+import { CommunityUpdateCoordinator } from "../components/settings/CommunityUpdates";
 import { uiText } from "~/i18n";
 import { type ServerLifecycleWelcomePayload } from "@t3tools/contracts";
 import { scopedProjectKey, scopeProjectRef } from "@t3tools/client-runtime/environment";
@@ -127,6 +128,7 @@ function RootRouteView() {
   // must not unmount when the root switches branches (for example /welcome to the app shell).
   return (
     <ToastProvider>
+      <CommunityUpdateCoordinator />
       <AnchoredToastProvider>
         <RootRouteBranch />
       </AnchoredToastProvider>

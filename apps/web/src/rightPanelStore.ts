@@ -13,6 +13,7 @@ import type { ThreadPanelPresentation } from "./rightPanelLayout";
 import type { ChatFileAttachment } from "./types";
 
 const RIGHT_PANEL_KINDS = [
+  "tasks",
   "diff",
   "files",
   "file",
@@ -35,6 +36,7 @@ export interface DeviceTabTarget {
 }
 
 export type RightPanelSurface =
+  | { id: "tasks"; kind: "tasks" }
   | { id: `browser:${string}`; kind: "preview"; resourceId: string }
   | { id: "browser:new"; kind: "preview"; resourceId: null }
   | { id: "device" | `device:${string}`; kind: "device"; target?: DeviceTabTarget; title?: string }
@@ -211,6 +213,8 @@ const singletonSurface = (
   kind: Exclude<RightPanelKind, "file" | "preview" | "terminal" | "pull-request" | "side-chat">,
 ): RightPanelSurface => {
   switch (kind) {
+    case "tasks":
+      return { id: "tasks", kind };
     case "diff":
       return { id: "diff", kind };
     case "files":
@@ -297,14 +301,17 @@ const upsertSurface = (
   current: ThreadRightPanelState,
   surface: RightPanelSurface,
   activate = true,
-): ThreadRightPanelState => ({
-  ...current,
-  isOpen: true,
-  surfaces: current.surfaces.some((entry) => entry.id === surface.id)
-    ? current.surfaces
-    : [...current.surfaces, surface],
-  activeSurfaceId: activate ? surface.id : current.activeSurfaceId,
-});
+): ThreadRightPanelState =>
+  surface.kind === "tasks"
+    ? current
+    : {
+        ...current,
+        isOpen: true,
+        surfaces: current.surfaces.some((entry) => entry.id === surface.id)
+          ? current.surfaces
+          : [...current.surfaces, surface],
+        activeSurfaceId: activate ? surface.id : current.activeSurfaceId,
+      };
 
 const updateThreadStateMap = (
   byThreadKey: Record<string, ThreadRightPanelState>,
@@ -489,7 +496,7 @@ export function migratePersistedRightPanelState(persistedState: unknown): {
               const surfaces = Array.isArray(validThreadState?.surfaces)
                 ? validThreadState.surfaces.flatMap<RightPanelSurface>((surface) => {
                     const kind = (surface as { kind?: string }).kind;
-                    if (kind === "plan" || kind === "agents") return [];
+                    if (kind === "plan" || kind === "agents" || kind === "tasks") return [];
                     if (
                       (surface.kind === "file" || surface.kind === "files") &&
                       "folderTrail" in surface &&
@@ -688,15 +695,17 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
         return opened;
       },
       open: (ref, kind) =>
-        set((state) =>
-          userAction(state, scopedThreadKey(ref), (current) => {
-            if (kind === "preview") {
-              const existing = current.surfaces.find((surface) => surface.kind === "preview");
-              return upsertSurface(current, existing ?? browserSurface(null));
-            }
-            return upsertSurface(current, singletonSurface(kind));
-          }),
-        ),
+        kind === "tasks"
+          ? undefined
+          : set((state) =>
+              userAction(state, scopedThreadKey(ref), (current) => {
+                if (kind === "preview") {
+                  const existing = current.surfaces.find((surface) => surface.kind === "preview");
+                  return upsertSurface(current, existing ?? browserSurface(null));
+                }
+                return upsertSurface(current, singletonSurface(kind));
+              }),
+            ),
       openDevice: (ref, target, automatic = false) =>
         set((state) =>
           (automatic ? automaticUpdate : userAction)(state, scopedThreadKey(ref), (current) => {
@@ -1176,6 +1185,10 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
         ),
       }),
       migrate: migratePersistedRightPanelState,
+      merge: (persisted, current) => ({
+        ...current,
+        ...migratePersistedRightPanelState(persisted),
+      }),
     },
   ),
 );

@@ -1,3 +1,4 @@
+import { APPLE_THEME } from "@t3tools/shared/themePalettes";
 import { describe, expect, it, vi } from "vite-plus/test";
 
 import indexHtml from "../index.html?raw";
@@ -379,4 +380,23 @@ describe("index.html boot script", () => {
     const dark = runBootScript({ storageThrows: true, prefersDark: true });
     expect(dark.isDark).toBe(true);
   });
+});
+
+it("boots Apple in the selected appearance before React mounts", () => {
+  for (const mode of ["light", "dark"] as const) {
+    const colors = getThemeColorsForMode(APPLE_THEME, mode)!;
+    const boot = runBootScript({
+      storage: {
+        [THEME_STORAGE_KEY]: "apple",
+        [THEME_APPEARANCE_MODE_STORAGE_KEY]: mode,
+      },
+      prefersDark: mode !== "dark",
+    });
+    expect(boot.themeId).toBe("apple");
+    expect(boot.isDark).toBe(mode === "dark");
+    expect(boot.bootVariables["--boot-background"]).toBe(colors.canvas);
+    expect(boot.bootVariables["--boot-foreground"]).toBe(colors.text);
+    expect(boot.bootVariables["--boot-accent"]).toBe(colors.accent);
+    expect(boot.backgroundColor).toBe(colors.chrome);
+  }
 });

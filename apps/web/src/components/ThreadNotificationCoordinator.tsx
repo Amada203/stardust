@@ -1,3 +1,5 @@
+import { threadRuntimeIsActive } from "@t3tools/client-runtime/state/shell";
+import { startTaskBoardNotifications } from "../taskBoardNotifications";
 import {
   type EnvironmentThreadShell,
   type PendingSubagentRequest,
@@ -407,8 +409,14 @@ export function startThreadNotifications(
     registry.subscribe(environmentThreadShells.threadRefsAtom, closeHiddenPending),
   ];
   onSettings();
+  const stopTaskBoard = startTaskBoardNotifications(registry, router, () =>
+    registry
+      .get(environmentThreadShells.threadShellsAtom)
+      .some((thread) => threadRuntimeIsActive(thread.runtime)),
+  );
 
   return () => {
+    stopTaskBoard();
     unsubscribeSettings();
     unsubscribeEnvironmentIds();
     for (const unsubscribe of unsubscribeHidden) unsubscribe();

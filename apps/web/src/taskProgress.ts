@@ -6,6 +6,7 @@ import {
 import type { OrchestrationV2PlanStep } from "@t3tools/contracts";
 
 export interface TaskProgressSnapshot {
+  readonly planId?: string;
   readonly steps: readonly OrchestrationV2PlanStep[];
   readonly completed: number;
   readonly total: number;
@@ -103,6 +104,7 @@ export function taskProgressSnapshot(
   else if (status === "running") state = "running";
   else state = "incomplete";
   return {
+    ...(plan ? { planId: plan.id } : {}),
     steps,
     completed,
     total: steps.length,

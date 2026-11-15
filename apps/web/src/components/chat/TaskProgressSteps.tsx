@@ -1,16 +1,11 @@
 import { useId, useState } from "react";
-import {
-  CheckIcon,
-  ChevronDownIcon,
-  ChevronRightIcon,
-  CircleAlertIcon,
-  SquareIcon,
-  ShieldQuestionIcon,
-} from "lucide-react";
+import { ChevronDownIcon, ChevronRightIcon, CheckIcon } from "lucide-react";
+import type { OrchestrationV2PlanStep } from "@t3tools/contracts";
 import type { TaskProgressSnapshot } from "../../taskProgress";
 import { uiText } from "~/i18n";
 import { cn } from "~/lib/utils";
 import { Tooltip, TooltipTrigger, TooltipPopup } from "../ui/tooltip";
+import { TaskTrailCombo, type TaskTrailComboProps } from "./TaskTrailCombo";
 
 export const taskProgressStateLabels: Record<TaskProgressSnapshot["state"], string> = {
   loading: "Loading steps…",
@@ -43,40 +38,54 @@ export function progressTone(progress: TaskProgressSnapshot) {
   }
 }
 
-function StepMark({
-  completed,
-  current,
-  progress,
-}: {
-  completed: boolean;
-  current: boolean;
-  progress: TaskProgressSnapshot;
-}) {
-  if (completed) return <CheckIcon aria-hidden className="size-3 text-success" />;
-  if (!current) return <span aria-hidden className="size-1.5 rounded-full bg-border" />;
-  if (progress.state === "approval") return <ShieldQuestionIcon aria-hidden className="size-3" />;
-  if (progress.state === "failed") return <CircleAlertIcon aria-hidden className="size-3" />;
-  if (progress.state === "stopped") return <SquareIcon aria-hidden className="size-2.5" />;
-  return <span aria-hidden className="size-1.5 rounded-full bg-current" />;
+/** States in which the current step's clock is still truthfully running. */
+const LIVE_STATES: ReadonlySet<TaskProgressSnapshot["state"]> = new Set([
+  "running",
+  "approval",
+  "input",
+  "waiting",
+]);
+
+export function formatStepDuration(ms: number): string {
+  const seconds = Math.max(0, Math.floor(ms / 1000));
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ${String(seconds % 60).padStart(2, "0")}s`;
+  return `${Math.floor(minutes / 60)}h ${String(minutes % 60).padStart(2, "0")}m`;
 }
 
-export function TaskProgressSteps({
+/**
+ * Only what the server reported: a finished step's measured duration, or the running step's
+ * clock from its anchor while the run is live. Anything else shows no time at all.
+ */
+export function stepDurationSource(
+  step: OrchestrationV2PlanStep,
+  progress: Pick<TaskProgressSnapshot, "state" | "stale">,
+): { kind: "fixed"; ms: number } | { kind: "live"; anchorMs: number } | null {
+  if (step.status === "completed") {
+    return step.durationMs === undefined ? null : { kind: "fixed", ms: step.durationMs };
+  }
+  if (step.status !== "running" || progress.stale || !LIVE_STATES.has(progress.state)) return null;
+  const anchorMs =
+    step.durationAnchorAt === undefined ? Number.NaN : Date.parse(step.durationAnchorAt);
+  return Number.isFinite(anchorMs) ? { kind: "live", anchorMs } : null;
+}
+
+function PanelTaskProgressSteps({
   progress,
   compact = false,
-}: {
-  progress: TaskProgressSnapshot;
-  compact?: boolean;
-}) {
-  const [expanded, setExpanded] = useState(true);
+  defaultExpanded = true,
+}: TaskTrailComboProps & { compact?: boolean }) {
+  const [expanded, setExpanded] = useState(defaultExpanded);
   const listId = useId();
-  const currentIndex = progress.steps.findIndex((step) => step.status === "running");
-  const nextIndex = progress.steps.findIndex((step) => step.status === "pending");
-  const anchorIndex = currentIndex >= 0 ? currentIndex : nextIndex >= 0 ? nextIndex : 0;
-  const start = compact ? Math.max(0, Math.min(anchorIndex - 1, progress.steps.length - 5)) : 0;
+  const current = progress.steps.findIndex((step) => step.status === "running");
+  const next = progress.steps.findIndex((step) => step.status === "pending");
+  const anchor = current >= 0 ? current : Math.max(0, next);
+  const start = compact ? Math.max(0, Math.min(anchor - 1, progress.steps.length - 5)) : 0;
   const shown = compact ? progress.steps.slice(start, start + 5) : progress.steps;
-  const hiddenAfter = progress.total - start - shown.length;
+  const after = progress.total - start - shown.length;
   const tone = progressTone(progress);
-  const stateLabel = uiText(
+  const label = uiText(
     progress.stale ? "Status may be out of date" : taskProgressStateLabels[progress.state],
   );
   return (
@@ -89,15 +98,11 @@ export function TaskProgressSteps({
         aria-expanded={expanded}
         aria-controls={listId}
         onClick={() => setExpanded(!expanded)}
-        className="flex w-full min-w-0 items-center gap-1.5 rounded-sm py-1 text-left outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+        className="flex w-full min-w-0 items-center gap-1.5 rounded-sm py-1 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
       >
-        {expanded ? (
-          <ChevronDownIcon aria-hidden className="size-3 shrink-0" />
-        ) : (
-          <ChevronRightIcon aria-hidden className="size-3 shrink-0" />
-        )}
-        <span className="font-medium">{uiText("Task steps")}</span>{" "}
-        <span className="ml-auto shrink-0 tabular-nums text-muted-foreground">
+        {expanded ? <ChevronDownIcon size={12} /> : <ChevronRightIcon size={12} />}
+        <span className="font-medium">{uiText("Task steps")}</span>
+        <span className="ml-auto tabular-nums text-muted-foreground">
           {progress.total > 0
             ? uiText("{completed}/{total} completed", {
                 completed: progress.completed,
@@ -106,8 +111,8 @@ export function TaskProgressSteps({
             : null}
         </span>
       </button>
-      <div className="flex min-w-0 flex-wrap items-baseline justify-between gap-x-2 gap-y-1 pb-2 pl-4.5">
-        <span className={tone}>{stateLabel}</span>
+      <div className="flex justify-between gap-2 pb-2 pl-4.5">
+        <span className={tone}>{label}</span>
         {progress.remaining > 0 ? (
           <span className="text-muted-foreground">
             {uiText("{count} remaining (including current)", { count: progress.remaining })}
@@ -115,8 +120,8 @@ export function TaskProgressSteps({
         ) : null}
       </div>
       <div id={listId} hidden={!expanded}>
-        {progress.steps.length === 0 ? (
-          <p className="pl-4.5 leading-relaxed text-muted-foreground">
+        {shown.length === 0 ? (
+          <p className="pl-4.5 text-muted-foreground">
             {uiText(
               progress.state === "loading"
                 ? "Waiting for task details."
@@ -124,27 +129,21 @@ export function TaskProgressSteps({
             )}
           </p>
         ) : (
-          <ol aria-label={uiText("Reported task steps")} className="space-y-0">
+          <ol aria-label={uiText("Reported task steps")}>
             {start > 0 ? (
               <li className="pb-2 pl-4.5 text-muted-foreground">
                 {uiText("{count} earlier steps", { count: start })}
               </li>
             ) : null}
-            {shown.map((step, index) => {
-              const completed = step.status === "completed";
-              const current = step.status === "running";
-              const stepLabel = completed
-                ? uiText("Completed")
-                : current
-                  ? stateLabel
-                  : uiText("Not started");
+            {shown.map((step) => {
+              const running = step.status === "running";
               const text = (
                 <p
                   dir="auto"
                   className={cn(
                     "wrap-anywhere leading-relaxed",
                     compact && "line-clamp-2",
-                    current ? "font-medium text-foreground" : "text-muted-foreground",
+                    running ? "font-medium text-foreground" : "text-muted-foreground",
                   )}
                 >
                   {step.text}
@@ -153,19 +152,20 @@ export function TaskProgressSteps({
               return (
                 <li
                   key={step.id}
-                  className="relative flex min-w-0 gap-2 pb-3 last:pb-1"
-                  aria-current={current ? "step" : undefined}
+                  className="flex min-w-0 gap-2 pb-3 last:pb-1"
+                  aria-current={running ? "step" : undefined}
                 >
-                  {index < shown.length - 1 ? (
-                    <span aria-hidden className="absolute top-4 bottom-0 left-1.5 w-px bg-border" />
-                  ) : null}
                   <span
                     className={cn(
-                      "relative flex size-3.5 shrink-0 items-center justify-center pt-0.5",
-                      current ? tone : "text-muted-foreground",
+                      "flex size-3.5 shrink-0 items-center justify-center",
+                      running ? tone : "text-muted-foreground",
                     )}
                   >
-                    <StepMark completed={completed} current={current} progress={progress} />
+                    {step.status === "completed" ? (
+                      <CheckIcon size={12} />
+                    ) : (
+                      <span className="size-1.5 rounded-full bg-current" />
+                    )}
                   </span>
                   <div className="min-w-0 flex-1">
                     {compact ? (
@@ -179,18 +179,22 @@ export function TaskProgressSteps({
                     <p
                       className={cn(
                         compact ? "sr-only" : "mt-0.5 text-3xs",
-                        current ? tone : "text-muted-foreground",
+                        running ? tone : "text-muted-foreground",
                       )}
                     >
-                      {stepLabel}
+                      {step.status === "completed"
+                        ? uiText("Completed")
+                        : running
+                          ? label
+                          : uiText("Not started")}
                     </p>
                   </div>
                 </li>
               );
             })}
-            {hiddenAfter > 0 ? (
+            {after > 0 ? (
               <li className="pl-5.5 text-muted-foreground">
-                {uiText("{count} later steps", { count: hiddenAfter })}
+                {uiText("{count} later steps", { count: after })}
               </li>
             ) : null}
           </ol>
@@ -202,5 +206,14 @@ export function TaskProgressSteps({
         ) : null}
       </div>
     </section>
+  );
+}
+export function TaskProgressSteps(
+  props: TaskTrailComboProps & { compact?: boolean; variant?: "panel" | "trail" },
+) {
+  return props.variant === "trail" ? (
+    <TaskTrailCombo {...props} />
+  ) : (
+    <PanelTaskProgressSteps {...props} />
   );
 }

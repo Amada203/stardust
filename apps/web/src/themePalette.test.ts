@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from "vite-plus/test";
 import { converter } from "culori/fn";
-import { BUILT_IN_THEMES } from "@t3tools/shared/themePalettes";
+import {
+  APPLE_THEME,
+  RESERVED_THEME_IDS,
+  SKIN_THEMES,
+  BUILT_IN_THEMES,
+} from "@t3tools/shared/themePalettes";
 
 import { CONTEXT_CHIP_ACCENTS, contextChipColorVariable } from "./lib/contextChipAccents";
 
@@ -767,5 +772,21 @@ describe("stored theme preferences", () => {
 
     vi.unstubAllGlobals();
     invalidateCustomThemes();
+  });
+});
+
+describe("Apple theme", () => {
+  it("resolves both appearances without changing default selection", () => {
+    expect(SKIN_THEMES.filter((theme) => theme.id === "apple")).toEqual([APPLE_THEME]);
+    expect(RESERVED_THEME_IDS.has("apple")).toBe(true);
+    expect(getThemeModes(APPLE_THEME)).toEqual(["light", "dark"]);
+    expect(getThemeColorsForMode(APPLE_THEME, "light")?.canvas).toBe("#F7F7F9");
+    expect(getThemeColorsForMode(APPLE_THEME, "dark")?.canvas).toBe("#1C1C1E");
+    expect(resolveThemeAppearance("apple", true, true)).toBe("dark");
+    expect(resolveThemeAppearance("apple", true, false, "light")).toBe("light");
+    expect(resolveDesktopTheme("apple", true)).toBe("system");
+    expect(resolveDesktopTheme("system")).toBe("system");
+    expect(getDefaultThemeColors("light")).toEqual(T3_CHAT_THEME.colors);
+    expect(getDefaultThemeColors("dark")).toEqual(T3_CHAT_THEME.variants?.dark);
   });
 });

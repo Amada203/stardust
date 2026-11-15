@@ -1,3 +1,4 @@
+import { TaskBoardDot } from "./TaskBoardPanel";
 import { uiText } from "~/i18n";
 import { SidebarTaskProgress } from "./sidebar/SidebarTaskProgress";
 import { useStableCallback } from "../hooks/useStableCallback";
@@ -10,6 +11,7 @@ import {
   GitForkIcon,
   ArrowUpDownIcon,
   ChevronRightIcon,
+  ChevronsDownUpIcon,
   FolderPlusIcon,
   Globe2Icon,
   SearchIcon,
@@ -33,7 +35,12 @@ import { EnvironmentMachineIcon } from "./EnvironmentMachineIcon";
 import { ProjectFavicon } from "./ProjectFavicon";
 import { ProviderInstanceIcon } from "./chat/ProviderInstanceIcon";
 import { useAtomValue } from "@effect/atom-react";
-import { autoAnimate } from "@formkit/auto-animate";
+import { observeSidebarList } from "../lib/sidebarListMotion";
+import {
+  sortCategorySections,
+  useStableCategoryOrder,
+  type CategorySection,
+} from "../sidebarCategoryActivity";
 import React, {
   createContext,
   useEffect,
@@ -241,6 +248,7 @@ import {
 import {
   getPinnedProjects,
   isProjectFirst,
+  PROJECT_FIRST_LABEL,
   mergeSnapshotsByProject,
   partitionProjects,
   projectPinKey,
@@ -290,6 +298,18 @@ import {
 } from "../sidebarInboxPresentation";
 import { useWorkbenchInboxStore } from "../workbenchInboxStore";
 import { WorkbenchInbox } from "./sidebar/WorkbenchInbox";
+import { activeWorkStatus } from "../sidebarActiveWork";
+import {
+  CATEGORY_PROJECT_KEY_PREFIX,
+  THREAD_CATEGORIES,
+  THREAD_CATEGORY_GROUPS,
+  isCategoryProjectKey,
+  openThreadCategoryPicker,
+  resolveThreadCategory,
+  threadCategoryById,
+  useThreadCategoryOverrides,
+} from "../threadCategories";
+import { ThreadCategoryPickerDialog } from "./sidebar/ThreadCategoryPicker";
 import { THREAD_PLACEMENT_DRAG_TYPE, useThreadPlacementStore } from "../sidebarThreadPlacement";
 import {
   ThreadMoveProvider,
@@ -298,7 +318,12 @@ import {
 } from "./sidebar/ThreadMoveProvider";
 import { PullRequestGlyph } from "~/components/pullRequest/pullRequestIcons";
 
-import { type SidebarRouteReveal, useActiveRowReveal } from "./sidebar/routeReveal";
+import {
+  type SidebarRouteReveal,
+  useActiveRowReveal,
+  scrollSidebarRowNearest,
+  markSidebarOverviewNavigation,
+} from "./sidebar/routeReveal";
 const SIDEBAR_SORT_LABELS: Record<SidebarProjectSortOrder, string> = {
   updated_at: uiText("Last user message"),
   created_at: uiText("Created at"),
@@ -308,10 +333,6 @@ const SIDEBAR_THREAD_SORT_LABELS: Record<SidebarThreadSortOrder, string> = {
   updated_at: uiText("Last user message"),
   created_at: uiText("Created at"),
 };
-const SIDEBAR_LIST_ANIMATION_OPTIONS = {
-  duration: 180,
-  easing: "ease-out",
-} as const;
 const EMPTY_THREAD_JUMP_LABELS = new Map<string, string>();
 const PROJECT_GROUPING_MODE_LABELS: Record<SidebarProjectGroupingMode, string> = {
   repository: uiText("Group by repository"),
@@ -851,6 +872,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
               <PullRequestGlyph.pullRequest className="size-3" />
             </a>
           ) : null}
+          <TaskBoardDot cwd={thread.worktreePath ?? originalWorkspace} threadId={thread.id} />
           {urgentRowReason ? (
             <InboxStatusMark reason={urgentRowReason} />
           ) : threadStatus ? (
@@ -895,7 +917,12 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                   <span
                     role="img"
                     aria-label={providerChipLabel.label}
-                    className="inline-flex size-3.5 shrink-0 items-center justify-center"
+                    className={cn(
+                      "inline-flex size-3.5 shrink-0 items-center justify-center",
+                      // One status mark and the time stay; the provider shows on hover or focus.
+                      !isActive &&
+                        "opacity-0 transition-opacity duration-150 group-hover/menu-sub-item:opacity-100 group-focus-within/menu-sub-item:opacity-100 max-sm:opacity-100",
+                    )}
                     data-testid={`thread-provider-${thread.id}`}
                   />
                 }
@@ -949,7 +976,15 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
             </Tooltip>
           )}
           {props.subtaskControl}
-          <ThreadWorktreeIndicator thread={thread} />
+          <span
+            className={cn(
+              "inline-flex empty:hidden",
+              !isActive &&
+                "opacity-0 transition-opacity duration-150 group-hover/menu-sub-item:opacity-100 group-focus-within/menu-sub-item:opacity-100 max-sm:opacity-100",
+            )}
+          >
+            <ThreadWorktreeIndicator thread={thread} />
+          </span>
           <ThreadTerminalStatusButton
             threadRef={threadRef}
             terminalIds={runningTerminalIds}
@@ -1620,6 +1655,12 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
     : projectAttentionCounts.errors
       ? "\u8FD0\u884C\u5931\u8D25"
       : null;
+  const categoryRunning =
+    isCategoryProjectKey(project.projectKey) &&
+    projectThreads.some((thread) => {
+      const status = activeWorkStatus(thread);
+      return status !== null && status !== "\u5F85\u6388\u6743" && status !== "\u5F85\u56DE\u7B54";
+    });
   const activeRootThreadKey =
     activeRouteThreadKey && subtaskTree.byKey.has(activeRouteThreadKey)
       ? subtaskThreadKey(subtaskTree.rootFor(subtaskTree.byKey.get(activeRouteThreadKey)!))
@@ -1945,6 +1986,9 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
   };
   const handleProjectButtonContextMenu = (event: React.MouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
+    // A category row stands for several real projects; project actions (rename, delete,
+    // settings) must never reach whichever project happens to back the row.
+    if (isCategoryProjectKey(project.projectKey)) return;
     suppressProjectClickForContextMenuRef.current = true;
     void (async () => {
       const api = readLocalApi();
@@ -2530,6 +2574,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
         ...(appAtomRegistry.get(canShareWithGuestAtom(thread.environmentId))
           ? [{ id: "share-guest", label: "Share with guest" }]
           : []),
+        { id: "set-category", label: "\u8C03\u6574\u5206\u7C7B\u2026" },
         { id: "move-project", label: "\u79FB\u52A8\u5230\u9879\u76EE\u2026" },
         ...(useThreadPlacementStore.getState().placements[threadKey]
           ? [{ id: "restore-project", label: "\u6062\u590D\u539F\u9879\u76EE\u5F52\u7C7B" }]
@@ -2548,6 +2593,10 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
       ],
       position,
     );
+    if (clicked === "set-category") {
+      openThreadCategoryPicker({ threadKey, title: thread.title });
+      return;
+    }
     if (clicked === "move-project") {
       threadMove.requestMove(threadKey);
       return;
@@ -2654,7 +2703,10 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
             onKeyDown={handleProjectButtonKeyDown}
             onContextMenu={handleProjectButtonContextMenu}
           >
-            {!projectExpanded && !projectAttentionReason && projectStatus ? (
+            {!projectExpanded &&
+            !projectAttentionReason &&
+            projectStatus &&
+            !isCategoryProjectKey(project.projectKey) ? (
               <Tooltip>
                 <TooltipTrigger
                   render={
@@ -2685,10 +2737,11 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
               />
             )}
             <span className="flex shrink-0">
-              {/(workspace|automation)-collection/.test(project.projectKey) ? (
+              {/(workspace|automation)-collection/.test(project.projectKey) ||
+              isCategoryProjectKey(project.projectKey) ? (
                 <span
                   aria-hidden
-                  className="inline-flex size-3.5 items-center justify-center rounded-sm bg-muted text-xs text-muted-foreground"
+                  className="inline-flex size-4.5 items-center justify-center rounded-md bg-sidebar-control-surface text-2xs text-sidebar-muted-foreground"
                 >
                   {Array.from(project.displayName)[0]}
                 </span>
@@ -2697,11 +2750,20 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
               )}
             </span>
             <span className="flex min-w-0 flex-1 items-center gap-2">
-              <span className="truncate text-sm font-medium text-sidebar-foreground/90">
+              <span
+                className={cn(
+                  "truncate text-sm text-sidebar-foreground/90",
+                  // Category folders sit one level under their section label: regular weight.
+                  isCategoryProjectKey(project.projectKey)
+                    ? "font-normal text-sidebar-foreground/80"
+                    : "font-medium",
+                )}
+              >
                 {project.displayName}
               </span>
               {!projectAttentionReason &&
               project.groupedProjectCount > 1 &&
+              !isCategoryProjectKey(project.projectKey) &&
               !/(workspace|automation)-collection/.test(project.projectKey) ? (
                 <span className="shrink-0 text-secondary-label text-3xs">
                   {project.groupedProjectCount}
@@ -2709,7 +2771,29 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
                 </span>
               ) : null}
             </span>
-            <InboxGroupBadge threadKeys={project.providerThreadKeys} />
+            {isCategoryProjectKey(project.projectKey) ? (
+              // A folded category hints at what is inside: running (blue) and waiting (orange).
+              !projectExpanded && (categoryRunning || projectAttentionReason) ? (
+                <span
+                  className="ml-auto flex shrink-0 items-center gap-1"
+                  aria-label={[
+                    categoryRunning ? "\u6709\u8FD0\u884C\u4E2D" : null,
+                    projectAttentionReason,
+                  ]
+                    .filter(Boolean)
+                    .join("\u3001")}
+                >
+                  {categoryRunning ? <span className="size-1.5 rounded-full bg-primary" /> : null}
+                  {projectAttentionReason ? (
+                    <span
+                      className={`size-1.5 rounded-full ${projectAttentionReason === "\u8FD0\u884C\u5931\u8D25" ? "bg-destructive" : "bg-warning"}`}
+                    />
+                  ) : null}
+                </span>
+              ) : null
+            ) : (
+              <InboxGroupBadge threadKeys={project.providerThreadKeys} />
+            )}
             {/* Keeps the name clear of the environment badge and new-thread button overlaid on
       the row's end (two slots on touch, where both stay visible). */}
             <span aria-hidden className="w-4 shrink-0 max-sm:w-10" />
@@ -3076,6 +3160,7 @@ function ProjectSortMenu({
             value={grouping}
             onValueChange={(value) => onGroupingChange(value as SidebarGrouping)}
           >
+            <MenuRadioItem value="category">{"\u6309\u5206\u7C7B"}</MenuRadioItem>
             <MenuRadioItem value="project">{"\u6309\u9879\u76EE"}</MenuRadioItem>
             <MenuRadioItem value={uiText("model")}>{"\u6309\u6A21\u578B"}</MenuRadioItem>
           </MenuRadioGroup>
@@ -3193,6 +3278,7 @@ function SortableProjectItem({
 }
 interface SidebarProjectsContentProps {
   workbenchInbox: React.ReactNode;
+  attachInteraction: ReturnType<typeof useStableCategoryOrder>["attachInteraction"];
   openArchivedHistory: () => void;
   showArm64IntelBuildWarning: boolean;
   arm64IntelBuildWarningDescription: string | null;
@@ -3217,6 +3303,7 @@ interface SidebarProjectsContentProps {
   markThreadUnread: ReturnType<typeof useThreadActions>["markThreadUnread"];
   sortedProjects: readonly SidebarProjectSnapshot[];
   projectSections: ProjectSections | null;
+  categorySections: readonly CategorySection[] | null;
   sidebarGrouping: SidebarGrouping;
   expandedThreadListsByProject: ReadonlySet<string>;
   routeThreadKey: string | null;
@@ -3290,8 +3377,15 @@ function ProjectListSection({
   children: React.ReactNode;
 }) {
   return (
-    <section className="mb-2" aria-label={label}>
-      <div className="px-2 py-1 text-xs font-medium text-sidebar-muted-foreground/80">{label}</div>
+    <section className="mb-2" aria-label={label || undefined}>
+      {label ? (
+        <div
+          className="px-2 pt-3 pb-1 text-2xs tracking-wider text-sidebar-muted-foreground"
+          data-sidebar-cap=""
+        >
+          {label}
+        </div>
+      ) : null}
       {children}
       {projects.length === 0 ? (
         <p className="px-3 py-2 text-xs text-muted-foreground">{"\u6682\u65E0\u9879\u76EE"}</p>
@@ -3330,12 +3424,98 @@ function MoreProjectsSection({
     </section>
   );
 }
+/**
+ * One virtual row per category. Each row lists threads from any project; the underlying
+ * projects, workspaces and thread ids are untouched.
+ */
+function buildCategorySections(
+  projects: readonly SidebarProjectSnapshot[],
+  threads: readonly SidebarThreadSummary[],
+  parentByKey: ReadonlyMap<string, SidebarThreadSummary>,
+  overrides: Readonly<Record<string, string>>,
+): CategorySection[] {
+  const threadByKey = new Map(
+    threads.map(
+      (thread) =>
+        [scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)), thread] as const,
+    ),
+  );
+  const rootOf = (thread: SidebarThreadSummary) => {
+    let root = thread;
+    for (let depth = 0; depth < 8; depth++) {
+      const parent = parentByKey.get(subtaskThreadKey(root));
+      if (!parent) break;
+      root = parent;
+    }
+    return root;
+  };
+  const buckets = new Map<
+    string,
+    {
+      base: SidebarProjectSnapshot;
+      keys: Set<string>;
+      members: Map<string, SidebarProjectSnapshot["memberProjects"][number]>;
+      refs: Map<string, SidebarProjectSnapshot["memberProjectRefs"][number]>;
+    }
+  >();
+  const projectNameByThreadKey = new Map<string, string>();
+  for (const project of projects)
+    for (const key of project.providerThreadKeys ?? [])
+      projectNameByThreadKey.set(key, project.displayName);
+  for (const project of projects) {
+    for (const key of project.providerThreadKeys ?? []) {
+      const thread = threadByKey.get(key);
+      if (!thread) continue;
+      // Subtasks follow their root conversation, so a thread tree never splits.
+      const root = rootOf(thread);
+      const rootKey = scopedThreadKey(scopeThreadRef(root.environmentId, root.id));
+      const category = resolveThreadCategory(overrides, rootKey, {
+        title: root.title,
+        projectName: projectNameByThreadKey.get(rootKey) ?? project.displayName,
+      });
+      let bucket = buckets.get(category);
+      if (!bucket) {
+        bucket = { base: project, keys: new Set(), members: new Map(), refs: new Map() };
+        buckets.set(category, bucket);
+      }
+      bucket.keys.add(key);
+      for (const member of project.memberProjects)
+        bucket.members.set(member.physicalProjectKey, member);
+      for (const ref of project.memberProjectRefs) bucket.refs.set(JSON.stringify(ref), ref);
+    }
+  }
+  return THREAD_CATEGORY_GROUPS.flatMap((group) => {
+    const rows = THREAD_CATEGORIES.filter((category) => category.group === group).flatMap(
+      (category) => {
+        const bucket = buckets.get(category.id);
+        if (!bucket) return [];
+        const projectKey = `${CATEGORY_PROJECT_KEY_PREFIX}${category.id}`;
+        return [
+          {
+            ...bucket.base,
+            projectKey,
+            sourceProjectKey: projectKey,
+            displayName: threadCategoryById(category.id).label,
+            providerLabel: PROJECT_FIRST_LABEL,
+            providerThreadKeys: bucket.keys,
+            memberProjects: [...bucket.members.values()],
+            memberProjectRefs: [...bucket.refs.values()],
+            groupedProjectCount: bucket.members.size,
+            pinned: false,
+          } satisfies SidebarProjectSnapshot,
+        ];
+      },
+    );
+    return rows.length ? [{ group, projects: rows }] : [];
+  });
+}
 const SidebarProjectsContent = memo(function SidebarProjectsContent(
   props: SidebarProjectsContentProps,
 ) {
   const {
     openArchivedHistory,
     workbenchInbox,
+    attachInteraction,
     showArm64IntelBuildWarning,
     arm64IntelBuildWarningDescription,
     desktopUpdateButtonAction,
@@ -3359,6 +3539,7 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
     markThreadUnread,
     sortedProjects,
     projectSections,
+    categorySections,
     sidebarGrouping,
     expandedThreadListsByProject,
     routeThreadKey,
@@ -3381,6 +3562,7 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
     handleLocateProject,
     isMobile,
   } = props;
+  const setProjectExpanded = useUiStateStore((state) => state.setProjectExpanded);
   const handleProjectSortOrderChange = (sortOrder: SidebarProjectSortOrder) => {
     updateSettings({ sidebarProjectSortOrder: sortOrder });
   };
@@ -3424,6 +3606,7 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
   );
   return (
     <SidebarContent
+      ref={attachInteraction}
       fixedHeader={
         // Lifted above the stage backdrop, whose fade bleeds below the
         // header and would otherwise paint across the search row's outline.
@@ -3448,10 +3631,12 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
               </SidebarMenuButton>
             </SidebarMenuItem>
           </SidebarMenu>
-          {workbenchInbox}
         </SidebarGroup>
       }
     >
+      {/* Running work and the inline inbox scroll with the list, as in the mockup; the
+      header keeps only search, so a long inbox never squeezes the list. */}
+      <SidebarGroup>{workbenchInbox}</SidebarGroup>
       {showArm64IntelBuildWarning && arm64IntelBuildWarningDescription ? (
         <SidebarGroup>
           <Alert variant="warning">
@@ -3477,11 +3662,43 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
       ) : null}
       <LocalSecondaryStatus />
       <SidebarGroup>
-        <div className="mb-1 flex items-center justify-between pl-2 pr-1.5">
-          <span className="text-xs font-medium text-sidebar-muted-foreground/80">
-            {sidebarGrouping === "project" ? "\u9879\u76EE" : "\u6A21\u578B / \u9879\u76EE"}
+        <div className="group/cap mb-1 flex items-center justify-between pl-2 pr-1.5">
+          <span
+            className="text-2xs tracking-wider text-sidebar-muted-foreground"
+            data-sidebar-cap=""
+          >
+            {sidebarGrouping === "category"
+              ? "\u5206\u7C7B"
+              : sidebarGrouping === "project"
+                ? "\u9879\u76EE"
+                : "\u6A21\u578B / \u9879\u76EE"}
           </span>
-          <div className="flex items-center gap-0.5">
+          {/* Tools appear on hover or focus; touch screens keep them visible. */}
+          <div className="flex items-center gap-0.5 opacity-0 transition-opacity duration-150 group-hover/cap:opacity-100 focus-within:opacity-100 pointer-coarse:opacity-100 max-sm:opacity-100 motion-reduce:transition-none">
+            {categorySections ? (
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      size="icon-xs"
+                      variant="ghost-muted"
+                      aria-label={"\u5168\u90E8\u6298\u53E0"}
+                      onClick={() =>
+                        setProjectExpanded(
+                          categorySections.flatMap((section) =>
+                            section.projects.map((project) => project.projectKey),
+                          ),
+                          false,
+                        )
+                      }
+                    />
+                  }
+                >
+                  <ChevronsDownUpIcon className="size-3.5" />
+                </TooltipTrigger>
+                <TooltipPopup side="right">{"\u5168\u90E8\u6298\u53E0"}</TooltipPopup>
+              </Tooltip>
+            ) : null}
             <ProjectSortMenu
               grouping={sidebarGrouping}
               onGroupingChange={setSidebarGrouping}
@@ -3531,7 +3748,26 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
           onDragEnd={handleProjectDragEnd}
           onDragCancel={handleProjectDragCancel}
         >
-          {projectSections ? (
+          {categorySections ? (
+            <div ref={observeSidebarList}>
+              {categorySections.map((section) => (
+                <ProjectListSection
+                  key={section.group}
+                  label={
+                    section.projects.length === 1 &&
+                    section.projects[0]!.displayName === section.group
+                      ? ""
+                      : section.group
+                  }
+                  projects={section.projects}
+                >
+                  <SidebarMenu ref={observeSidebarList}>
+                    {section.projects.map((project) => renderProjectItem(project, true))}
+                  </SidebarMenu>
+                </ProjectListSection>
+              ))}
+            </div>
+          ) : projectSections ? (
             <>
               {projectSections.pinned.length > 0 ? (
                 <ProjectListSection label="置顶" projects={projectSections.pinned}>
@@ -3843,22 +4079,8 @@ export default function LegacySidebar(props: { routeReveal: SidebarRouteReveal }
   const handleProjectDragCancel = (_event: DragCancelEvent) => {
     dragInProgressRef.current = false;
   };
-  const animatedProjectListsRef = useRef(new WeakSet<HTMLElement>());
-  const attachProjectListAutoAnimateRef = (node: HTMLElement | null) => {
-    if (!node || animatedProjectListsRef.current.has(node)) {
-      return;
-    }
-    autoAnimate(node, SIDEBAR_LIST_ANIMATION_OPTIONS);
-    animatedProjectListsRef.current.add(node);
-  };
-  const animatedThreadListsRef = useRef(new WeakSet<HTMLElement>());
-  const attachThreadListAutoAnimateRef = (node: HTMLElement | null) => {
-    if (!node || animatedThreadListsRef.current.has(node)) {
-      return;
-    }
-    autoAnimate(node, SIDEBAR_LIST_ANIMATION_OPTIONS);
-    animatedThreadListsRef.current.add(node);
-  };
+  const attachProjectListAutoAnimateRef = observeSidebarList;
+  const attachThreadListAutoAnimateRef = observeSidebarList;
   const visibleThreads = (() => subtaskTree.roots)();
   const ungroupedSortedProjects = (() => {
     const sortableProjects = sidebarProjects.map((project) => ({
@@ -3897,6 +4119,7 @@ export default function LegacySidebar(props: { routeReveal: SidebarRouteReveal }
       placements,
     ))();
   const sidebarGrouping = useSidebarGrouping();
+  const categoryOverrides = useThreadCategoryOverrides();
   const pinnedProjects = usePinnedProjects();
   const isManualProjectSorting = sidebarProjectSortOrder === "manual";
   // Project rows only age out by the clock, so a slow tick is enough to move one into "more".
@@ -3907,7 +4130,7 @@ export default function LegacySidebar(props: { routeReveal: SidebarRouteReveal }
     return () => window.clearInterval(timer);
   }, []);
   const projectSections: ProjectSections | null = (() => {
-    if (sidebarGrouping !== "project") return null;
+    if (sidebarGrouping === "model") return null;
     const merged = mergeSnapshotsByProject(providerSortedProjects);
     const activityByThreadKey = new Map<string, number>();
     // The same clock the thread rows show ("20天"): the latest user message.
@@ -3935,9 +4158,34 @@ export default function LegacySidebar(props: { routeReveal: SidebarRouteReveal }
       sortByActivity: !isManualProjectSorting,
     });
   })();
-  const sortedProjects = projectSections
-    ? [...projectSections.pinned, ...projectSections.recent, ...projectSections.more]
-    : providerSortedProjects;
+  const categoryVisits = useUiStateStore((state) => state.threadLastVisitedAtById);
+  const categoryAcknowledged = useWorkbenchInboxStore((state) => state.acknowledgedErrors);
+  const unsortedCategorySections: readonly CategorySection[] | null =
+    sidebarGrouping === "category" && projectSections
+      ? buildCategorySections(
+          [...projectSections.pinned, ...projectSections.recent, ...projectSections.more],
+          sidebarThreads,
+          subtaskTree.parentByKey,
+          categoryOverrides,
+        )
+      : null;
+  const categoryOrder = useStableCategoryOrder(
+    unsortedCategorySections
+      ? sortCategorySections(
+          unsortedCategorySections,
+          sidebarThreads,
+          pinnedProjects,
+          categoryAcknowledged,
+          categoryVisits,
+        )
+      : null,
+  );
+  const categorySections = categoryOrder.sections;
+  const sortedProjects = categorySections
+    ? categorySections.flatMap((section) => section.projects)
+    : projectSections
+      ? [...projectSections.pinned, ...projectSections.recent, ...projectSections.more]
+      : providerSortedProjects;
   const threadProviderLabels = projectSections
     ? new Map(
         sidebarThreads.map((thread) => {
@@ -4296,9 +4544,11 @@ export default function LegacySidebar(props: { routeReveal: SidebarRouteReveal }
         true,
       );
       setTimeout(() => {
-        document
-          .querySelector(`[data-project-item="${globalThis.CSS.escape(targets[0]!.projectKey)}"]`)
-          ?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        scrollSidebarRowNearest(
+          document.querySelector(
+            `[data-project-item="${globalThis.CSS.escape(targets[0]!.projectKey)}"]`,
+          ),
+        );
       }, 50);
     }
     setSidebarProjectScopeKey([]);
@@ -4311,6 +4561,24 @@ export default function LegacySidebar(props: { routeReveal: SidebarRouteReveal }
     setProjectExpanded,
     setSidebarProjectScopeKey,
   ]);
+  const navigateFromOverview = (threadRef: ScopedThreadRef) => {
+    const key = scopedThreadKey(threadRef);
+    markSidebarOverviewNavigation(props.routeReveal, key);
+    const category = categorySections
+      ?.flatMap((section) => section.projects)
+      .find((project) => project.providerThreadKeys?.has(key));
+    if (category) {
+      setProjectExpanded(
+        categorySections!
+          .flatMap((section) => section.projects)
+          .filter((project) => project.projectKey !== category.projectKey)
+          .map((project) => project.projectKey),
+        false,
+      );
+      setProjectExpanded([category.projectKey], true);
+    }
+    navigateToThread(threadRef);
+  };
   const routeReveal = props.routeReveal;
   const revealActiveRow = useActiveRowReveal(routeReveal, routeThreadKey);
   const mountRevealOwed = useRef(true);
@@ -4325,7 +4593,7 @@ export default function LegacySidebar(props: { routeReveal: SidebarRouteReveal }
     if (!activeRow) return;
     completeSidebarRouteReveal(routeReveal);
     mountRevealOwed.current = false;
-    activeRow.scrollIntoView({ block: "nearest" });
+    if (routeReveal.overviewKey !== routeThreadKey) scrollSidebarRowNearest(activeRow);
   });
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Scroll the route row only after its DOM has mounted.
   useEffect(revealRouteRow, [revealRouteRow, routeThreadKey, routeRowRendered]);
@@ -4352,7 +4620,7 @@ export default function LegacySidebar(props: { routeReveal: SidebarRouteReveal }
       const el = document.querySelector(
         `[data-project-item="${globalThis.CSS.escape(projectKey)}"]`,
       );
-      el?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      scrollSidebarRowNearest(el);
     }, 50);
   };
   return (
@@ -4370,12 +4638,13 @@ export default function LegacySidebar(props: { routeReveal: SidebarRouteReveal }
         >
           <ThreadProviderLabelContext.Provider value={threadProviderLabels}>
             <SidebarProjectsContent
+              attachInteraction={categoryOrder.attachInteraction}
               workbenchInbox={
                 <WorkbenchInbox
                   threads={sidebarThreads}
                   projects={providerSortedProjects}
                   activeKey={routeThreadKey}
-                  navigate={navigateToThread}
+                  navigate={navigateFromOverview}
                 />
               }
               openArchivedHistory={openArchivedHistory}
@@ -4402,6 +4671,7 @@ export default function LegacySidebar(props: { routeReveal: SidebarRouteReveal }
               markThreadUnread={markThreadUnread}
               sortedProjects={sortedProjects}
               projectSections={projectSections}
+              categorySections={categorySections}
               sidebarGrouping={sidebarGrouping}
               expandedThreadListsByProject={expandedThreadListsByProject}
               routeThreadKey={routeThreadKey}
@@ -4427,6 +4697,7 @@ export default function LegacySidebar(props: { routeReveal: SidebarRouteReveal }
           </ThreadProviderLabelContext.Provider>
         </ThreadMoveProvider>
       </SidebarSubtasksContext.Provider>
+      <ThreadCategoryPickerDialog />
       <SidebarChromeFooter
         archiveSlot={
           <SidebarArchiveMenuItem

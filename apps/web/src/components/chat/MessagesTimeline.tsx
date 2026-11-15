@@ -205,6 +205,7 @@ export interface MessagesTimelineHistoryControls {
 }
 interface MessagesTimelineProps {
   pendingApprovals?: ReadonlyArray<PendingApproval>;
+  approvalsInTaskTrail?: boolean;
   heldApprovalRequestIds?: ReadonlySet<string> | undefined;
   respondingRequestIds?: TimelineRowSharedState["respondingRequestIds"];
   canOperateThread?: boolean;
@@ -321,6 +322,7 @@ export function MessagesTimeline(props: MessagesTimelineProps) {
 }
 const ConversationTimeline = memo(function ConversationTimeline({
   pendingApprovals = EMPTY_PENDING_APPROVALS,
+  approvalsInTaskTrail = false,
   heldApprovalRequestIds,
   respondingRequestIds = EMPTY_RESPONDING_REQUEST_IDS,
   canOperateThread = false,
@@ -987,6 +989,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
   );
   const sharedState: TimelineRowSharedState = {
     pendingApprovals: pendingApprovalsByRequestId,
+    approvalsInTaskTrail,
     respondingRequestIds,
     canOperateThread,
     onRespondToApproval,

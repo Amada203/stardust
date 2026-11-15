@@ -3,18 +3,18 @@ import type { ScopedThreadRef } from "@t3tools/contracts";
 import { useQuietThreadProjection, useThreadShell } from "../../state/entities";
 import { useEnvironment } from "../../state/environments";
 import { taskProgressSnapshot } from "../../taskProgress";
-import { useInspectorTab } from "../../inspectorTabs";
-import { useRightPanelStore } from "../../rightPanelStore";
+import { useNavigate } from "@tanstack/react-router";
+import { buildThreadRouteParams } from "../../threadRoutes";
 import { uiText } from "../../i18n";
 import { cn } from "~/lib/utils";
 import { progressTone, taskProgressStateLabels } from "../chat/TaskProgressSteps";
 
-/** One-line summary; the full step list lives in the Run tab so the sidebar never reflows. */
+/** One-line summary; the full step list lives in the conversation so the sidebar never reflows. */
 export function SidebarTaskProgress({ threadRef }: { threadRef: ScopedThreadRef }) {
   const projection = useQuietThreadProjection(threadRef)?.projection ?? null;
   const shell = useThreadShell(threadRef);
   const environment = useEnvironment(threadRef.environmentId);
-  const [, setInspectorTab] = useInspectorTab();
+  const navigate = useNavigate();
   const progress = taskProgressSnapshot(
     projection,
     shell,
@@ -41,10 +41,10 @@ export function SidebarTaskProgress({ threadRef }: { threadRef: ScopedThreadRef 
             onKeyDown={(event) => event.stopPropagation()}
             onClick={(event) => {
               event.stopPropagation();
-              setInspectorTab("run");
-              const panel = useRightPanelStore.getState();
-              panel.setThreadPanelOpen(threadRef, "inline", true);
-              panel.setThreadPanelOpen(threadRef, "popover", true);
+              void navigate({
+                to: "/$environmentId/$threadId",
+                params: buildThreadRouteParams(threadRef),
+              });
             }}
           >
             <span className="flex min-w-0 items-center gap-1.5">

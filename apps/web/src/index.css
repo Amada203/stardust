@@ -4,6 +4,8 @@
 @import "./liquidGlass.css";
 @import "./windowsProfile.css";
 @import "./skins.css";
+@import "./components/chat/taskTrailCombo.css";
+@import "./themes/apple.css";
 
 @custom-variant dark (&:is(.dark, .dark *));
 @custom-variant light (&:not(.dark, .dark *));

@@ -1,13 +1,14 @@
 import { useSyncExternalStore } from "react";
 import type { SidebarProjectSnapshot } from "./sidebarProjectGrouping";
 
-export type SidebarGrouping = "project" | "model";
+export type SidebarGrouping = "category" | "project" | "model";
 export interface PinnedProject {
   readonly key: string;
   readonly at: number;
 }
 
-const SIDEBAR_GROUPING_STORAGE_KEY = "t3code:sidebar-grouping:v1";
+// v2: the category view became the default; the v1 project/model choice is not carried over.
+const SIDEBAR_GROUPING_STORAGE_KEY = "t3code:sidebar-grouping:v2";
 const SIDEBAR_PINNED_STORAGE_KEY = "t3code:sidebar-pinned-projects:v1";
 /** Marks a merged project row: threads from every model, instead of one model's slice. */
 export const PROJECT_FIRST_LABEL = "项目";
@@ -18,7 +19,7 @@ export function isProjectFirst(project: Pick<SidebarProjectSnapshot, "providerLa
 }
 
 export function parseSidebarGrouping(raw: string | null): SidebarGrouping {
-  return raw === "model" ? "model" : "project";
+  return raw === "model" ? "model" : raw === "project" ? "project" : "category";
 }
 
 export function parsePinnedProjects(raw: string | null): readonly PinnedProject[] {
@@ -178,7 +179,7 @@ export function useSidebarGrouping(): SidebarGrouping {
   return useSyncExternalStore(
     subscribe,
     () => parseSidebarGrouping(readItem(SIDEBAR_GROUPING_STORAGE_KEY)),
-    () => "project",
+    () => "category",
   );
 }
 export function setSidebarGrouping(grouping: SidebarGrouping) {

@@ -6,7 +6,7 @@ import { CommandId, MessageId, ThreadId } from "@t3tools/contracts";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import { useNavigate } from "@tanstack/react-router";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { Button } from "../ui/button";
 import { Popover, PopoverTrigger, PopoverPopup, PopoverTitle } from "../ui/popover";
 import { ChevronDownIcon, CircleAlertIcon } from "lucide-react";
@@ -413,6 +413,11 @@ export function ContextHandoffNotice({
           />
         }
         aria-label={label}
+        style={
+          {
+            "--apple-context-progress": `${Math.max(0, Math.min(1, ratio ?? 0)) * 100}%`,
+          } as CSSProperties
+        }
         data-context-handoff={
           budgetBlocked
             ? "blocked"

@@ -1,3 +1,5 @@
+import { scrollSidebarRowNearest } from "./routeReveal";
+import { TaskBoardDot } from "../TaskBoardPanel";
 import { uiText } from "~/i18n";
 import { SidebarTaskProgress } from "./SidebarTaskProgress";
 import { ThreadHoverCard, ThreadHoverCardPopup } from "../ThreadHoverCard";
@@ -1209,6 +1211,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                 </span>
               )}
               {draftIndicator}
+              <TaskBoardDot cwd={gitCwd} threadId={thread.id} />
               {title}
               {multiline ? titleLineIcons : null}
               {pinIndicator}
@@ -1537,6 +1540,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
               {props.sweepAction !== null ? dragDestination : null}
             </div>
             <div className="mt-1 flex min-w-0 items-center gap-1.5">
+              <TaskBoardDot cwd={gitCwd} threadId={thread.id} />
               {title}
               {isRegeneratingTitle ? (
                 <span role="status" className="sr-only">
@@ -1567,7 +1571,7 @@ function latestRunDiff(thread: SidebarThreadSummary): {
 // highlight lands on a different row: a new query, late rows replacing the first
 // result, or arrow keys moving past the scrolled edge.
 const scrollHighlightedResultIntoView = (node: HTMLLIElement | null) => {
-  node?.scrollIntoView({ block: "nearest" });
+  scrollSidebarRowNearest(node);
 };
 export const SidebarSearchResultRow = memo(function SidebarSearchResultRow(props: {
   isSettled: boolean;
@@ -1691,6 +1695,7 @@ export const SidebarSearchResultRow = memo(function SidebarSearchResultRow(props
           ) : null}
           <span className="flex min-w-0 flex-1 flex-col">
             <span className="flex min-w-0 items-center gap-2.5">
+              <TaskBoardDot cwd={gitCwd} threadId={thread.id} />
               <span
                 className={cn(
                   "min-w-0 flex-1 truncate",

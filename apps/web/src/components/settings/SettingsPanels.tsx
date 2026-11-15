@@ -1,3 +1,4 @@
+import { CommunityUpdateSettings } from "./CommunityUpdates";
 import { useAtomValue } from "@effect/atom-react";
 import { uiText } from "~/i18n";
 import { PresetChangeHistory } from "../workbench/PresetChangeHistory";
@@ -145,6 +146,14 @@ const QUIT_CONFIRMATION_MODE_LABELS: Record<QuitConfirmationMode, string> = {
 };
 const DEFAULT_DRIVER_KIND = ProviderDriverKind.make("codex");
 function AboutVersionSection() {
+  return (
+    <>
+      {isElectron && <CommunityUpdateSettings />}
+      <UpstreamAboutVersionSection />
+    </>
+  );
+}
+function UpstreamAboutVersionSection() {
   const updateState = useDesktopUpdateState();
   const [switchChannel, setSwitchChannel] = useState<DesktopUpdateChannel | null>(null);
   const [isUpdateActionPending, setIsUpdateActionPending] = useState(false);

@@ -2,7 +2,7 @@ import "~/index.css";
 import type { EnvironmentId, ThreadId, WallArtifact } from "@t3tools/contracts";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { userEvent } from "vite-plus/test/browser";
-import { render } from "../../../test/render";
+import { act, render } from "../../../test/render";
 import { ArtifactWall } from "./ArtifactWall";
 import { loadWallArtifacts } from "../../lib/artifactWallClient";
 
@@ -33,6 +33,12 @@ vi.mock("../../lib/artifactWallClient", () => ({
 }));
 vi.mock("../../state/session", () => ({ usePreparedConnection: () => null }));
 vi.mock("../../state/use-atom-command", () => ({ useAtomCommand: () => vi.fn() }));
+// The thread's latest run began when the fixtures were written, so they count as new.
+vi.mock("../../state/entities", () => ({
+  useQuietThreadShell: () => ({
+    latestRun: { startedAt: "2026-10-25T08:00:00.000Z", requestedAt: null },
+  }),
+}));
 
 describe("ArtifactWall video filter", () => {
   it("lists video after images and filters to video artifacts", async () => {
@@ -61,12 +67,24 @@ describe("ArtifactWall video filter", () => {
     ]);
     chips.find((chip) => chip.textContent === "视频 2")!.click();
     await vi.waitFor(() => {
-      expect(screen.container.querySelectorAll("video").length).toBe(2);
+      expect(
+        [...screen.container.querySelectorAll("[data-artifact-id]")].map((n) =>
+          n.getAttribute("data-artifact-id"),
+        ),
+      ).toEqual(["a2", "a3"]);
       expect(screen.container.textContent).not.toContain("notes.md");
     });
   });
 
-  it("shows images and videos as a thumbnail grid and documents as list rows", async () => {
+  it("lists every artifact as a row with a thumbnail or type and marks this run's output", async () => {
+    const older = {
+      ...ARTIFACTS[3]!,
+      id: "a0",
+      name: "old.md",
+      path: "/work/old.md",
+      createdAt: "2026-10-25T07:00:00.000Z",
+    };
+    vi.mocked(loadWallArtifacts).mockResolvedValueOnce([...ARTIFACTS, older]);
     await using screen = await render(
       <ArtifactWall
         environmentId={"environment-local" as EnvironmentId}
@@ -76,17 +94,20 @@ describe("ArtifactWall video filter", () => {
       { router: false },
     );
     await vi.waitFor(() => {
-      expect(screen.container.querySelectorAll("[data-artifact-id]").length).toBe(5);
+      expect(screen.container.querySelectorAll("li[data-artifact-id]").length).toBe(6);
     });
-    const grid = screen.container.querySelector("[data-artifact-media-grid]")!;
-    expect(
-      [...grid.querySelectorAll("[data-artifact-id]")].map((n) =>
-        n.getAttribute("data-artifact-id"),
-      ),
-    ).toEqual(["a1", "a2", "a3"]);
-    const rows = screen.container.querySelectorAll("li[data-artifact-id]");
-    expect([...rows].map((n) => n.getAttribute("data-artifact-id"))).toEqual(["a4", "a5"]);
-    // Check status is hover text now, not card text.
+    const row = (id: string) =>
+      screen.container.querySelector<HTMLElement>(`li[data-artifact-id="${id}"]`)!;
+    expect(row("a1").querySelector("img")).not.toBeNull();
+    expect(row("a4").querySelector("img")).toBeNull();
+    expect(row("a4").textContent).toContain("MD");
+    expect(row("a4").textContent).toContain("新");
+    expect(row("a0").textContent).not.toContain("新");
+    // The preview card shows the newest image with its two actions and the check note.
+    const card = screen.container.querySelector<HTMLElement>("[data-artifact-featured]")!;
+    expect(card.getAttribute("data-artifact-featured")).toBe("a1");
+    expect(card.textContent).toContain("文件存在不代表检查通过");
+    // Check status is hover text now, not row text.
     expect(screen.container.textContent).not.toContain("未附检查记录");
   });
 
@@ -262,4 +283,69 @@ describe("ArtifactWall revision drafts", () => {
     await screen.getByRole("button", { name: "查看 cover.png", exact: true }).click();
     await expect.element(screen.getByRole("textbox", { name: "修改意见" })).toHaveValue("保留构图");
   });
+});
+
+it("animates only arrivals after the first successful load, not filters or thread changes", async () => {
+  const environmentId = "environment-local" as EnvironmentId;
+  const threadId = "motion-thread" as ThreadId;
+  using animate = vi.spyOn(Element.prototype, "animate");
+  await using screen = await render(
+    <ArtifactWall environmentId={environmentId} threadId={threadId} onAttach={vi.fn()} />,
+  );
+  await vi.waitFor(() =>
+    expect(screen.container.querySelectorAll("li[data-artifact-id]")).toHaveLength(5),
+  );
+  const rowCalls = () =>
+    animate.mock.instances.filter(
+      (node): node is Element => node instanceof Element && node.hasAttribute("data-artifact-id"),
+    );
+  expect(rowCalls()).toHaveLength(0);
+  const arrived = { ...ARTIFACTS[3]!, id: "new-file", name: "arrived.md" };
+  vi.mocked(loadWallArtifacts).mockResolvedValueOnce([...ARTIFACTS, arrived]);
+  await act(() => document.dispatchEvent(new Event("visibilitychange")));
+  await vi.waitFor(() =>
+    expect(screen.container.querySelector('[data-artifact-id="new-file"]')).not.toBeNull(),
+  );
+  expect(rowCalls()).toHaveLength(2);
+  expect(rowCalls().every((row) => row.getAttribute("data-artifact-id") === "new-file")).toBe(true);
+  animate.mockClear();
+  await screen.getByRole("button", { name: "文档 2", exact: true }).click();
+  expect(rowCalls()).toHaveLength(0);
+  await screen.rerender(
+    <ArtifactWall
+      environmentId={environmentId}
+      threadId={"other-motion-thread" as ThreadId}
+      onAttach={vi.fn()}
+    />,
+  );
+  await vi.waitFor(() =>
+    expect(screen.container.querySelector('[data-artifact-id="a4"]')).not.toBeNull(),
+  );
+  expect(rowCalls()).toHaveLength(0);
+});
+
+it("shows arriving artifacts immediately without animations under reduced motion", async () => {
+  const media = window.matchMedia("(prefers-reduced-motion: reduce)");
+  using _matches = vi.spyOn(media, "matches", "get").mockReturnValue(true);
+  using _media = vi.spyOn(window, "matchMedia").mockReturnValue(media);
+  await using screen = await render(
+    <ArtifactWall
+      environmentId={"environment-local" as EnvironmentId}
+      threadId={"reduced-motion-thread" as ThreadId}
+      onAttach={vi.fn()}
+    />,
+  );
+  await vi.waitFor(() =>
+    expect(screen.container.querySelectorAll("li[data-artifact-id]")).toHaveLength(5),
+  );
+  using animate = vi.spyOn(Element.prototype, "animate");
+  vi.mocked(loadWallArtifacts).mockResolvedValueOnce([
+    ...ARTIFACTS,
+    { ...ARTIFACTS[3]!, id: "reduced-arrival" },
+  ]);
+  await act(() => document.dispatchEvent(new Event("visibilitychange")));
+  await vi.waitFor(() =>
+    expect(screen.container.querySelector('[data-artifact-id="reduced-arrival"]')).not.toBeNull(),
+  );
+  expect(animate).not.toHaveBeenCalled();
 });

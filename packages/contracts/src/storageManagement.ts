@@ -12,6 +12,11 @@ export const StorageOperation = Schema.Struct({
   release: Schema.optionalKey(Schema.Boolean),
   cancelRequested: Schema.optionalKey(Schema.Boolean),
   warnings: Schema.optionalKey(Schema.Array(Schema.String)),
+  cleanupObjectId: Schema.optionalKey(Schema.String),
+  cleanupDestination: Schema.optionalKey(
+    Schema.Literals(["delete-rebuildable", "trash", "move-external"]),
+  ),
+  recoverableUntil: Schema.optionalKey(Schema.String),
   sourceBytes: Schema.Number,
   reserveGiB: Schema.optionalKey(Schema.Number),
   freeBefore: Schema.optionalKey(Schema.Number),
@@ -30,6 +35,18 @@ export const StorageInspection = Schema.Struct({
       id: Schema.String,
       name: Schema.String,
       path: Schema.String,
+      category: Schema.optionalKey(Schema.String),
+      risk: Schema.optionalKey(Schema.Literals(["safe", "caution", "confirm"])),
+      destination: Schema.optionalKey(
+        Schema.Literals(["delete-rebuildable", "trash", "move-external"]),
+      ),
+      childPaths: Schema.optionalKey(Schema.Array(Schema.String)),
+      cleanupEvidence: Schema.optionalKey(
+        Schema.Array(Schema.Struct({ path: Schema.String, sha256: Schema.String })),
+      ),
+      lastModified: Schema.optionalKey(Schema.String),
+      rebuildable: Schema.optionalKey(Schema.Boolean),
+      locked: Schema.optionalKey(Schema.Boolean),
       kind: Schema.String,
       reason: Schema.String,
       canRelease: Schema.Boolean,
@@ -59,9 +76,24 @@ export const StorageInspection = Schema.Struct({
       freeBytes: Schema.Number,
       totalBytes: Schema.optionalKey(Schema.Number),
       internal: Schema.optionalKey(Schema.Boolean),
+      reserveGiB: Schema.optionalKey(Schema.Number),
+      history: Schema.optionalKey(
+        Schema.Array(Schema.Struct({ at: Schema.String, freeBytes: Schema.Number })),
+      ),
     }),
   ),
   operations: Schema.Array(StorageOperation),
+  scan: Schema.optionalKey(
+    Schema.Struct({
+      phase: Schema.Literals(["scanning", "completed"]),
+      requestId: Schema.optionalKey(Schema.Number),
+      checked: Schema.Number,
+      total: Schema.Number,
+      current: Schema.String,
+      truncated: Schema.Boolean,
+    }),
+  ),
+  scanOnOpenDaily: Schema.optionalKey(Schema.Boolean),
   truncated: Schema.optionalKey(Schema.Boolean),
 });
 export type StorageInspection = typeof StorageInspection.Type;
@@ -69,9 +101,19 @@ export const StorageInspectInput = Schema.Struct({
   objectId: Schema.optionalKey(Schema.String),
   measureSizes: Schema.optionalKey(Schema.Boolean),
   statusOnly: Schema.optionalKey(Schema.Boolean),
+  scanRequest: Schema.optionalKey(Schema.Number),
 });
 export type StorageInspectInput = typeof StorageInspectInput.Type;
 export const StorageActionInput = Schema.Union([
+  Schema.Struct({ action: Schema.Literals(["cleanup-plan"]), objectId: Schema.String }),
+  Schema.Struct({
+    action: Schema.Literals(["cleanup-settings"]),
+    volumePath: Schema.optionalKey(Schema.String),
+    reserveGiB: Schema.optionalKey(
+      Schema.Number.pipe(Schema.check(Schema.isBetween({ minimum: 40, maximum: 1024 }))),
+    ),
+    scanOnOpenDaily: Schema.optionalKey(Schema.Boolean),
+  }),
   Schema.Struct({ action: Schema.Literals(["logs-plan"]) }),
   Schema.Struct({
     action: Schema.Literals(["plan"]),
