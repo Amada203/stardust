@@ -1,4 +1,4 @@
-# T3 Stardust 1.0.0: how this release was checked
+# T3 Stardust 1.0.1: how this release was checked
 
 The README and the release notes stay short on purpose. The details are here for anyone who wants to check our work.
 
@@ -6,26 +6,25 @@ The README and the release notes stay short on purpose. The details are here for
 
 | Item | Value |
 | --- | --- |
-| Build | C88, the 1.0.0 build (C86 + C88: the stable build no longer shows the Nightly badge, Chinese task rows and token units are localized, Claude sessions started by T3 always get the task-list tools so the step capsule works). C86 was C82 + C83 English UI + C84 quota and step fixes + C85 release cleanup + C86 floating step capsule |
-| Web bundle `index.html` SHA-256 | `a9fe877cbc4e706c61940b31767a4a1ed1d8972527a5692560f1288d6e727528` |
-| Installed release-candidate app archive (ASAR) SHA-256 | `da91270d22634ff603be7474fc6214614cae74583b6ccfabfd505d74fa8ce296` |
-| App archive (ASAR) in the download package | `78dc28c98b9e964e7eb1b37d338927ef22daf714d1e3f94b784f8a7665bfff1d`. It differs from the installed one in exactly one entry: the bundled copy of the resource monitor, whose build-machine file paths were overwritten with neutral bytes of the same length. Every other entry is byte-identical |
-| Installer result | `installed_verified`: version, signature, chats, login, settings bytes and schema read back after install (C88) |
+| Build | C89, the 1.0.1 build (C88 + C89: universal live-activity step capsule fallback for Antigravity/ACP, Spotlight full-text search fix & auto-rebuild, ArtifactWall cache & blank-window fix, 404 repo URL & Stardust update-checker fix, backend reliability fixes, and 6 upstream P0 security/stability patches). |
+| Web bundle `index.html` SHA-256 | `e67c7a55b8b571c13f5248ce2ebd7e26737094f6e3618973c2ef1fe8d6b01975` |
+| Installed release-candidate app archive (ASAR) SHA-256 | `5c00128b0fe355cde0a1e6ae5d4ea0229517d39d9a194a7e61bbd9357edfabd3` |
+| App archive (ASAR) in the download package | `2b64417a4c5fd9d7a6f4953ee2279a3a0604bc0bdeacd32eaf116e6e1ddc1129`. It differs from the installed one in exactly one entry: the bundled copy of the resource monitor, whose build-machine file paths were overwritten with neutral bytes of the same length. Every other entry is byte-identical |
 | Signature of the download package | ad-hoc (`codesign -dv` shows `Signature=adhoc`, no Team ID); not signed with an Apple Developer ID; not notarized. `codesign --verify --deep --strict` passes on the unpacked ZIP |
-| Package for download | `T3-Stardust-1.0.0-macOS-arm64.zip`, SHA-256 `ff7df75c029b90acd22b705e89774b3712006d21c90bd226f7aedb9222546e61` |
+| Package for download | `T3-Stardust-1.0.1-macOS-arm64.zip`, SHA-256 `35d0ec21bbb3eebd14db3afb7d3613d53d1e2aa2ed4a0ee7806d69f808d47eb3` |
 
-Every product screenshot in this repository was rendered from the web bundle above (the banners and social preview add brand art and HTML text around a real render). The rendered `index.html` was compared with the SHA-256 above before capture.
+Every product screenshot in this repository was rendered from the Stardust web bundle (the banners and social preview add brand art and HTML text around a real render).
 
-## Automated checks (C88)
+## Automated checks (C89 / v1.0.1)
 
 | Check | Result |
 | --- | --- |
-| Type check, 6 packages | 0 errors |
-| Format and lint | 0 errors (12 existing warnings) |
-| Tests | 0 failures: packages 4,849 · desktop 1,160 · server 8,872 · web unit 6,140 · web browser 1,485 |
-| Hard-coded Chinese scan of web source | 0 unapproved literals (153 exact allowances with reasons, such as recognizers for Chinese input) |
-| Production web build | exit 0, 2,223 files, no local path in any file |
-| Idle CPU after install | median 0.5%, P95 0.7% over 65 samples of the app window process. This is not whole-machine CPU and not a promise for every Mac |
+| Type check, 7 packages (`t3`, `web`, `desktop`, `provider-acp`, `shared`, `ssh`, `client-runtime`) | 0 errors |
+| Lint (`vp lint`, 19 modified files, 203 rules) | 0 errors |
+| Targeted unit & Chromium browser tests (16 files) | 401 / 401 passed |
+| Desktop full suite | 120 passed / 4 skipped (1,160 active tests passed) |
+| Privacy scan on unpacked ZIP | 2,961 members scanned, 0 maintainer hits |
+| Isolated smoke & PTY check | Welcome page rendered, 0 console/runtime errors, resource monitor healthy, `node-pty` exit 0, 0 leftover processes, real user data untouched |
 
 ## Data migration: schema 79 → 95
 
@@ -144,7 +143,7 @@ Every product screenshot in this repository was rendered from the web bundle abo
 ## Verify your download
 
 ```sh
-shasum -a 256 T3-Stardust-1.0.0-macOS-arm64.zip
+shasum -a 256 T3-Stardust-1.0.1-macOS-arm64.zip
 ```
 
-Compare the result with the checksum in the [release notes](https://github.com/zds-xiaoxin/xiaoxin-t3code/releases/tag/v1.0.0).
+Compare the result with the checksum in the [release notes](https://github.com/zds-xiaoxin/xiaoxin-t3code/releases/tag/v1.0.1).

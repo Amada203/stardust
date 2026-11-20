@@ -17,7 +17,7 @@
 <p align="center">
   <a href="https://github.com/zds-xiaoxin/xiaoxin-t3code/releases/latest"><b>下载 macOS 版（Apple 芯片）</b></a> ·
   <a href="#从-c67-或更早版本升级">升级与备份</a> ·
-  <a href="https://github.com/zds-xiaoxin/xiaoxin-t3code/releases/tag/v1.0.0">更新说明</a> ·
+  <a href="https://github.com/zds-xiaoxin/xiaoxin-t3code/releases/tag/v1.0.1">更新说明</a> ·
   <a href="#下载与首次打开">首次打开</a> ·
   <a href="README.md">English</a>
 </p>
