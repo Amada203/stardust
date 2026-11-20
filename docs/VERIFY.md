@@ -1,4 +1,4 @@
-# T3 Stardust 1.0.1: how this release was checked
+# T3 Stardust 1.0.2: how this release was checked
 
 The README and the release notes stay short on purpose. The details are here for anyone who wants to check our work.
 
@@ -6,23 +6,22 @@ The README and the release notes stay short on purpose. The details are here for
 
 | Item | Value |
 | --- | --- |
-| Build | C89, the 1.0.1 build (C88 + C89: universal live-activity step capsule fallback for Antigravity/ACP, Spotlight full-text search fix & auto-rebuild, ArtifactWall cache & blank-window fix, 404 repo URL & Stardust update-checker fix, backend reliability fixes, and 6 upstream P0 security/stability patches). |
-| Web bundle `index.html` SHA-256 | `e67c7a55b8b571c13f5248ce2ebd7e26737094f6e3618973c2ef1fe8d6b01975` |
-| Installed release-candidate app archive (ASAR) SHA-256 | `5c00128b0fe355cde0a1e6ae5d4ea0229517d39d9a194a7e61bbd9357edfabd3` |
-| App archive (ASAR) in the download package | `2b64417a4c5fd9d7a6f4953ee2279a3a0604bc0bdeacd32eaf116e6e1ddc1129`. It differs from the installed one in exactly one entry: the bundled copy of the resource monitor, whose build-machine file paths were overwritten with neutral bytes of the same length. Every other entry is byte-identical |
+| Build | C90, the 1.0.2 build (C89 + C90: Composer v2 circular Scroll-to-End anchored with TaskPlanCapsule, 48px bottom alpha fade, 17px-aligned high-contrast SessionStatsBar; Claude/Codex compaction anti-amnesia & self-contained delegation guidance; Settings Model Providers overhaul with synced `providerOrder`, inline update actions, wider non-truncating list, and full zh-CN localization). |
+| Web bundle `index.html` SHA-256 | `95fd0ae438528983c7f8712b3824083f10a23eef699c901f766bcb4d427ad4b7` |
+| Installed release-candidate app archive (ASAR) SHA-256 | `05155f7542815e6f324283be5211e9eb2b78336aac5cafac46832cfb05a927dc` |
+| App archive (ASAR) in the download package | `2fef3c2dd397f42d203984f993d0275938f7e47cb30c60b9192727bb90fd162f`. It differs from the installed one in exactly one entry: the bundled copy of the resource monitor, whose build-machine file paths were overwritten with neutral bytes of the same length. Every other entry is byte-identical |
 | Signature of the download package | ad-hoc (`codesign -dv` shows `Signature=adhoc`, no Team ID); not signed with an Apple Developer ID; not notarized. `codesign --verify --deep --strict` passes on the unpacked ZIP |
-| Package for download | `T3-Stardust-1.0.1-macOS-arm64.zip`, SHA-256 `35d0ec21bbb3eebd14db3afb7d3613d53d1e2aa2ed4a0ee7806d69f808d47eb3` |
+| Package for download | `T3-Stardust-1.0.2-macOS-arm64.zip`, SHA-256 `c2689bf0110c1a6f901a09e55ef83f6c71ed8d56d76c7db064039e7ad806855c` |
 
 Every product screenshot in this repository was rendered from the Stardust web bundle (the banners and social preview add brand art and HTML text around a real render).
 
-## Automated checks (C89 / v1.0.1)
+## Automated checks (C90 / v1.0.2)
 
 | Check | Result |
 | --- | --- |
-| Type check, 7 packages (`t3`, `web`, `desktop`, `provider-acp`, `shared`, `ssh`, `client-runtime`) | 0 errors |
-| Lint (`vp lint`, 19 modified files, 203 rules) | 0 errors |
-| Targeted unit & Chromium browser tests (16 files) | 401 / 401 passed |
-| Desktop full suite | 120 passed / 4 skipped (1,160 active tests passed) |
+| Type check, 5 packages (`contracts`, `provider-core`, `t3`, `web`, `desktop`) | 0 errors |
+| Lint (`vp lint`, 17 modified files, 203 rules) | 0 errors |
+| Targeted unit & Chromium browser tests (11 files) | 134 / 134 passed |
 | Privacy scan on unpacked ZIP | 2,961 members scanned, 0 maintainer hits |
 | Isolated smoke & PTY check | Welcome page rendered, 0 console/runtime errors, resource monitor healthy, `node-pty` exit 0, 0 leftover processes, real user data untouched |
 
@@ -143,7 +142,7 @@ Every product screenshot in this repository was rendered from the Stardust web b
 ## Verify your download
 
 ```sh
-shasum -a 256 T3-Stardust-1.0.1-macOS-arm64.zip
+shasum -a 256 T3-Stardust-1.0.2-macOS-arm64.zip
 ```
 
-Compare the result with the checksum in the [release notes](https://github.com/zds-xiaoxin/xiaoxin-t3code/releases/tag/v1.0.1).
+Compare the result with the checksum in the [release notes](https://github.com/zds-xiaoxin/xiaoxin-t3code/releases/tag/v1.0.2).

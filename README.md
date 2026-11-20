@@ -17,7 +17,7 @@
 <p align="center">
   <a href="https://github.com/zds-xiaoxin/xiaoxin-t3code/releases/latest"><b>Download for macOS (Apple Silicon)</b></a> ·
   <a href="#upgrading-from-c67-or-earlier">Upgrade &amp; backup</a> ·
-  <a href="https://github.com/zds-xiaoxin/xiaoxin-t3code/releases/tag/v1.0.1">Release notes</a> ·
+  <a href="https://github.com/zds-xiaoxin/xiaoxin-t3code/releases/tag/v1.0.2">Release notes</a> ·
   <a href="#download-and-first-open">First open</a> ·
   <a href="README.zh-CN.md">简体中文</a>
 </p>
