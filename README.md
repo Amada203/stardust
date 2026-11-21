@@ -17,7 +17,7 @@
 <p align="center">
   <a href="https://github.com/zds-xiaoxin/xiaoxin-t3code/releases/latest"><b>Download for macOS (Apple Silicon)</b></a> ·
   <a href="#upgrading-from-c67-or-earlier">Upgrade &amp; backup</a> ·
-  <a href="https://github.com/zds-xiaoxin/xiaoxin-t3code/releases/tag/v1.0.2">Release notes</a> ·
+  <a href="https://github.com/zds-xiaoxin/xiaoxin-t3code/releases/tag/v1.0.7">Release notes</a> ·
   <a href="#download-and-first-open">First open</a> ·
   <a href="README.zh-CN.md">简体中文</a>
 </p>
@@ -49,12 +49,23 @@ A small capsule floats above the composer and shows where the agent is: three to
 
 ### Know which account has quota left
 
-Each Claude login gets its own card, so two accounts never blur into one number. **Resets this week** shows when every limit comes back, and the gap between running out and the next reset.
+Every account gets its own card, four to a row: what is left, and up to two limit bars. Green, orange and red show whether it will last until the reset. Accounts from the same provider sit together, and you can drag the cards into your own order. **Resets this week** shows when every limit comes back.
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="assets/quota-en-dark.gif">
-  <img src="assets/quota-en-light.gif" width="100%" alt="Quota cards for four accounts and the Resets this week timeline, with a hovered row highlighting its card.">
+  <source media="(prefers-color-scheme: dark)" srcset="assets/quota-en-dark.webp">
+  <img src="assets/quota-en-light.webp" width="100%" alt="Four quota cards in a row, each with its remaining share and limit bars, above the Resets this week timeline.">
 </picture>
+
+### Finish work from the sidebar
+
+Hover a task under **Needs my attention** to mark it done, archive it or stop it, without opening the chat. Click its status dot to move it to done or remind me later. Finished tasks collect under **Done today**.
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/inbox-en-dark.webp">
+    <img src="assets/inbox-en-light.webp" width="60%" alt="A sidebar task with done, archive and more buttons, and its status menu: in progress, needs me, done and remind me later.">
+  </picture>
+</p>
 
 ### Stats from the first turn
 

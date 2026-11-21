@@ -17,7 +17,7 @@
 <p align="center">
   <a href="https://github.com/zds-xiaoxin/xiaoxin-t3code/releases/latest"><b>下载 macOS 版（Apple 芯片）</b></a> ·
   <a href="#从-c67-或更早版本升级">升级与备份</a> ·
-  <a href="https://github.com/zds-xiaoxin/xiaoxin-t3code/releases/tag/v1.0.2">更新说明</a> ·
+  <a href="https://github.com/zds-xiaoxin/xiaoxin-t3code/releases/tag/v1.0.7">更新说明</a> ·
   <a href="#下载与首次打开">首次打开</a> ·
   <a href="README.md">English</a>
 </p>
@@ -49,12 +49,23 @@ T3 星尘版是给你已经在用的 AI 编码助手（比如 Claude 和 Codex�
 
 ### 知道哪个账号还有额度
 
-每个 Claude 登录都有自己的一张卡，两个账号不会混成一个数字。「这周的重置」时间轴显示每个限额什么时候恢复，以及额度用完、下次重置前的那段空档。
+每个账号一张卡，一排四张：还剩多少，最多两条额度条。绿色、橙色、红色表示能不能撑到重置。同一家的账号排在一起，也可以拖动卡片按自己的习惯排序。「这周的重置」时间轴显示每个限额什么时候恢复。
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="assets/quota-zh-dark.gif">
-  <img src="assets/quota-zh-light.gif" width="100%" alt="四个账号的额度卡和「这周的重置」时间轴，悬停某一行时对应的卡片被描边。">
+  <source media="(prefers-color-scheme: dark)" srcset="assets/quota-zh-dark.webp">
+  <img src="assets/quota-zh-light.webp" width="100%" alt="一排四张额度卡，每张显示剩余比例和额度条，下方是「这周的重置」时间轴。">
 </picture>
+
+### 在侧栏直接收尾
+
+鼠标放到「待我处理」里的任务上，就能标记完成、归档或停止，不用点进对话。点左边的状态圆点，可以改成已完成或稍后提醒。完成的任务收在「今天已完成」里。
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/inbox-zh-dark.webp">
+    <img src="assets/inbox-zh-light.webp" width="60%" alt="侧栏任务上的完成、归档、更多按钮，以及状态菜单：进行中、待我处理、已完成、稍后提醒。">
+  </picture>
+</p>
 
 ### 第一轮就有统计
 
