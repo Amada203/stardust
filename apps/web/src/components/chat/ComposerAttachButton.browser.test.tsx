@@ -11,7 +11,7 @@ describe("ComposerAttachButton", () => {
     const focusComposer = vi.fn();
 
     await using screen = await render(
-      <GTProvider locale="zh" translations={{ zh, en: {} }}>
+      <GTProvider locale="zh" translations={{ zh, en: {} } as never}>
         <TooltipProvider>
           <ComposerAttachButton
             addComposerAttachments={addComposerAttachments}
@@ -41,7 +41,7 @@ describe("ComposerAttachButton", () => {
     const focusComposer = vi.fn();
 
     await using screen = await render(
-      <GTProvider locale="zh" translations={{ zh, en: {} }}>
+      <GTProvider locale="zh" translations={{ zh, en: {} } as never}>
         <TooltipProvider>
           <ComposerAttachButton
             addComposerAttachments={addComposerAttachments}
@@ -82,7 +82,7 @@ describe("ComposerAttachButton", () => {
     const focusComposer = vi.fn();
 
     await using screen = await render(
-      <GTProvider locale="zh" translations={{ zh, en: {} }}>
+      <GTProvider locale="zh" translations={{ zh, en: {} } as never}>
         <TooltipProvider>
           <ComposerAttachButton
             addComposerAttachments={addComposerAttachments}
@@ -103,7 +103,7 @@ describe("ComposerAttachButton", () => {
     await vi.waitFor(() => expect(focusComposer).toHaveBeenCalledOnce());
 
     await screen.rerender(
-      <GTProvider locale="zh" translations={{ zh, en: {} }}>
+      <GTProvider locale="zh" translations={{ zh, en: {} } as never}>
         <TooltipProvider>
           <ComposerAttachButton
             addComposerAttachments={addComposerAttachments}

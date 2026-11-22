@@ -56,7 +56,7 @@ export function SimilarThreadsHint({
     { spotlight: true },
   );
   const matches =
-    search.error || search.query !== query || !query || dismissed
+    search.failed || search.query !== query || !query || dismissed
       ? []
       : rankSimilarThreads(threads, search.matches, current, project);
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- listens for Escape while the non-modal hint is visible without taking focus from the composer

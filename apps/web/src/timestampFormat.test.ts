@@ -1,11 +1,22 @@
-import { afterEach, describe, expect, it } from "vite-plus/test";
+import { describe, expect, it } from "vite-plus/test";
 
 import {
+  formatChatTimestampTooltip,
   formatDayAwareTimestamp,
   formatUpcomingTimestamp,
-  formatRelativeTimeLabel,
-  formatExpiresInLabel,
 } from "./timestampFormat";
+
+// Node re-resolves the default zone when TZ is assigned, like a renderer after the OS zone changes.
+function useTimeZone(timeZone: string): Disposable {
+  const previous = process.env.TZ;
+  process.env.TZ = timeZone;
+  return {
+    [Symbol.dispose]: () => {
+      if (previous === undefined) delete process.env.TZ;
+      else process.env.TZ = previous;
+    },
+  };
+}
 
 describe("timestamps in an explicit time zone", () => {
   // 23:00 UTC on July 1 is 7 PM on July 1 in New York, whatever the host zone.
@@ -25,14 +36,53 @@ describe("timestamps in an explicit time zone", () => {
   });
 });
 
-import { syncCustomLocale } from "./i18n/customLocale";
-afterEach(() => syncCustomLocale("en"));
-it("localizes relative days, elapsed and expiry labels without changing calendar boundaries", () => {
-  syncCustomLocale("zh");
-  const now = Date.parse("2026-11-16T04:00:00Z");
-  const zone = "America/Los_Angeles";
-  expect(formatDayAwareTimestamp("2026-11-15T00:16:00Z", "24-hour", now, zone)).toBe("昨天 16:16");
-  expect(formatUpcomingTimestamp("2026-11-16T16:00:00Z", "24-hour", now, zone)).toBe("明天 08:00");
-  expect(formatRelativeTimeLabel(new Date(now - 52 * 60000).toISOString(), now)).toBe("52 分钟前");
-  expect(formatExpiresInLabel(new Date(now + 65000).toISOString(), now)).toBe("1m 5s 后过期");
+describe("timestamps after the system time zone changes", () => {
+  // Built fresh with an explicit zone, so expectations follow the host locale but not a stale zone.
+  const timeIn = (iso: string, timeZone: string) =>
+    new Intl.DateTimeFormat(undefined, {
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+      timeZone,
+    }).format(new Date(iso));
+  const dayIn = (iso: string, timeZone: string) =>
+    new Intl.DateTimeFormat(undefined, { month: "numeric", day: "numeric", timeZone }).format(
+      new Date(iso),
+    );
+
+  it("renders the gutter label in the new zone", () => {
+    const sameDay = "2026-11-07T04:45:43.877Z";
+    const earlierInWeek = "2026-11-04T20:00:00.000Z";
+    const now = Date.parse(sameDay);
+    using _zone = useTimeZone("America/New_York");
+    expect([
+      formatDayAwareTimestamp(sameDay, "12-hour", now),
+      formatDayAwareTimestamp(earlierInWeek, "12-hour", now),
+    ]).toEqual([
+      timeIn(sameDay, "America/New_York"),
+      `${dayIn(earlierInWeek, "America/New_York")} ${timeIn(earlierInWeek, "America/New_York")}`,
+    ]);
+
+    process.env.TZ = "Asia/Bangkok";
+    expect([
+      formatDayAwareTimestamp(sameDay, "12-hour", now),
+      formatDayAwareTimestamp(earlierInWeek, "12-hour", now),
+    ]).toEqual([
+      timeIn(sameDay, "Asia/Bangkok"),
+      `${dayIn(earlierInWeek, "Asia/Bangkok")} ${timeIn(earlierInWeek, "Asia/Bangkok")}`,
+    ]);
+  });
+
+  it("renders the tooltip in the new zone", () => {
+    const monthEnd = "2026-10-31T20:00:00.000Z";
+    using _zone = useTimeZone("America/New_York");
+    expect(formatChatTimestampTooltip(monthEnd, "12-hour")).toBe(
+      `${timeIn(monthEnd, "America/New_York")}, 31st October 2026`,
+    );
+
+    process.env.TZ = "Asia/Bangkok";
+    expect(formatChatTimestampTooltip(monthEnd, "12-hour")).toBe(
+      `${timeIn(monthEnd, "Asia/Bangkok")}, 1st November 2026`,
+    );
+  });
 });

@@ -85,7 +85,7 @@ export async function render(
     return (
       <GTProvider
         locale={chinese ? "zh" : "en"}
-        translations={chinese ? { zh: chinese, en: {} } : { en: {} }}
+        translations={(chinese ? { zh: chinese, en: {} } : { en: {} }) as never}
       >
         {content}
       </GTProvider>

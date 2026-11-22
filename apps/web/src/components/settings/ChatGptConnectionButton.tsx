@@ -1,15 +1,14 @@
-import { useUiText } from "~/i18n/useUiText";
-
+import { useGT } from "gt-react";
 import type { ComponentProps } from "react";
 import { OpenAI } from "../Icons";
 import { Button } from "../ui/button";
 
 export function ChatGptConnectionButton({ children, ...props }: ComponentProps<typeof Button>) {
-  const uiText = useUiText();
+  const gt = useGT();
   return (
     <Button {...props}>
       <OpenAI className="size-4 shrink-0" aria-hidden="true" />
-      {children ?? uiText("Continue with ChatGPT")}
+      {children ?? gt("Continue with ChatGPT")}
     </Button>
   );
 }

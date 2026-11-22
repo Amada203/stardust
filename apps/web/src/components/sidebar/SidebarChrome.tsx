@@ -1,3 +1,4 @@
+import "./stardustWordmark.css";
 import { useUiText } from "~/i18n/useUiText";
 import { useMemoryProposalNotification } from "../settings/useMemoryProposalNotification";
 
@@ -9,6 +10,7 @@ import {
   ArrowRightIcon,
 } from "lucide-react";
 import type { ReactNode } from "react";
+import { T, useGT } from "gt-react";
 import { memo, useState } from "react";
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 import { useEnvironmentIdentificationMode, useLegacySidebarEnabled } from "../../hooks/useSettings";
@@ -22,8 +24,8 @@ import {
 } from "../../navigationHistory";
 import { primaryServerKeybindingsAtom } from "../../state/server";
 import { cn } from "../../lib/utils";
-import { usePullRequestsSupported } from "../../state/environments";
-import "./stardustWordmark.css";
+import { useIssuesSupported, usePullRequestsSupported } from "../../state/environments";
+
 import {
   resolveEnvironmentIdentificationPillLabel,
   resolveSidebarStageBackdropVariant,
@@ -44,6 +46,8 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { Popover, PopoverPopup, PopoverTitle, PopoverTrigger } from "../ui/popover";
 import { openRecentWork } from "../../workbenchNavigation";
 import { readPullRequestListPreferences } from "../pullRequest/pullRequestListPreferences";
+import { readIssueListPreferences } from "../issue/issueListPreferences";
+import { IssueGlyph } from "../issue/issuePresentation";
 import { isSidebarUtilityPage, useNavigateToMainApp } from "./mainAppLocation";
 import { SidebarThreadUndoNotice } from "./SidebarThreadUndoNotice";
 import { SidebarProviderUpdatePill } from "./SidebarProviderUpdatePill";
@@ -55,9 +59,9 @@ export const SidebarChromeHeader = memo(function SidebarChromeHeader({
 }: {
   isElectron: boolean;
 }) {
-  const uiText = useUiText();
   const stageLabel = useEnvironmentStageLabel();
   const environmentIdentificationMode = useEnvironmentIdentificationMode();
+  const gt = useGT();
   const backdropVariant = resolveSidebarStageBackdropVariant(
     stageLabel,
     environmentIdentificationMode,
@@ -78,7 +82,7 @@ export const SidebarChromeHeader = memo(function SidebarChromeHeader({
         <SidebarTrigger
           variant={backdropVariant ? "media-navigation" : "ghost"}
           className="relative top-auto translate-y-0"
-          aria-label={uiText("Toggle main sidebar")}
+          aria-label={gt("Toggle main sidebar")}
         />
       </div>
       <div className="relative top-[calc(-1*var(--liquid-sidebar-inset,0px))] z-10 flex h-8 min-w-0 flex-1 flex-wrap content-start items-center gap-x-2 overflow-hidden py-0.5">
@@ -137,7 +141,8 @@ function HistoryNavigationButton({
 }) {
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
   const enabled = useCanNavigateHistory(direction);
-  const label = direction === "back" ? "Go back" : "Go forward";
+  const gt = useGT();
+  const label = direction === "back" ? gt("Go back") : gt("Go forward");
   const shortcutLabel = shortcutLabelForCommand(
     keybindings,
     direction === "back" ? "navigation.back" : "navigation.forward",
@@ -171,11 +176,10 @@ function HistoryNavigationButton({
 }
 
 function SidebarBrand({ onBackdrop }: { onBackdrop: boolean }) {
-  const uiText = useUiText();
+  const gt = useGT();
   return (
     <Link
-      data-workbench-brand
-      aria-label={uiText("T3 Stardust home")}
+      aria-label={gt("T3 Code home")}
       className={cn(
         "relative z-10 ml-[calc(var(--workspace-titlebar-content-left)-var(--liquid-sidebar-inset,0px)+1px)] hidden h-7 w-fit min-w-0 shrink-0 items-center overflow-hidden rounded-md outline-hidden ring-ring focus-visible:ring-2 focus-visible:ring-inset md:flex",
         onBackdrop ? "text-white" : "text-foreground",
@@ -231,6 +235,7 @@ const SidebarUtilityMenu = memo(function SidebarUtilityMenu({
   const uiText = useUiText();
   const navigate = useNavigate();
   const navigateToMainApp = useNavigateToMainApp();
+  const gt = useGT();
   const { isMobile, setOpenMobile } = useSidebar();
   const isOnUtilityPage = useLocation({
     select: (location) => isSidebarUtilityPage(location.pathname),
@@ -239,6 +244,7 @@ const SidebarUtilityMenu = memo(function SidebarUtilityMenu({
   const legacySidebarEnabled = useLegacySidebarEnabled();
   const [moreOpen, setMoreOpen] = useState(false);
   useMemoryProposalNotification();
+  const issuesSupported = useIssuesSupported();
   const closeMobileSidebar = () => {
     if (isMobile) {
       setOpenMobile(false);
@@ -250,6 +256,10 @@ const SidebarUtilityMenu = memo(function SidebarUtilityMenu({
       to: "/pull-requests",
       search: readPullRequestListPreferences(),
     });
+  };
+  const handleIssuesClick = () => {
+    closeMobileSidebar();
+    void navigate({ to: "/issues", search: readIssueListPreferences() });
   };
   const handleSettingsClick = () => {
     closeMobileSidebar();
@@ -271,26 +281,35 @@ const SidebarUtilityMenu = memo(function SidebarUtilityMenu({
         <SidebarMenuItem className="min-w-0 flex-1">
           <SidebarMenuButton onClick={handleBackClick}>
             <ArrowLeftIcon />
-            <span>{uiText("Back")}</span>
+            <span>
+              <T>Back</T>
+            </span>
           </SidebarMenuButton>
         </SidebarMenuItem>
       ) : (
         <>
           <SidebarUtilityItem
             icon={<SettingsIcon />}
-            label={uiText("Settings")}
+            label={gt("Settings")}
             onClick={handleSettingsClick}
           />
           {!legacySidebarEnabled && pullRequestsSupported ? (
             <SidebarUtilityItem
               icon={<PullRequestGlyph.pullRequest />}
-              label={uiText("Pull Requests")}
+              label={gt("Pull requests")}
               onClick={handlePullRequestsClick}
+            />
+          ) : null}
+          {issuesSupported ? (
+            <SidebarUtilityItem
+              icon={<IssueGlyph.issue />}
+              label={gt("Issues", { $context: "sidebar link to the list of issues" })}
+              onClick={handleIssuesClick}
             />
           ) : null}
           <SidebarUtilityItem
             icon={<ChartNoAxesColumnIcon />}
-            label={uiText("Usage")}
+            label={gt("Usage")}
             onClick={handleUsageClick}
           />
           {archiveSlot}

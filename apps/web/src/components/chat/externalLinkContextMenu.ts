@@ -1,5 +1,8 @@
 import { uiText } from "~/i18n";
 import type { ContextMenuItem } from "@t3tools/contracts";
+import { msg } from "gt-react";
+
+import { m } from "../../i18n/messages";
 
 type ExternalLinkContextMenuAction =
   | "open-in-preview"
@@ -49,15 +52,19 @@ function externalLinkContextMenuItems(options: {
   readonly canOpenInPreview: boolean;
   readonly threadLinkAction?: "link-to-thread" | "unlink-from-thread" | undefined;
 }): readonly ContextMenuItem<ExternalLinkContextMenuAction>[] {
-  const items = options.canOpenInPreview
-    ? EXTERNAL_LINK_CONTEXT_MENU_ITEMS
-    : EXTERNAL_LINK_CONTEXT_MENU_ITEMS.filter((item) => item.id !== "open-in-preview");
+  const items = (
+    options.canOpenInPreview
+      ? EXTERNAL_LINK_CONTEXT_MENU_ITEMS
+      : EXTERNAL_LINK_CONTEXT_MENU_ITEMS.filter((item) => item.id !== "open-in-preview")
+  ).map((item) => ({ id: item.id, label: m(item.label) }));
   if (options.threadLinkAction === undefined) return items;
   return [
     {
       id: options.threadLinkAction,
       label:
-        options.threadLinkAction === "link-to-thread" ? "Link to thread" : "Unlink from thread",
+        options.threadLinkAction === "link-to-thread"
+          ? m(msg("Link to thread"))
+          : m(msg("Unlink from thread")),
     },
     ...items,
   ];

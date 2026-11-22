@@ -1,3 +1,5 @@
+import { m } from "~/i18n/messages";
+import { msg } from "gt-react";
 import { startTaskBoardNotifications } from "../taskBoardNotifications";
 import { threadRuntimeIsActive } from "@t3tools/client-runtime/state/shell";
 import {
@@ -148,13 +150,13 @@ export function startThreadNotifications(
     const active = activeThread();
     const title =
       kind === "completion"
-        ? "Thread completed"
+        ? m(msg("Thread completed"))
         : status === "approval"
-          ? "Approval needed"
+          ? m(msg("Approval needed"))
           : status === "limited"
-            ? "Usage limit reached"
+            ? m(msg("Usage limit reached"))
             : status === "failed"
-              ? "Thread failed"
+              ? m(msg("Thread failed"))
               : status === "request"
                 ? "Guest request"
                 : "Input needed";
@@ -223,7 +225,7 @@ export function startThreadNotifications(
             ),
         },
         actionProps: {
-          children: "Open thread",
+          children: m(msg("Open thread")),
           onClick: () => {
             toastManager.close(toastId);
             void router.navigate({

@@ -1,24 +1,16 @@
-import { uiText } from "~/i18n";
 import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import type { ClientSettings } from "@t3tools/contracts/settings";
+import { msg } from "gt-react";
 
 import completionUrl from "./assets/notification-completion.mp3";
 import inputUrl from "./assets/notification-input.mp3";
 
 type NotificationMode = ClientSettings["notificationMode"];
 export const NOTIFICATION_MODE_LABELS = {
-  get off() {
-    return uiText("Off");
-  },
-  get notifications() {
-    return uiText("Notifications only");
-  },
-  get sound() {
-    return uiText("Sound only");
-  },
-  get "notifications-and-sound"() {
-    return uiText("Notifications with sound");
-  },
+  off: msg("Off", { $context: "notification setting, no notifications or sound" }),
+  notifications: msg("Notifications only"),
+  sound: msg("Sound only"),
+  "notifications-and-sound": msg("Notifications with sound"),
 } satisfies Record<NotificationMode, string>;
 
 export function hasNotificationSound(mode: NotificationMode) {

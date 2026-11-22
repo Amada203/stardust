@@ -55,17 +55,8 @@ import { isModelPickerOpen } from "../../modelPickerVisibility";
 import { shortcutLabelForCommand } from "../../keybindings";
 import { useUsage, type EnvironmentUsageStatus } from "../../state/usage";
 import { useAtomCommand } from "../../state/use-atom-command";
-import {
-  enumerateDays,
-  enumerateHourStarts,
-  formatCount,
-  formatPercent,
-  formatTokens,
-  formatUsageContractMismatch,
-  formatUsd,
-  makeWindow,
-  usageSourceMessages,
-} from "@t3tools/shared/usageFormat";
+import { enumerateDays, enumerateHourStarts, formatCount, formatPercent, formatTokens, formatUsd, makeWindow, usageSourceMessages } from "@t3tools/shared/usageFormat";
+import { formatUsageContractMismatch } from "@t3tools/shared/usageFormatCopy";
 import { Button, InlineButton } from "../ui/button";
 import { ProviderInstanceIcon } from "../chat/ProviderInstanceIcon";
 import {

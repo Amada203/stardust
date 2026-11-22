@@ -1,4 +1,4 @@
-import { useUiText } from "~/i18n/useUiText";
+
 import { uiText } from "~/i18n";
 import { PermissionChecklist, PermissionContinueButton } from "../permissions/PermissionChecklist";
 import { usePermissionStatus } from "../permissions/usePermissionStatus";
@@ -22,20 +22,11 @@ import {
   captureSetupShortcutReady,
   type CaptureSetupStep,
 } from "./SnapShotSetupDialog.logic";
+import { msg, T, useGT, useMessages } from "gt-react";
 
 const SETUP_STEPS = [
-  {
-    id: "access",
-    get label() {
-      return uiText("Access");
-    },
-  },
-  {
-    id: "shortcut",
-    get label() {
-      return uiText("Shortcut");
-    },
-  },
+  { id: "access", label: msg("Access", { $context: "setup step: capture permissions" }) },
+  { id: "shortcut", label: msg("Shortcut", { $context: "setup step: keyboard shortcut" }) },
 ] as const;
 
 const GNOME_ACCESS_COPY = {
@@ -142,7 +133,8 @@ export function SnapShotSetupDialog({
   onClose: (completed: boolean) => Promise<void>;
   onLeaveStep: () => void;
 }) {
-  const uiText = useUiText();
+  const messages = useMessages();
+  const gt = useGT();
   const [step, setStep] = useState(() => captureSetupInitialStep(state, initialStep));
   const [checking, setChecking] = useState(false);
   const [checked, setChecked] = useState(false);
@@ -190,68 +182,73 @@ export function SnapShotSetupDialog({
   const accessCopy =
     state.message && !macPermissions
       ? {
-          title: uiText("Let's try that again"),
-          description: uiText("Couldn't check snapshots. Try again to continue."),
+          title: gt("Let's try that again"),
+          description: gt("Couldn't check snapshots. Try again to continue."),
         }
       : backend === "gnome" && extension
         ? extension.status === "enabled" && !accessReady
           ? {
-              title: uiText("Check capture access"),
-              description: uiText("The extension isn't ready yet. Try again in a moment."),
+              title: gt("Check capture access"),
+              description: gt("The extension isn't ready yet. Try again in a moment."),
             }
-          : GNOME_ACCESS_COPY[extension.status]
+          : {
+              title: messages(GNOME_ACCESS_COPY[extension.status].title),
+              description: messages(GNOME_ACCESS_COPY[extension.status].description),
+            }
         : helperBackend
           ? helper?.status === "ready"
             ? {
-                title: uiText("Capture is ready"),
-                description: uiText("Next, choose your shortcut."),
+                title: gt("Capture is ready"),
+                description: gt("Next, choose your shortcut."),
               }
             : helper?.status === "error"
               ? {
-                  title: uiText("Let's fix capture access"),
-                  description: uiText("Try reinstalling the capture helper, then check again."),
+                  title: gt("Let's fix capture access"),
+                  description: gt("Try reinstalling the capture helper, then check again."),
                 }
               : {
                   title:
                     helper?.status === "update-required"
-                      ? "Update the capture helper"
-                      : "Allow snapshots",
-                  description: uiText(
+                      ? gt("Update the capture helper")
+                      : gt("Allow snapshots"),
+                  description: gt(
                     "T3 Code's capture helper lets you capture other apps and return to your draft. It's included with T3 Code.",
                   ),
                 }
           : backend === "niri"
             ? {
-                title: uiText("Capture is ready"),
-                description: uiText("Next, choose your shortcut."),
+                title: gt("Capture is ready"),
+                description: gt("Next, choose your shortcut."),
               }
             : backend === "picker"
               ? {
-                  title: uiText("Choose a window each time"),
-                  description: uiText(
+                  title: gt("Choose a window each time"),
+                  description: gt(
                     "Your desktop doesn't support automatic capture. You'll choose the window to capture instead.",
                   ),
                 }
               : {
-                  title: uiText("Allow snapshots"),
+                  title: gt("Allow snapshots"),
                   description:
                     backend === "portal"
-                      ? "Your desktop may ask for permission when you first capture."
+                      ? gt("Your desktop may ask for permission when you first capture.")
                       : macPermissions
                         ? macPermissionsReady
-                          ? "Test a snapshot of the current window. If macOS asks to bypass its window picker, choose Allow. The test image is discarded."
-                          : "Allow each permission, then continue."
-                        : "Allow access when prompted to start capturing windows.",
+                          ? gt(
+                              "Test a snapshot of the current window. If macOS asks to bypass its window picker, choose Allow. The test image is discarded.",
+                            )
+                          : gt("Allow each permission, then continue.")
+                        : gt("Allow access when prompted to start capturing windows."),
                 };
-  const title = step === "access" ? accessCopy.title : "Choose your shortcut";
+  const title = step === "access" ? accessCopy.title : gt("Choose your shortcut");
   const description =
     step === "access"
       ? accessCopy.description
       : configShortcut
-        ? "Click the shortcut, then press the keys you want."
+        ? gt("Click the shortcut, then press the keys you want.")
         : state.mode === "portal"
-          ? "Choose your keys, then approve the permission prompt if asked."
-          : "Use both Shift keys, or record a different shortcut.";
+          ? gt("Choose your keys, then approve the permission prompt if asked.")
+          : gt("Use both Shift keys, or record a different shortcut.");
   const stepIndex = SETUP_STEPS.findIndex(({ id }) => id === step);
   const details = [
     ...new Set(
@@ -279,9 +276,13 @@ export function SnapShotSetupDialog({
       }}
     >
       <WizardPopup showCloseButton={!busy}>
-        <WizardHeader title={desktop ? `Set up snapshots for ${desktop}` : "Set up snapshots"}>
+        <WizardHeader
+          title={
+            desktop ? gt("Set up snapshots for {desktop}", { desktop }) : gt("Set up snapshots")
+          }
+        >
           <WizardSteps
-            steps={SETUP_STEPS.map((item) => item.label)}
+            steps={SETUP_STEPS.map((item) => messages(item.label))}
             currentStep={stepIndex}
             isStepDisabled={(index) => busy || index > stepIndex}
             onStepChange={(index) => {
@@ -305,7 +306,7 @@ export function SnapShotSetupDialog({
                     checked && !busy && !error ? "text-xs text-muted-foreground" : "sr-only"
                   }
                 >
-                  {checked && !busy && !error ? captureSetupCheckMessage(state) : null}
+                  {checked && !busy && !error ? captureSetupCheckMessage(state, messages) : null}
                 </p>
                 {macPermissions ? (
                   <PermissionChecklist
@@ -314,18 +315,18 @@ export function SnapShotSetupDialog({
                       {
                         id: "screenRecording",
                         icon: <MacScreenRecordingIcon className="size-8 shrink-0 drop-shadow-sm" />,
-                        title: uiText("Screen Recording"),
-                        description: uiText("Capture the window you're using."),
+                        title: gt("Screen Recording"),
+                        description: gt("Capture the window you're using."),
                         granted: macPermissions.screenRecording,
                         onAllow: () => void onAction("allow-screen-recording"),
                       },
                       {
                         id: "accessibility",
                         icon: <MacAccessibilityIcon className="size-8 shrink-0 drop-shadow-sm" />,
-                        title: uiText("Accessibility"),
+                        title: gt("Accessibility"),
                         description: includeAccessibility
-                          ? "Include text and controls from the captured app."
-                          : "Optional. Include text and controls from the captured app.",
+                          ? gt("Include text and controls from the captured app.")
+                          : gt("Optional. Include text and controls from the captured app."),
                         granted: macPermissions.accessibility,
                         onAllow: () => void onAction("allow-accessibility"),
                       },
@@ -344,7 +345,7 @@ export function SnapShotSetupDialog({
                     disabled={busy}
                     onClick={() => void onAction(installHelper)}
                   >
-                    {uiText("Reinstall helper")}
+                    <T>Reinstall helper</T>
                   </Button>
                 ) : null}
               </>
@@ -375,24 +376,26 @@ export function SnapShotSetupDialog({
                     disabled={busy}
                     onClick={() => void onAction("retry-shortcut")}
                   >
-                    {state.mode === "portal" ? uiText("Shortcut permissions") : uiText("Try again")}
+                    {state.mode === "portal" ? gt("Shortcut permissions") : gt("Try again")}
                   </Button>
                 ) : null}
               </div>
             )}
             {step === "shortcut" && !accessReady ? (
               <p role="alert" className="text-destructive">
-                {uiText("Capture needs attention. Go back to check access.")}
+                <T>Capture needs attention. Go back to check access.</T>
               </p>
             ) : null}
             {error ? (
               <p role="alert" className="text-destructive">
-                {uiText("Couldn't finish this step. Try again or check Advanced for help.")}
+                <T>Couldn't finish this step. Try again or check Advanced for help.</T>
               </p>
             ) : null}
             {details.length > 0 || (step === "access" && (backend === "gnome" || helperBackend)) ? (
               <details className="text-xs text-muted-foreground">
-                <summary className="cursor-pointer">{uiText("Advanced")}</summary>
+                <summary className="cursor-pointer">
+                  <T>Advanced</T>
+                </summary>
                 <div className="mt-3 space-y-3">
                   {details.map((detail) => (
                     <p key={detail} className="break-words">
@@ -400,7 +403,9 @@ export function SnapShotSetupDialog({
                     </p>
                   ))}
                   {step === "access" && (backend === "gnome" || helperBackend) ? (
-                    <p>{uiText("Included with T3 Code. No download needed.")}</p>
+                    <p>
+                      <T>Included with T3 Code. No download needed.</T>
+                    </p>
                   ) : null}
                   {step === "access" && backend === "gnome" && extension?.status === "enabled" ? (
                     <Button
@@ -409,7 +414,7 @@ export function SnapShotSetupDialog({
                       disabled={busy}
                       onClick={() => void onAction("disable-extension")}
                     >
-                      {uiText("Disable extension")}
+                      <T>Disable extension</T>
                     </Button>
                   ) : null}
                   {step === "access" && helperBackend && helper?.status !== "not-installed" ? (
@@ -419,7 +424,7 @@ export function SnapShotSetupDialog({
                       disabled={busy}
                       onClick={() => void onAction(removeHelper)}
                     >
-                      {uiText("Remove capture helper")}
+                      <T>Remove capture helper</T>
                     </Button>
                   ) : null}
                 </div>
@@ -430,11 +435,11 @@ export function SnapShotSetupDialog({
         <WizardFooter>
           {step !== "access" ? (
             <Button variant="ghost" disabled={busy} onClick={() => changeStep("access")}>
-              {uiText("Back")}
+              <T>Back</T>
             </Button>
           ) : null}
           <Button variant="ghost" disabled={busy} onClick={() => void onClose(false)}>
-            {wasEnabled ? uiText("Close") : uiText("Finish later")}
+            {wasEnabled ? gt("Close") : gt("Finish later")}
           </Button>
           {step === "access" ? (
             helperBackend && !accessReady && helper?.status !== "ready" ? (
@@ -446,14 +451,14 @@ export function SnapShotSetupDialog({
                 }
               >
                 {checking
-                  ? uiText("Checking…")
+                  ? gt("Checking…")
                   : busy
-                    ? uiText("Installing…")
+                    ? gt("Installing…")
                     : helper?.status === "error"
-                      ? uiText("Check again")
+                      ? gt("Check again")
                       : helper?.status === "update-required"
-                        ? uiText("Update helper")
-                        : uiText("Install helper")}
+                        ? gt("Update helper")
+                        : gt("Install helper")}
               </Button>
             ) : backend === "gnome" && !accessReady && extension?.status !== "enabled" ? (
               <Button
@@ -468,20 +473,20 @@ export function SnapShotSetupDialog({
                 }
               >
                 {checking
-                  ? uiText("Checking…")
+                  ? gt("Checking…")
                   : busy
                     ? install
-                      ? uiText("Installing…")
+                      ? gt("Installing…")
                       : enable
-                        ? uiText("Enabling…")
-                        : uiText("Working…")
+                        ? gt("Enabling…")
+                        : gt("Working…")
                     : install
                       ? extension?.status === "update-required"
-                        ? uiText("Update extension")
-                        : uiText("Install extension")
+                        ? gt("Update extension")
+                        : gt("Install extension")
                       : enable
-                        ? uiText("Enable extension")
-                        : uiText("Check again")}
+                        ? gt("Enable extension")
+                        : gt("Check again")}
               </Button>
             ) : (
               <PermissionContinueButton
@@ -492,14 +497,14 @@ export function SnapShotSetupDialog({
                 }}
               >
                 {busy
-                  ? uiText("Working…")
+                  ? gt("Working…")
                   : macPermissions
-                    ? uiText("Test capture and continue")
+                    ? gt("Test capture and continue")
                     : backend === "direct"
-                      ? uiText("Allow capture")
+                      ? gt("Allow capture")
                       : !accessReady && !macPermissions
-                        ? uiText("Try again")
-                        : uiText("Continue")}
+                        ? gt("Try again")
+                        : gt("Continue")}
               </PermissionContinueButton>
             )
           ) : !configShortcut ? (
@@ -511,11 +516,7 @@ export function SnapShotSetupDialog({
                 if (!shortcutChanged || (await onSaveShortcut())) await onClose(true);
               }}
             >
-              {busy
-                ? uiText("Saving…")
-                : shortcutChanged
-                  ? uiText("Save and finish")
-                  : uiText("Done")}
+              {busy ? gt("Saving…") : shortcutChanged ? gt("Save and finish") : gt("Done")}
             </Button>
           ) : null}
         </WizardFooter>

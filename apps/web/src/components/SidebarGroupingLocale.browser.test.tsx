@@ -9,7 +9,7 @@ import { ProjectSortMenu } from "./LegacySidebar";
 it("persists the model grouping ID when the display language is Chinese", async () => {
   const select = vi.fn();
   await using screen = await render(
-    <GTProvider locale="zh" translations={{ zh, en: {} }}>
+    <GTProvider locale="zh" translations={{ zh, en: {} } as never}>
       <ProjectSortMenu
         grouping="category"
         onGroupingChange={select}

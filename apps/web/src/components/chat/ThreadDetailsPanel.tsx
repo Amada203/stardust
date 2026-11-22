@@ -369,6 +369,7 @@ export function ThreadDetailsPanel(props: ThreadDetailsPanelProps) {
                           showActions={visible.gitActions}
                           showChanges={visible.changes}
                           gitCwd={props.gitCwd}
+                          name={props.activeProjectName ?? ""}
                           workspaceMutationId={props.workspaceMutationId}
                           activeThreadRef={activeThreadRef}
                           {...(props.draftId ? { draftId: props.draftId } : {})}

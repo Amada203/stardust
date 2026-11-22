@@ -123,7 +123,7 @@ function setup() {
   return { storage, [Symbol.dispose]: () => local[Symbol.dispose]() };
 }
 const probe = (projection = fixture(), canCompact = true, enabled = false) => (
-  <GTProvider locale="zh" translations={{ zh, en: {} }}>
+  <GTProvider locale="zh" translations={{ zh, en: {} } as never}>
     <ContextHandoffNotice
       environmentId={env}
       thread={shell}

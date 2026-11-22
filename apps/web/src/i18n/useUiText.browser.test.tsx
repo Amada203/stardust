@@ -19,7 +19,7 @@ const Copy = memo(function Copy() {
 
 it("changes custom labels through GT without remounting a memoized composer", async () => {
   const tree = (locale: string) => (
-    <GTProvider locale={locale} translations={{ zh, en: {} }}>
+    <GTProvider locale={locale} translations={{ zh, en: {} } as never}>
       <Copy />
     </GTProvider>
   );
@@ -52,7 +52,7 @@ function TimeAndStatusCopy() {
 }
 it("renders Chinese status copy and local hour labels with the real bucket minute, including midnight, on a live locale change", async () => {
   const tree = (locale: string) => (
-    <GTProvider locale={locale} translations={{ zh, en: {} }}>
+    <GTProvider locale={locale} translations={{ zh, en: {} } as never}>
       <TimeAndStatusCopy />
     </GTProvider>
   );
@@ -101,7 +101,7 @@ function ConversationCopy() {
 }
 it("renders Chinese conversation, task, sidebar, composer and plugin system copy while retaining command originals", async () => {
   await using screen = await render(
-    <GTProvider locale="zh" translations={{ zh, en: {} }}>
+    <GTProvider locale="zh" translations={{ zh, en: {} } as never}>
       <ConversationCopy />
     </GTProvider>,
     { router: false },

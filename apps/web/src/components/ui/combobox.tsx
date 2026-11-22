@@ -106,15 +106,11 @@ function ComboboxInput({
 
 function ComboboxSearchInput(props: React.ComponentProps<typeof ComboboxInput>) {
   return (
-    <div className="min-w-0 shrink-0 px-3 pt-2.5">
-      <div
-        className="relative -translate-y-px border-b border-border/70 pb-1.5 transition-[background-color,border-color,box-shadow] duration-180 ease-out focus-within:border-foreground/22"
-        data-slot="combobox-search"
-      >
+    <label className="block min-w-0 shrink-0 cursor-text px-3 pt-2.5">
+      <div className="relative -translate-y-px border-b border-border/70 pb-1.5 transition-colors focus-within:border-ring">
         <SearchIcon
           aria-hidden="true"
-          className="pointer-events-none absolute top-1.5 left-0 size-4 shrink-0 text-muted-foreground/55 transition-colors duration-180"
-          data-slot="combobox-search-icon"
+          className="pointer-events-none absolute top-1.5 left-0 size-4 shrink-0 text-muted-foreground/55"
         />
         <ComboboxInput
           {...props}
@@ -124,7 +120,7 @@ function ComboboxSearchInput(props: React.ComponentProps<typeof ComboboxInput>) 
           unstyled
         />
       </div>
-    </div>
+    </label>
   );
 }
 

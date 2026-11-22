@@ -55,7 +55,7 @@ function projection(finished: boolean) {
 
 function bar(data: ReturnType<typeof projection>, locale: "en" | "zh", disconnected = false) {
   return (
-    <GTProvider locale={locale} translations={{ zh, en: {} }}>
+    <GTProvider locale={locale} translations={{ zh, en: {} } as never}>
       <SessionStatsBar
         projection={data}
         environmentId={env}

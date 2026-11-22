@@ -1384,6 +1384,7 @@ describe("resolveSidebarRouteReveal", () => {
   it("widens the scope for a newly opened thread the scope hides", () => {
     expect(
       resolveSidebarRouteReveal({
+        routeKeyInPlace: false,
         reveal: { observedKey: "environment-test:other", pendingKey: null },
         routeKey: hiddenKey,
         isSearching: false,
@@ -1397,6 +1398,7 @@ describe("resolveSidebarRouteReveal", () => {
     // A remount's once-per-mount scroll must keep the scope the user chose.
     expect(
       resolveSidebarRouteReveal({
+        routeKeyInPlace: false,
         reveal: { observedKey: hiddenKey, pendingKey: null },
         routeKey: hiddenKey,
         isSearching: false,
@@ -1412,6 +1414,7 @@ describe("resolveSidebarRouteReveal", () => {
     const reveal = { observedKey: hiddenKey, pendingKey: null };
     const resolve = (routeKey: string) =>
       resolveSidebarRouteReveal({
+        routeKeyInPlace: false,
         reveal,
         routeKey,
         isSearching: false,
@@ -1425,6 +1428,7 @@ describe("resolveSidebarRouteReveal", () => {
   it("holds a pending reveal without widening while searching", () => {
     expect(
       resolveSidebarRouteReveal({
+        routeKeyInPlace: false,
         reveal: { observedKey: hiddenKey, pendingKey: hiddenKey },
         routeKey: hiddenKey,
         isSearching: true,

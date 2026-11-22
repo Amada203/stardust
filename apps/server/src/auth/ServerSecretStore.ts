@@ -212,81 +212,81 @@ export const make = Effect.gen(function* () {
 
   const set: ServerSecretStore["Service"]["set"] = (name, value) =>
     resolveSecretPath(name).pipe(
-      Effect.flatMap((secretPath) =>
-        crypto.uuidV4().pipe(
-          Effect.mapError(
-            (cause) =>
-              new SecretStoreTemporaryPathError({
-                resource: `secret ${name}`,
-                cause,
-              }),
-          ),
-          Effect.flatMap((uuid) => {
-            const tempPath = `${secretPath}.${uuid}.tmp`;
-            return Effect.gen(function* () {
-              yield* fileSystem.writeFile(tempPath, value);
-              yield* fileSystem.chmod(tempPath, 0o600);
-              yield* fileSystem.rename(tempPath, secretPath);
-              yield* fileSystem.chmod(secretPath, 0o600);
-            }).pipe(
-              Effect.catch((cause) =>
-                fileSystem.remove(tempPath).pipe(
-                  Effect.ignore,
-                  Effect.flatMap(() =>
-                    Effect.fail(
-                      new SecretStorePersistError({
-                        resource: `secret ${name}`,
-                        cause,
-                      }),
-                    ),
-                  ),
+      Effect.flatMap((secretPath) => setAt(name, secretPath, value)),
+      Effect.withSpan("ServerSecretStore.set"),
+    );
+
+  const setAt = (name: string, secretPath: string, value: Uint8Array) =>
+    crypto.uuidV4().pipe(
+      Effect.mapError(
+        (cause) =>
+          new SecretStoreTemporaryPathError({
+            resource: `secret ${name}`,
+            cause,
+          }),
+      ),
+      Effect.flatMap((uuid) => {
+        const tempPath = `${secretPath}.${uuid}.tmp`;
+        return Effect.gen(function* () {
+          yield* fileSystem.writeFile(tempPath, value);
+          yield* fileSystem.chmod(tempPath, 0o600);
+          yield* fileSystem.rename(tempPath, secretPath);
+          yield* fileSystem.chmod(secretPath, 0o600);
+        }).pipe(
+          Effect.catch((cause) =>
+            fileSystem.remove(tempPath).pipe(
+              Effect.ignore,
+              Effect.flatMap(() =>
+                Effect.fail(
+                  new SecretStorePersistError({
+                    resource: `secret ${name}`,
+                    cause,
+                  }),
                 ),
               ),
-            );
-          }),
-        ),
-      ),
-      Effect.withSpan("ServerSecretStore.set"),
+            ),
+          ),
+        );
+      }),
     );
 
   // `link` publishes the fully written temp file under the final name, or fails with
   // AlreadyExists, so a concurrent reader never observes a partially written secret.
   const create: ServerSecretStore["Service"]["create"] = (name, value) =>
-    resolveSecretPath(name).pipe(
-      Effect.flatMap((secretPath) =>
-        crypto.uuidV4().pipe(
+    resolveSecretPath(name).pipe(Effect.flatMap((secretPath) => createAt(name, secretPath, value)));
+
+  const createAt = (name: string, secretPath: string, value: Uint8Array) =>
+    crypto.uuidV4().pipe(
+      Effect.mapError(
+        (cause) =>
+          new SecretStoreTemporaryPathError({
+            resource: `secret ${name}`,
+            cause,
+          }),
+      ),
+      Effect.flatMap((uuid) => {
+        const tempPath = `${secretPath}.${uuid}.tmp`;
+        return Effect.gen(function* () {
+          yield* Effect.scoped(
+            Effect.gen(function* () {
+              const file = yield* fileSystem.open(tempPath, { flag: "wx", mode: 0o600 });
+              yield* file.writeAll(value);
+              yield* file.sync;
+            }),
+          );
+          yield* fileSystem.chmod(tempPath, 0o600);
+          yield* fileSystem.link(tempPath, secretPath);
+        }).pipe(
+          Effect.ensuring(fileSystem.remove(tempPath).pipe(Effect.ignore)),
           Effect.mapError(
             (cause) =>
-              new SecretStoreTemporaryPathError({
+              new SecretStorePersistError({
                 resource: `secret ${name}`,
                 cause,
               }),
           ),
-          Effect.flatMap((uuid) => {
-            const tempPath = `${secretPath}.${uuid}.tmp`;
-            return Effect.gen(function* () {
-              yield* Effect.scoped(
-                Effect.gen(function* () {
-                  const file = yield* fileSystem.open(tempPath, { flag: "wx", mode: 0o600 });
-                  yield* file.writeAll(value);
-                  yield* file.sync;
-                }),
-              );
-              yield* fileSystem.chmod(tempPath, 0o600);
-              yield* fileSystem.link(tempPath, secretPath);
-            }).pipe(
-              Effect.ensuring(fileSystem.remove(tempPath).pipe(Effect.ignore)),
-              Effect.mapError(
-                (cause) =>
-                  new SecretStorePersistError({
-                    resource: `secret ${name}`,
-                    cause,
-                  }),
-              ),
-            );
-          }),
-        ),
-      ),
+        );
+      }),
     );
 
   const getOrCreateRandom: ServerSecretStore["Service"]["getOrCreateRandom"] = (name, bytes) =>

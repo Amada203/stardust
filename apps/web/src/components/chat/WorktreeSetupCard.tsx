@@ -1,11 +1,8 @@
-import { useUiText } from "~/i18n/useUiText";
-import { uiText } from "~/i18n";
-import {
-  worktreeSetupStageLabel,
-  type WorktreeSetupSnapshot,
-  type WorktreeSetupStage,
-} from "@t3tools/contracts";
-import { formatDuration } from "@t3tools/shared/orchestrationTiming";
+import { T, msg, useGT, useMessages } from "gt-react";
+import { type MessageResolver } from "~/i18n/messages";
+import { type WorktreeSetupSnapshot, type WorktreeSetupStage } from "@t3tools/contracts";
+import { worktreeSetupStageLabel } from "@t3tools/client-runtime/contract-labels";
+import { formatDuration } from "@t3tools/shared/orchestrationTimingCopy";
 import {
   CheckIcon,
   CircleAlertIcon,
@@ -43,8 +40,9 @@ function elapsedMs(startedAt: string | null, endMs: number): number | null {
 
 /** Mounted only while setup runs, so finished setups never subscribe to the tick. */
 function LiveElapsed({ startedAt }: { startedAt: string }) {
+  const m = useMessages();
   const elapsed = elapsedMs(startedAt, useNowSecond());
-  return elapsed === null ? null : <>{formatDuration(elapsed)}</>;
+  return elapsed === null ? null : <>{formatDuration(elapsed, m)}</>;
 }
 
 /** A finished duration, or a ticking one while setup is still running. */
@@ -57,10 +55,11 @@ function Elapsed({
   endedAt: string | null;
   live: boolean;
 }) {
+  const m = useMessages();
   if (!startedAt) return null;
   if (endedAt) {
     const elapsed = elapsedMs(startedAt, Date.parse(endedAt));
-    return elapsed === null ? null : <>{formatDuration(elapsed)}</>;
+    return elapsed === null ? null : <>{formatDuration(elapsed, m)}</>;
   }
   return live ? <LiveElapsed startedAt={startedAt} /> : null;
 }
@@ -110,26 +109,29 @@ function ShimmerOverlay({ children }: { children: ReactNode }) {
     </span>
   );
 }
-function headerLabel(snapshot: WorktreeSetupSnapshot): string {
+
+function headerLabel(snapshot: WorktreeSetupSnapshot, resolve: MessageResolver): string {
   switch (snapshot.phase) {
     case "running":
-      return uiText("Setting up worktree…");
+      return resolve(msg("Setting up worktree…"));
     case "done":
       return snapshot.stages.some((stage) => stage.status === "failed")
-        ? "Worktree ready, setup script failed"
-        : "Worktree ready";
+        ? resolve(msg("Worktree ready, setup script failed"))
+        : resolve(msg("Worktree ready"));
     case "failed":
-      return uiText("Worktree setup failed");
+      return resolve(msg("Worktree setup failed"));
     case "cancelled":
-      return uiText("Worktree setup cancelled");
+      return resolve(msg("Worktree setup cancelled"));
   }
 }
+
 function SetupHeaderRow({ snapshot }: { snapshot: WorktreeSetupSnapshot }) {
+  const m = useMessages();
   const running = snapshot.phase === "running";
   const failed = snapshot.phase === "failed";
   const finishedWithFailedStage =
     snapshot.phase === "done" && snapshot.stages.some((stage) => stage.status === "failed");
-  const text = headerLabel(snapshot);
+  const text = headerLabel(snapshot, m);
   const tone = failed
     ? "text-destructive-foreground"
     : finishedWithFailedStage
@@ -169,14 +171,16 @@ function StageRow({
   setupEndedAt: string | null;
   scriptName: string | null;
 }) {
+  const gt = useGT();
+  const m = useMessages();
   const label =
-    stage.id === "setup-script" && scriptName ? scriptName : worktreeSetupStageLabel(stage.id);
+    stage.id === "setup-script" && scriptName ? scriptName : worktreeSetupStageLabel(stage.id, m);
   const running = stage.status === "running";
   const trailing =
     stage.status === "pending"
       ? null
       : stage.status === "skipped"
-        ? (stage.detail ?? "skipped")
+        ? (stage.detail ?? gt("skipped", { $context: "worktree setup stage status" }))
         : stage.id === "checkout" && running && stage.percent !== null
           ? `${stage.percent}%`
           : stage.detail;
@@ -248,12 +252,13 @@ function OutputTail({ lines, failed }: { lines: ReadonlyArray<string>; failed: b
 }
 
 function SetupDetails({ snapshot }: { snapshot: WorktreeSetupSnapshot }) {
-  const uiText = useUiText();
   return (
     <dl className="mt-1 mb-1.5 ml-8 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
       {snapshot.branch ? (
         <>
-          <dt className="text-foreground/80">Branch</dt>
+          <dt className="text-foreground/80">
+            <T>Branch</T>
+          </dt>
           <dd className="min-w-0 font-mono">
             <MiddleTruncate value={snapshot.branch} className="flex" />
           </dd>
@@ -261,7 +266,9 @@ function SetupDetails({ snapshot }: { snapshot: WorktreeSetupSnapshot }) {
       ) : null}
       {snapshot.baseRef ? (
         <>
-          <dt className="text-foreground/80">{uiText("Base")}</dt>
+          <dt className="text-foreground/80">
+            <T context="git base branch">Base</T>
+          </dt>
           <dd className="min-w-0 font-mono">
             <MiddleTruncate value={snapshot.baseRef} className="flex" />
           </dd>
@@ -269,7 +276,9 @@ function SetupDetails({ snapshot }: { snapshot: WorktreeSetupSnapshot }) {
       ) : null}
       {snapshot.worktreePath ? (
         <>
-          <dt className="text-foreground/80">{uiText("Path")}</dt>
+          <dt className="text-foreground/80">
+            <T>Path</T>
+          </dt>
           <dd className="min-w-0 font-mono">
             <MiddleTruncate value={snapshot.worktreePath} className="flex" />
           </dd>
@@ -277,21 +286,25 @@ function SetupDetails({ snapshot }: { snapshot: WorktreeSetupSnapshot }) {
       ) : null}
       {snapshot.setupScript ? (
         <>
-          <dt className="text-foreground/80">{uiText("Setup")}</dt>
+          <dt className="text-foreground/80">
+            <T context="setup script">Setup</T>
+          </dt>
           <dd className="truncate font-mono">{snapshot.setupScript.command}</dd>
         </>
       ) : null}
     </dl>
   );
 }
+
 function CollapsedSummaryRow({ snapshot }: { snapshot: WorktreeSetupSnapshot }) {
+  const m = useMessages();
   const status: WorktreeSetupStage["status"] =
     snapshot.phase === "failed" || snapshot.phase === "cancelled"
       ? "failed"
       : snapshot.stages.some((stage) => stage.id === "setup-script" && stage.status === "failed")
         ? "failed"
         : "done";
-  const label = headerLabel(snapshot);
+  const label = headerLabel(snapshot, m);
   return (
     <WorkLogRow
       data-worktree-setup-stage="summary"
@@ -320,7 +333,7 @@ export function WorktreeSetupCard({
 }: WorktreeSetupCardProps & {
   embedded?: boolean;
 }) {
-  const uiText = useUiText();
+  const gt = useGT();
   const running = snapshot.phase === "running";
   const [detailsOpen, setDetailsOpen] = useState(false);
   const setupStage = snapshot.stages.find((stage) => stage.id === "setup-script");
@@ -331,8 +344,9 @@ export function WorktreeSetupCard({
     setupStage !== undefined &&
     (setupStage.status === "failed" ||
       (setupStage.status === "running" && setupStage.tail.length > 0));
+
   return (
-    <section aria-label={uiText("Worktree setup")} data-worktree-setup-phase={snapshot.phase}>
+    <section aria-label={gt("Worktree setup")} data-worktree-setup-phase={snapshot.phase}>
       {showHeader ? <SetupHeaderRow snapshot={snapshot} /> : null}
       {collapsed ? (
         <CollapsedSummaryRow snapshot={snapshot} />
@@ -367,24 +381,24 @@ export function WorktreeSetupCard({
           onClick={() => setDetailsOpen((open) => !open)}
         >
           {detailsOpen ? <ChevronDownIcon aria-hidden /> : <ChevronRightIcon aria-hidden />}
-          Details
+          <T>Details</T>
         </Button>
         {showTerminal ? (
           <Button type="button" size="xs" variant="ghost-muted" onClick={onOpenTerminal}>
             <TerminalIcon aria-hidden />
-            Open terminal
+            <T>Open terminal</T>
           </Button>
         ) : null}
         {onWorkLocally ? (
           <Button type="button" size="xs" variant="ghost-muted" onClick={onWorkLocally}>
             <LaptopIcon aria-hidden />
-            Work locally
+            <T>Work locally</T>
           </Button>
         ) : null}
         {onCancel && running ? (
           <Button type="button" size="xs" variant="ghost-muted" onClick={onCancel}>
             <XIcon aria-hidden />
-            Cancel
+            <T>Cancel</T>
           </Button>
         ) : null}
       </div>

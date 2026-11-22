@@ -110,7 +110,7 @@ it("uses only a simulated consume command for confirmation, high-balance cancel,
   mock.refreshFailed = false;
   mock.outcome = "reset";
   const view = (high = false, multi = false) => (
-    <GTProvider locale="zh" translations={{ zh, en: {} }}>
+    <GTProvider locale="zh" translations={{ zh, en: {} } as never}>
       <Harness high={high} multi={multi} />
     </GTProvider>
   );

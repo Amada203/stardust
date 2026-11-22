@@ -5,10 +5,8 @@ import type {
   ServerProviderResetCredits,
   ServerProviderUsageWindow,
 } from "@t3tools/contracts";
-import {
-  resetCreditChoices as rawChoices,
-  type ResetCreditChoice,
-} from "@t3tools/shared/usageLimits";
+import type { ResetCreditChoice } from "@t3tools/shared/usageLimits";
+import { resetCreditChoices as rawChoices } from "@t3tools/shared/usageLimitsCopy";
 
 export const RESET_EARLY_REMAINING_PERCENT = 50;
 export function resetEffectLabel(label: string) {

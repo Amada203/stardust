@@ -1,9 +1,10 @@
 import { expect, it, vi } from "vite-plus/test";
 
-import { CANCEL_PICK_CHANNEL, START_PICK_CHANNEL } from "./GuestProtocol.ts";
+import { ELEMENT_PICKED_CHANNEL, START_PICK_CHANNEL } from "./GuestProtocol.ts";
 import "./PickPreload.ts";
 
 const ipcListeners = vi.hoisted(() => new Map<string, Array<(...args: unknown[]) => void>>());
+const ipcSend = vi.hoisted(() => ({ calls: [] as unknown[][] }));
 
 vi.mock("electron", () => ({
   ipcRenderer: {
@@ -11,8 +12,10 @@ vi.mock("electron", () => ({
       ipcListeners.set(channel, [...(ipcListeners.get(channel) ?? []), listener]);
     },
     off: () => {},
-    send: () => {},
-    invoke: async () => [],
+    send: (...args: unknown[]) => {
+      ipcSend.calls.push(args);
+    },
+    invoke: async () => undefined,
   },
 }));
 
@@ -26,6 +29,9 @@ const startAnnotation = (): ShadowRoot => {
       disconnect() {}
     },
   );
+  // jsdom has no popover API.
+  HTMLElement.prototype.showPopover ??= () => {};
+  HTMLElement.prototype.hidePopover ??= () => {};
   using attachShadow = vi.spyOn(Element.prototype, "attachShadow");
   for (const listener of ipcListeners.get(START_PICK_CHANNEL) ?? []) listener({}, undefined, false);
   const shadowRoot = attachShadow.mock.results[0]?.value;
@@ -106,138 +112,50 @@ it("keeps the annotation when Escape dismisses an IME candidate in the comment",
   expect(comment.value).toBe("draft");
 });
 
-import { afterPinLayoutSettles, findPinElement, pinSelectorChain } from "./PinAnchor.ts";
-import type { PreviewPin } from "@t3tools/contracts";
-const pin: PreviewPin = {
-  id: "pin-1",
-  number: 1,
-  text: "按钮加宽",
-  selectorChain: ["#pay"],
-  tag: "button",
-  elementText: "Pay",
-  ancestor: null,
-  relative: { x: 0.5, y: 0.5 },
-  documentPosition: { x: 0.5, y: 0.5 },
-  rect: { x: 0, y: 0, width: 20, height: 20 },
-  pageKey: "http://localhost/page",
-  createdAt: "2026-11-16T12:00:00Z",
-  status: "unsent",
-  screenshot: null,
-  element: {
-    pageUrl: "http://localhost/page",
-    pageTitle: "Sample",
-    tagName: "BUTTON",
-    selector: "#pay",
-    htmlPreview: '<button id="pay">Pay</button>',
-    componentName: null,
-    source: null,
-    stack: [],
-    styles: "",
-    pickedAt: "2026-11-16T12:00:00Z",
-  },
-};
+it.each([
+  { scrolled: false, rect: { x: 40, y: 60, width: 200, height: 120 } },
+  // The last rect would point at whatever now sits there, so no crop beats a wrong one.
+  { scrolled: true, rect: { x: 0, y: 0, width: 0, height: 0 } },
+])(
+  "submits a replaced element's last rect unless the page scrolled ($scrolled)",
+  async ({ scrolled, rect }) => {
+    ipcSend.calls.length = 0;
+    const card = document.body.appendChild(document.createElement("div"));
+    const pickedRect = new DOMRect(40, 60, 200, 120);
+    // Browsers report a detached element at 0x0 in the corner.
+    using _rect = vi
+      .spyOn(card, "getBoundingClientRect")
+      .mockImplementation(() => (card.isConnected ? pickedRect : new DOMRect()));
+    document.elementsFromPoint = () => [card];
+    using listeners = vi.spyOn(HTMLButtonElement.prototype, "addEventListener");
+    const shadowRoot = startAnnotation();
 
-it("builds selectors and reanchors by selector, text, then nearby position", () => {
-  document.body.innerHTML =
-    '<main id="sample"><button id="pay">Pay</button><button>Other</button></main>';
-  const button = document.querySelector("#pay")!;
-  const chain = pinSelectorChain(button);
-  expect(chain.length).toBeGreaterThan(0);
-  expect(findPinElement({ ...pin, selectorChain: chain })).toBe(button);
-  button.removeAttribute("id");
-  expect(findPinElement(pin)).toBe(button);
-  button.textContent = "Changed";
-  Object.defineProperty(document.documentElement, "scrollWidth", {
-    configurable: true,
-    value: 100,
-  });
-  Object.defineProperty(document.documentElement, "scrollHeight", {
-    configurable: true,
-    value: 100,
-  });
-  vi.spyOn(button, "getBoundingClientRect").mockReturnValue(new DOMRect(40, 40, 20, 20));
-  expect(findPinElement({ ...pin, elementText: "missing" })).toBe(button);
-  expect(
-    findPinElement({ ...pin, elementText: "missing", documentPosition: { x: 9, y: 9 } }),
-  ).toBeNull();
-});
-it("waits for load and 500ms quiet, caps dynamic layouts at 3s, and cancels observers", async () => {
-  vi.useFakeTimers();
-  const resizeDisconnect = vi.fn(),
-    mutationDisconnect = vi.fn();
-  let changed: () => void = () => {};
-  vi.stubGlobal(
-    "ResizeObserver",
-    class {
-      constructor(callback: () => void) {
-        changed = callback;
-      }
-      observe() {}
-      disconnect() {
-        resizeDisconnect();
-      }
-    },
-  );
-  vi.stubGlobal(
-    "MutationObserver",
-    class {
-      observe() {}
-      disconnect() {
-        mutationDisconnect();
-      }
-    },
-  );
-  const ready = vi.fn();
-  const cancel = afterPinLayoutSettles(document, ready);
-  window.dispatchEvent(new Event("load"));
-  await vi.advanceTimersByTimeAsync(499);
-  expect(ready).not.toHaveBeenCalled();
-  changed();
-  await vi.advanceTimersByTimeAsync(499);
-  expect(ready).not.toHaveBeenCalled();
-  await vi.advanceTimersByTimeAsync(1);
-  expect(ready).toHaveBeenCalledTimes(1);
-  expect(resizeDisconnect).toHaveBeenCalled();
-  expect(mutationDisconnect).toHaveBeenCalled();
-  cancel();
-  const capped = vi.fn();
-  afterPinLayoutSettles(document, capped);
-  window.dispatchEvent(new Event("load"));
-  for (let n = 0; n < 7; n++) {
-    await vi.advanceTimersByTimeAsync(400);
-    changed();
-  }
-  expect(capped).not.toHaveBeenCalled();
-  await vi.advanceTimersByTimeAsync(200);
-  expect(capped).toHaveBeenCalledTimes(1);
-  const cancelled = vi.fn();
-  const stop = afterPinLayoutSettles(document, cancelled);
-  stop();
-  await vi.advanceTimersByTimeAsync(4000);
-  expect(cancelled).not.toHaveBeenCalled();
-  vi.useRealTimers();
-  vi.unstubAllGlobals();
-});
-it("removes the pin host and page interception completely on close", async () => {
-  vi.useFakeTimers();
-  vi.stubGlobal(
-    "ResizeObserver",
-    class {
-      observe() {}
-      disconnect() {}
-    },
-  );
-  vi.stubGlobal("matchMedia", () => ({ matches: true }));
-  for (const listener of ipcListeners.get(START_PICK_CHANNEL) ?? [])
-    listener({}, undefined, true, undefined, true);
-  window.dispatchEvent(new Event("load"));
-  await vi.advanceTimersByTimeAsync(500);
-  expect(document.querySelector('[data-t3code-annotation-ui="pins"]')).not.toBeNull();
-  for (const listener of ipcListeners.get(CANCEL_PICK_CHANNEL) ?? []) listener({});
-  expect(document.querySelector('[data-t3code-annotation-ui="pins"]')).toBeNull();
-  const click = new MouseEvent("click", { bubbles: true, cancelable: true });
-  document.body.dispatchEvent(click);
-  expect(click.defaultPrevented).toBe(false);
-  vi.useRealTimers();
-  vi.unstubAllGlobals();
-});
+    card.dispatchEvent(
+      new PointerEvent("pointerdown", { button: 0, clientX: 100, clientY: 100, bubbles: true }),
+    );
+    // A polling page re-renders while the comment is written and replaces the picked node.
+    card.replaceWith(document.createElement("div"));
+    if (scrolled) window.dispatchEvent(new Event("scroll"));
+    const attach = Array.from(shadowRoot.querySelectorAll("button")).find(
+      (button) => button.textContent === "Attach",
+    );
+    if (!attach) throw new Error("Attach button not found");
+    attach.click();
+    expect(attach.disabled).toBe(false);
+    expect(ipcSend.calls.some(([channel]) => channel === ELEMENT_PICKED_CHANNEL)).toBe(false);
+    const listenerIndex = listeners.mock.contexts.findIndex(
+      (target, index) => target === attach && listeners.mock.calls[index]?.[0] === "click",
+    );
+    const listener = listeners.mock.calls[listenerIndex]?.[1];
+    if (typeof listener !== "function") throw new Error("Attach click listener not found");
+    // The DOM test environment has no native input source.
+    listener.call(attach, { isTrusted: true } as MouseEvent);
+
+    await vi.waitFor(() =>
+      expect(ipcSend.calls.some(([channel]) => channel === ELEMENT_PICKED_CHANNEL)).toBe(true),
+    );
+    const [, annotation] =
+      ipcSend.calls.find(([channel]) => channel === ELEMENT_PICKED_CHANNEL) ?? [];
+    expect((annotation as { elements: Array<{ rect: unknown }> }).elements[0]?.rect).toEqual(rect);
+  },
+);

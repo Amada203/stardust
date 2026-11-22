@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useUiText } from "~/i18n/useUiText";
 import { workspaceAreaProps } from "../lib/workspaceFocus";
+import { T, useGT } from "gt-react";
 import { MessageSquareDashedIcon, PlusIcon } from "lucide-react";
 
 import { openCommandPalette } from "../commandPaletteBus";
@@ -14,6 +15,7 @@ import { SidebarInset } from "./ui/sidebar";
 import { WorkspacePageHeader } from "./WorkspacePageHeader";
 
 export function NoProjectsHero() {
+  const gt = useGT();
   const text = useUiText();
   const navigate = useNavigate();
   const [starting, setStarting] = useState(false);
@@ -34,16 +36,18 @@ export function NoProjectsHero() {
         <Empty size="hero" className="flex-1">
           <div className="w-full max-w-2xl px-8 py-12">
             <EmptyHeader className="max-w-none">
-              <EmptyTitle>{text("Start here")}</EmptyTitle>
+              <EmptyTitle>
+                <T>What should we work on?</T>
+              </EmptyTitle>
               <EmptyDescription>
                 {scratchTargetEnvironmentId === null
-                  ? text("Add a project to start your first thread.")
-                  : text("Pick a folder as a project, or start a conversation without one.")}
+                  ? gt("Add a project to start your first thread.")
+                  : gt("Add a project, or start without one.")}
               </EmptyDescription>
               <div className="mt-6 flex justify-center gap-2">
                 <Button size="sm" onClick={() => openCommandPalette({ open: "add-project" })}>
                   <PlusIcon className="size-4" />
-                  {text("Add project")}
+                  <T>Add project</T>
                 </Button>
                 {scratchTargetEnvironmentId === null ? null : (
                   <Button

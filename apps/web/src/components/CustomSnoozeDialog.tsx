@@ -1,6 +1,5 @@
-import { useUiText } from "~/i18n/useUiText";
-
 import { useEffect, useId, useState } from "react";
+import { T, useGT } from "gt-react";
 import { useNavigate } from "@tanstack/react-router";
 import { create } from "zustand";
 import {
@@ -65,7 +64,7 @@ export function CustomSnoozeDialogHost() {
 }
 
 function CustomSnoozeDialog() {
-  const uiText = useUiText();
+  const gt = useGT();
   const id = useId();
   const navigate = useNavigate();
   const [initial] = useState(() => new Date(Date.now() + 3_600_000));
@@ -97,8 +96,8 @@ function CustomSnoozeDialog() {
             if (!snoozedUntil) {
               setError(
                 mode === "date"
-                  ? "Choose a valid date and time in the future."
-                  : "Enter a positive duration.",
+                  ? gt("Choose a valid date and time in the future.")
+                  : gt("Enter a positive duration."),
               );
               return;
             }
@@ -106,15 +105,17 @@ function CustomSnoozeDialog() {
           }}
         >
           <DialogHeader>
-            <DialogTitle>{uiText("Custom snooze")}</DialogTitle>
+            <DialogTitle>
+              <T>Custom snooze</T>
+            </DialogTitle>
             <DialogDescription>
-              {uiText("Choose when snoozed threads return to your inbox.")}
+              <T>Choose when snoozed threads return to your inbox.</T>
             </DialogDescription>
           </DialogHeader>
           <DialogPanel>
             <div className="flex flex-col gap-4">
               <ToggleGroup
-                aria-label={uiText("Schedule type")}
+                aria-label={gt("Schedule type")}
                 className="w-full *:flex-1"
                 value={[mode]}
                 onValueChange={(next) => {
@@ -123,14 +124,20 @@ function CustomSnoozeDialog() {
                   setError(null);
                 }}
               >
-                <Toggle value="date">{uiText("Date and time")}</Toggle>
-                <Toggle value="duration">{uiText("Duration")}</Toggle>
+                <Toggle value="date">
+                  <T>Date and time</T>
+                </Toggle>
+                <Toggle value="duration">
+                  <T>Duration</T>
+                </Toggle>
               </ToggleGroup>
               <div className="flex flex-col gap-4">
                 {mode === "date" ? (
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <div className="flex min-w-0 flex-col gap-2">
-                      <Label htmlFor={`${id}-date`}>{uiText("Date")}</Label>
+                      <Label htmlFor={`${id}-date`}>
+                        <T context="calendar date">Date</T>
+                      </Label>
                       <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
                         <PopoverTrigger
                           render={
@@ -148,7 +155,7 @@ function CustomSnoozeDialog() {
                           })}
                           <CalendarIcon className="size-4 text-muted-foreground" />
                         </PopoverTrigger>
-                        <PopoverPopup align="start" aria-label={uiText("Choose snooze date")}>
+                        <PopoverPopup align="start" aria-label={gt("Choose snooze date")}>
                           <Calendar
                             mode="single"
                             required
@@ -166,7 +173,7 @@ function CustomSnoozeDialog() {
                       </Popover>
                     </div>
                     <Label className="flex min-w-0 flex-col items-stretch" htmlFor={`${id}-time`}>
-                      {uiText("Time")}
+                      <T context="time of day">Time</T>
                       <Input
                         nativeInput
                         id={`${id}-time`}
@@ -193,18 +200,20 @@ function CustomSnoozeDialog() {
                         setError(null);
                       }}
                     >
-                      <Label htmlFor={`${id}-amount`}>{uiText("Snooze for")}</Label>
+                      <Label htmlFor={`${id}-amount`}>
+                        <T>Snooze for</T>
+                      </Label>
                       <NumberFieldGroup>
-                        <NumberFieldDecrement aria-label={uiText("Decrease duration")} />
+                        <NumberFieldDecrement aria-label={gt("Decrease duration")} />
                         <NumberFieldInput required />
-                        <NumberFieldIncrement aria-label={uiText("Increase duration")} />
+                        <NumberFieldIncrement aria-label={gt("Increase duration")} />
                       </NumberFieldGroup>
                     </NumberField>
                     <Label className="flex min-w-0 flex-col items-stretch" htmlFor={`${id}-unit`}>
-                      {uiText("Unit")}
+                      <T context="unit of time">Unit</T>
                       <Select
                         value={unit}
-                        items={{ minutes: "Minutes", hours: "Hours", days: "Days" }}
+                        items={{ minutes: gt("Minutes"), hours: gt("Hours"), days: gt("Days") }}
                         onValueChange={(value) => {
                           if (value === "minutes" || value === "hours" || value === "days")
                             setUnit(value);
@@ -215,9 +224,15 @@ function CustomSnoozeDialog() {
                           <SelectValue />
                         </SelectTrigger>
                         <SelectPopup>
-                          <SelectItem value="minutes">{uiText("Minutes")}</SelectItem>
-                          <SelectItem value="hours">{uiText("Hours")}</SelectItem>
-                          <SelectItem value="days">{uiText("Days")}</SelectItem>
+                          <SelectItem value="minutes">
+                            <T>Minutes</T>
+                          </SelectItem>
+                          <SelectItem value="hours">
+                            <T>Hours</T>
+                          </SelectItem>
+                          <SelectItem value="days">
+                            <T>Days</T>
+                          </SelectItem>
                         </SelectPopup>
                       </Select>
                     </Label>
@@ -245,12 +260,14 @@ function CustomSnoozeDialog() {
               }}
             >
               <Settings2Icon />
-              Edit snooze options
+              <T>Edit snooze options</T>
             </Button>
             <Button type="button" variant="outline" onClick={() => finish(null)}>
-              {uiText("Cancel")}
+              <T>Cancel</T>
             </Button>
-            <Button type="submit">{uiText("Snooze")}</Button>
+            <Button type="submit">
+              <T context="verb">Snooze</T>
+            </Button>
           </DialogFooter>
         </form>
       </DialogPopup>

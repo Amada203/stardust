@@ -3,9 +3,9 @@ import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
+import { applyLanguage } from "../../i18n/messages.ts";
 import * as DesktopClientSettings from "../../settings/DesktopClientSettings.ts";
 import * as DesktopSnapShot from "../../snapShot/DesktopSnapShot.ts";
-import * as DesktopApplicationMenu from "../../window/DesktopApplicationMenu.ts";
 import * as IpcChannels from "../channels.ts";
 import * as DesktopIpc from "../DesktopIpc.ts";
 
@@ -26,12 +26,8 @@ export const setClientSettings = DesktopIpc.makeIpcMethod({
   handler: Effect.fn("desktop.ipc.clientSettings.set")(function* (settings) {
     const clientSettings = yield* DesktopClientSettings.DesktopClientSettings;
     const snapShot = yield* DesktopSnapShot.DesktopSnapShot;
-    const previous = yield* clientSettings.get.pipe(Effect.orElseSucceed(() => Option.none()));
     yield* clientSettings.set(settings);
     yield* snapShot.configure(settings);
-    if (Option.getOrNull(previous)?.language !== settings.language) {
-      const menu = yield* Effect.serviceOption(DesktopApplicationMenu.DesktopApplicationMenu);
-      if (Option.isSome(menu)) yield* menu.value.configure;
-    }
+    yield* applyLanguage(settings.language);
   }),
 });

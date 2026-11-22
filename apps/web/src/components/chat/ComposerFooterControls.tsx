@@ -1,6 +1,6 @@
-import { useUiText } from "~/i18n/useUiText";
 import type { ModelSelection, ProviderInstanceId, RuntimeMode } from "@t3tools/contracts";
 import { createModelSelection } from "@t3tools/shared/model";
+import { T, useGT, useMessages } from "gt-react";
 import { type ComponentProps, memo, useId, useRef, useState } from "react";
 
 import { Menu as MenuPrimitive } from "@base-ui/react/menu";
@@ -11,18 +11,13 @@ import { focusRequestedPermission, useComposerMenuProps } from "./composerEventS
 import { ComposerPrimaryActions } from "./ComposerPrimaryActions";
 import { resolveModelPickerSelectedModel } from "./ModelPickerContent";
 import { ProviderModelPicker } from "./ProviderModelPicker";
-import { runtimeModeConfig } from "./runtimeModeConfig";
+import { resolveRuntimeModeOption, runtimeModeConfig } from "./runtimeModeConfig";
 import { useComposerMenuState } from "./useComposerMenuState";
-import "./composerV9.css";
 
 export type RuntimeModeOption = {
   mode: RuntimeMode;
   disabledReason?: string;
 } & (typeof runtimeModeConfig)[RuntimeMode];
-const supervisedRuntimeModeOption: RuntimeModeOption = {
-  mode: "approval-required" as const,
-  ...runtimeModeConfig["approval-required"],
-};
 export const ComposerFooterModeControls = memo(function ComposerFooterModeControls(props: {
   runtimeMode: RuntimeMode;
   runtimeModeOptions: ReadonlyArray<RuntimeModeOption>;
@@ -34,7 +29,8 @@ export const ComposerFooterModeControls = memo(function ComposerFooterModeContro
   emphasized?: boolean;
   onRuntimeModeChange: (mode: RuntimeMode) => void;
 }) {
-  const text = useUiText();
+  const gt = useGT();
+  const messages = useMessages();
   const size = props.size ?? "sm";
   const accessDisplay = props.accessDisplay ?? "label";
   const composerFloatingLayerProps = useComposerMenuProps();
@@ -42,13 +38,12 @@ export const ComposerFooterModeControls = memo(function ComposerFooterModeContro
   const permissionsChipRef = useRef<HTMLButtonElement>(null);
   const runtimeModeOption =
     props.runtimeModeOptions.find((option) => option.mode === props.runtimeMode) ??
-    supervisedRuntimeModeOption;
+    resolveRuntimeModeOption("approval-required", messages);
   const RuntimeModeIcon = runtimeModeOption.icon;
   // The chip opens the same Permissions toggle used in the model picker and the overflow menu.
-  const mode = text(runtimeModeOption.label);
-  const permissionsTooltip = text("Permissions: {mode}. {description}", {
-    mode,
-    description: text(runtimeModeOption.description),
+  const permissionsTooltip = gt("Permissions: {mode}. {description}", {
+    mode: runtimeModeOption.label,
+    description: runtimeModeOption.description,
   });
   const permissionsChip = (
     <Menu
@@ -66,11 +61,10 @@ export const ComposerFooterModeControls = memo(function ComposerFooterModeContro
                 <ComposerControl
                   ref={permissionsChipRef}
                   data-composer-shortcut="composer.mode"
-                  data-composer-perm-mode={props.runtimeMode}
                   size={size}
                   // Mirrors the model trigger's trailing pe-1 so the gaps on both sides of the chip match.
                   className="ps-1.5"
-                  aria-label={text("Permissions: {mode}", { mode })}
+                  aria-label={gt("Permissions: {mode}", { mode: runtimeModeOption.label })}
                 />
               }
             />
@@ -86,7 +80,7 @@ export const ComposerFooterModeControls = memo(function ComposerFooterModeContro
             data-composer-control-label
             className={accessDisplay === "icon" ? "sr-only" : undefined}
           >
-            {mode}
+            {runtimeModeOption.label}
           </span>
         </TooltipTrigger>
         <TooltipPopup side="top">{permissionsTooltip}</TooltipPopup>
@@ -115,19 +109,22 @@ export function ComposerPermissionsSection(props: {
   runtimeModeOptions: ReadonlyArray<RuntimeModeOption>;
   onRuntimeModeChange: (mode: RuntimeMode) => void;
 }) {
+  const gt = useGT();
+  const messages = useMessages();
   // Hover or keyboard focus previews a mode's name and description before a pick.
-  const text = useUiText();
   const [previewMode, setPreviewMode] = useState<RuntimeMode | null>(null);
   const shownMode = previewMode ?? props.runtimeMode;
   const shown =
     props.runtimeModeOptions.find((option) => option.mode === shownMode) ??
-    supervisedRuntimeModeOption;
+    resolveRuntimeModeOption("approval-required", messages);
   const descriptionId = useId();
   return (
     <div data-composer-permissions className="grid w-72 gap-1.5 px-2 py-1.5">
-      <div className="font-medium text-muted-foreground text-xs">{text("Permissions")}</div>
+      <div className="font-medium text-muted-foreground text-xs">
+        <T>Permissions</T>
+      </div>
       <MenuPrimitive.RadioGroup
-        aria-label={text("Permissions")}
+        aria-label={gt("Permissions")}
         value={props.runtimeMode}
         onValueChange={(value: RuntimeMode) => {
           if (value !== props.runtimeMode) props.onRuntimeModeChange(value);
@@ -154,8 +151,8 @@ export function ComposerPermissionsSection(props: {
               key={option.mode}
               value={option.mode}
               disabled={option.disabledReason !== undefined}
-              label={text(option.label)}
-              aria-label={text(option.label)}
+              label={option.label}
+              aria-label={option.label}
               aria-describedby={`${descriptionId}-${option.mode}`}
               closeOnClick
               onPointerEnter={() => setPreviewMode(option.mode)}
@@ -172,7 +169,7 @@ export function ComposerPermissionsSection(props: {
       {/* Static per-mode descriptions for screen readers; the preview below is visual only. */}
       {props.runtimeModeOptions.map((option) => (
         <span key={option.mode} id={`${descriptionId}-${option.mode}`} className="sr-only">
-          {text(option.disabledReason ?? option.description)}
+          {option.disabledReason ?? option.description}
         </span>
       ))}
       <div className="grid gap-0.5" aria-hidden="true">
@@ -183,11 +180,11 @@ export function ComposerPermissionsSection(props: {
               : "text-muted-foreground text-sm"
           }
         >
-          {text(shown.label)}
+          {shown.label}
         </span>
         {/* Two lines reserved so the menu does not shift while you preview modes. */}
         <span className="min-h-8 text-muted-foreground text-xs leading-4">
-          {text(shown.disabledReason ?? shown.description)}
+          {shown.disabledReason ?? shown.description}
         </span>
       </div>
     </div>
@@ -264,6 +261,7 @@ export const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryA
     </>
   );
 });
+
 /**
  * The composer's model picker. It owns the single- and multi-model selection
  * handlers so they are cached against the selection state, not rebuilt on
@@ -289,9 +287,7 @@ export function ComposerModelPicker({
   readonly onProviderModelSelect: (
     instanceId: ProviderInstanceId,
     model: string,
-    options?: {
-      focusComposer?: boolean;
-    },
+    options?: { focusComposer?: boolean },
   ) => void;
 }) {
   const { instanceEntries, modelOptionsByInstance } = pickerProps;

@@ -15,7 +15,7 @@ it("retains earlier failures and exposes selectable original commands only on ex
     status: i === 0 ? "failed" : i === 6 ? "no_matches" : i === 7 ? "running" : "completed",
   }));
   await using screen = await render(
-    <GTProvider locale="zh" translations={{ zh, en: {} }}>
+    <GTProvider locale="zh" translations={{ zh, en: {} } as never}>
       <TaskCommandActivities activities={activities} onOpenFile={undefined} />
     </GTProvider>,
   );

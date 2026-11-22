@@ -18,7 +18,7 @@ function Probe({ onResult }: { readonly onResult: (missing: string[]) => void })
 it("ships every Chinese catalog entry in the GT translation file", async () => {
   let missing: string[] = [];
   await using _screen = await render(
-    <GTProvider locale="zh" translations={{ zh, en: {} }}>
+    <GTProvider locale="zh" translations={{ zh, en: {} } as never}>
       <Probe onResult={(found) => (missing = found)} />
     </GTProvider>,
     { router: false },
