@@ -9315,6 +9315,7 @@ export const zhCN: Readonly<Record<string, string>> = {
   "small item (<50 MB)": "个小项（<50 MB）",
   "small items (<50 MB)": "个小项（<50 MB）",
   "Follow the open thread's account": "跟随当前会话的账号",
+  "Sort by remaining quota": "按剩余额度排序",
   "{count} failure": "{count} 条失败",
   "{count} failures": "{count} 条失败",
   "{count} more step": "另外 {count} 步",
