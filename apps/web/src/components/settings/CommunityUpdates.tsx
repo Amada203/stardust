@@ -12,6 +12,7 @@ import { Button } from "../ui/button";
 import { Switch } from "../ui/switch";
 import { toastManager } from "../ui/toast";
 import { SettingsRow } from "./settingsLayout";
+import { StardustStatsRow } from "./StardustStats";
 import { openDesktopUpdateReleaseNotes } from "../desktopUpdate.toast";
 const openPage = (url: string) => {
   void openDesktopUpdateReleaseNotes(window.desktopBridge, url);
@@ -42,7 +43,7 @@ export function CommunityUpdateCoordinator() {
     state.markNotified(release.tag);
     toastManager.add({
       type: "info",
-      title: uiText("Stardust Community C{number} is available", { number: release.number }),
+      title: uiText("T3 Stardust {tag} is available", { tag: release.tag }),
       description: (
         <>
           <span>
@@ -98,14 +99,15 @@ export function CommunityUpdateSettings() {
           />
         }
       />
+      <StardustStatsRow />
       <SettingsRow
         title={uiText("Stardust Community · Mac Apple Silicon")}
         description={
           state.status === "checking"
             ? uiText("Checking…")
             : state.status === "available"
-              ? uiText("C{version} available · {action}", {
-                  version: state.release?.number,
+              ? uiText("{version} available · {action}", {
+                  version: state.release?.tag,
                   action:
                     state.mode === "custom"
                       ? uiText("Review and merge source changes as needed")

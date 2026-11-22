@@ -55,9 +55,9 @@ describe("community release boundaries", () => {
     expect(communityReleaseNumber("xiaoxin-c48-windows-20261112")).toBeNull();
   });
   it("ignores arbitrary response URLs and builds repository-bound links", () => {
-    const r = parseCommunityRelease(stardustRelease("1.2.1"));
-    expect(r.url).toBe("https://github.com/zds-xiaoxin/xiaoxin-t3code/releases/tag/v1.2.1");
-    expect(r.compareUrl).toContain("compare/v1.2.0...v1.2.1");
+    const r = parseCommunityRelease(stardustRelease("1.2.2"));
+    expect(r.url).toBe("https://github.com/zds-xiaoxin/xiaoxin-t3code/releases/tag/v1.2.2");
+    expect(r.compareUrl).toContain("compare/v1.2.1...v1.2.2");
     const legacy = parseCommunityRelease(release());
     expect(legacy.url).toBe(
       "https://github.com/zds-xiaoxin/xiaoxin-t3code/releases/tag/xiaoxin-c48-macos-20261112",
@@ -84,7 +84,7 @@ describe("community checks", () => {
   it("defaults to standard mode, performs credential-free checks, and finds a newer release", async () => {
     const fetch = vi
       .fn()
-      .mockResolvedValue({ ok: true, json: async () => stardustRelease("1.2.1") });
+      .mockResolvedValue({ ok: true, json: async () => stardustRelease("1.2.2") });
     vi.stubGlobal("fetch", fetch);
     const { useCommunityUpdates: s } = await import("./communityUpdates");
     expect(s.getState().mode).toBe("standard");

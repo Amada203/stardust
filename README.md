@@ -11,7 +11,7 @@
 
 <p align="center">
   <a href="https://www.xiaoxin666.cn/stardust"><strong>产品官网与积木工坊</strong></a> ·
-  <a href="#download">下载 v1.2.0</a> ·
+  <a href="#download">下载 v1.2.1</a> ·
   <a href="#highlights">核心亮点</a> ·
   <a href="#workshop">星尘积木工坊</a> ·
   <a href="#compare">与官方对比</a> ·
@@ -32,7 +32,7 @@
   <img src="assets/community/v1.2.0/hero-light.jpg" alt="T3 星尘版 v1.2苹果主题主界面：任务步骤卡、星舰推理滑块与底部令牌缓存弹窗" width="100%" />
 </picture>
 
-<p align="center"><sub>T3 星尘版 v1.2.0苹果主题浅 / 深色自适应宣传图 · 演示数据全部本地生成，不涉及任何真实隐私信息。</sub></p>
+<p align="center"><sub>T3 星尘版 v1.2 苹果主题浅 / 深色自适应宣传图 · 演示数据全部本地生成，不涉及任何真实隐私信息。</sub></p>
 
 ---
 
@@ -40,7 +40,7 @@
 
 ## 核心亮点与动效实录
 
-**v1.2.0** 基于官方 T3 Code 截至 2026-11-21 的最新代码（`0.1.11`，提交 `f9b19a7f85`）深度定制，正式更名为 **`T3 Stardust.app`**，重点打磨推理交互、用量可视化、界面流畅度与新版本提醒。
+**v1.2** 基于官方 T3 Code 截至 2026-11-21 的最新代码（`0.1.11`，提交 `f9b19a7f85`）深度定制，正式更名为 **`T3 Stardust.app`**，重点打磨推理交互、用量可视化、界面流畅度与新版本提醒。
 
 ### 1. V18「星舰发射栈」流体推理强度滑块（离屏贴图 + 静止 2 秒停止重绘）
 
@@ -134,8 +134,10 @@
   - 关闭 **自动检查社区更新**。
 - 检查更新不发送聊天、账号或项目数据。
 
-### 使用统计
-- 星尘版**没有新增**任何统计，也没有自己的统计服务器。
+### 使用统计与隐私
+- **星尘版活跃人数（v1.2.1 起，默认开启）**：为了知道有多少人在用，应用每天最多发送一次：随机安装 ID、星尘版版本号、系统和芯片类型，发到 `xiaoxin666.cn/api/stardust`。不发送聊天、账号、项目或文件路径；网站接口不读取也不转发你的 IP，服务器只保存安装 ID 的再哈希值，按天去重，90 天后删除。
+- 第一次启动新版本会弹出说明，可以直接点「关闭统计」；之后在 **设置 → 关于 →「计入星尘版活跃用户」** 随时开关。关闭后不再发送。
+- 网站 [xiaoxin666.cn/stardust](https://www.xiaoxin666.cn/stardust) 只公开「近 7 天活跃设备数」一个数字。
 - 上游 T3 Code 自带的匿名使用统计在星尘版里**默认关闭**，未开启时不记录、不缓存、不发送任何数据。
 - 如愿意帮助上游改进，可在 **设置 → 关于 →「共享匿名使用数据」** 手动开启：只发送功能使用、应用版本和操作系统信息（不含提示词、文件或路径）到上游项目的 `ingest.t3.codes`；关闭后立即停止发送并丢弃未发送的事件。
 
@@ -147,7 +149,7 @@
 
 > **系统要求**：macOS 13 及以上 · Apple Silicon（M1 / M2 / M3 / M4）
 
-- **安装包下载**：[T3-Stardust-v1.2.0-macOS-arm64.zip](https://github.com/zds-xiaoxin/xiaoxin-t3code/releases/download/v1.2.0/T3-Stardust-v1.2.0-macOS-arm64.zip) · [Releases 发行页 & SHA256SUMS.txt](https://github.com/zds-xiaoxin/xiaoxin-t3code/releases/tag/v1.2.0) · [详细发行说明](docs/community/v1.2.0/RELEASE.zh.md)
+- **安装包下载**：[T3-Stardust-v1.2.1-macOS-arm64.zip](https://github.com/zds-xiaoxin/xiaoxin-t3code/releases/download/v1.2.1/T3-Stardust-v1.2.1-macOS-arm64.zip) · [Releases 发行页 & SHA256SUMS.txt](https://github.com/zds-xiaoxin/xiaoxin-t3code/releases/tag/v1.2.0) · [详细发行说明](docs/community/v1.2.0/RELEASE.zh.md)
 
 ### 快速校验与安装
 1. 下载 ZIP 与 `SHA256SUMS.txt` 到同一目录，终端校验完整性：

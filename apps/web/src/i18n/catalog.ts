@@ -9656,4 +9656,13 @@ export const zhCN: Readonly<Record<string, string>> = {
   "Only counts conversations run in T3": "仅统计在 T3 中运行的对话",
   "Fast & Low-cost": "极速低价",
   "Low-cost": "低价",
+  "T3 Stardust {tag} is available": "T3 星尘版 {tag} 已发布",
+  "T3 Stardust counts active users anonymously": "T3 星尘版会匿名统计活跃人数",
+  "Once a day it sends a random install ID, the app version and your system type. No chats, accounts, projects or IP addresses are stored. You can turn it off any time in Settings → About.":
+    "每天发送一次随机安装 ID、应用版本和系统类型，不保存聊天、账号、项目或 IP 地址。可以随时在「设置 → 关于」里关闭。",
+  "Turn off": "关闭统计",
+  "Count me as an active Stardust user": "计入星尘版活跃用户",
+  "On by default. Once a day sends a random install ID, the app version and your system type to xiaoxin666.cn so the author knows how many people use T3 Stardust. No chats, accounts, projects or IP addresses are stored.":
+    "默认开启。每天向 xiaoxin666.cn 发送一次随机安装 ID、应用版本和系统类型，让作者知道有多少人在用 T3 星尘版。不保存聊天、账号、项目或 IP 地址。",
+  "{version} available · {action}": "发现 {version}；{action}",
 };
