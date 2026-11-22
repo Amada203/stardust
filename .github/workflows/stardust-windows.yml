@@ -6,6 +6,9 @@
 # path on a free GitHub-hosted runner.
 name: Stardust Windows
 
+# workflow_dispatch is the intended trigger. GitHub only registers that event
+# once the file is on the default branch, and this fork must not receive a
+# main push. A push of this branch is the only way to start the job here.
 on:
   workflow_dispatch:
     inputs:
@@ -13,6 +16,9 @@ on:
         description: "Git ref to build. Defaults to ci/stardust-windows."
         type: string
         default: ci/stardust-windows
+  push:
+    branches:
+      - ci/stardust-windows
 
 permissions:
   contents: read
@@ -36,7 +42,7 @@ jobs:
       # actions/checkout's credential cleanup walks orphaned gitlinks under .repos.
       - name: Checkout
         env:
-          CHECKOUT_REF: ${{ inputs.ref }}
+          CHECKOUT_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.sha }}
           GIT_TERMINAL_PROMPT: "0"
         run: |
           set -euo pipefail
