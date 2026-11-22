@@ -394,18 +394,10 @@ it("V12 shows finish / archive / more on a result row and a handle button on a w
     ),
   ).toEqual(["done", "archive", "more"]);
   await vi.waitFor(() => expect(getComputedStyle(strip).opacity).toBe("1"));
-  await page.screenshot({
-    path: "/Volumes/三星固态/T3-build-staging/c73-ui/apps/web/.c92shots/v12/inbox-result-hover.png",
-    element: screen.container.firstElementChild as HTMLElement,
-  });
   const askRow = document.querySelector('[data-inbox-thread="ask-quick"]')!.closest("li")!;
   await userEvent.hover(askRow);
   const askStrip = askRow.querySelector<HTMLElement>("[data-inbox-quick-actions]")!;
   expect(askStrip.dataset.inboxQuickActions).toBe("needs-you");
-  await page.screenshot({
-    path: "/Volumes/三星固态/T3-build-staging/c73-ui/apps/web/.c92shots/v12/inbox-ask-hover.png",
-    element: screen.container.firstElementChild as HTMLElement,
-  });
   await userEvent.click(
     askStrip.querySelector<HTMLButtonElement>('[data-inbox-quick-action="open"]')!,
   );
@@ -440,10 +432,6 @@ it("V14 keeps titles clear of the hover actions, lists today's done threads, and
   expect(title.getBoundingClientRect().right).toBeLessThanOrEqual(
     strip.getBoundingClientRect().left,
   );
-  await page.screenshot({
-    path: "/Volumes/三星固态/T3-build-staging/c73-ui/apps/web/.c92shots/v12/v14-inbox-hover.png",
-    element: screen.container.firstElementChild as HTMLElement,
-  });
   // Done today is collapsed until asked for.
   const doneHeader = screen.getByRole("button", { name: /今天已完成/ });
   await expect.element(doneHeader).toHaveAttribute("aria-expanded", "false");
@@ -459,7 +447,4 @@ it("V14 keeps titles clear of the hover actions, lists today's done threads, and
     "aria-disabled",
     "true",
   );
-  await page.screenshot({
-    path: "/Volumes/三星固态/T3-build-staging/c73-ui/apps/web/.c92shots/v12/v14-status-menu.png",
-  });
 });

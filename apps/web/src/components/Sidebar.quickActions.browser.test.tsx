@@ -33,8 +33,6 @@ vi.mock(import("~/rpc/requestLatencyState"), async (original) => ({
   trackRpcRequestSent: () => {},
 }));
 
-const SHOTS = "/Volumes/三星固态/T3-build-staging/c73-ui/apps/web/.c92shots/v12";
-
 it("V12 hover actions settle a finished thread without opening it (folder rows)", async () => {
   {
     const boring = true;
@@ -65,10 +63,6 @@ it("V12 hover actions settle a finished thread without opening it (folder rows)"
     expect(actions).toEqual(["settle", "pin", "archive", "more"]);
     await vi.waitFor(() => expect(getComputedStyle(strip!.parentElement!).opacity).toBe("1"));
     const sidebar = document.querySelector<HTMLElement>('[data-slot="sidebar"]') ?? document.body;
-    await page.screenshot({
-      path: `${SHOTS}/hover-${boring ? "folder" : "card"}.png`,
-      element: sidebar,
-    });
     const before = dispatchedCommands().length;
     await userEvent.click(
       strip!.querySelector<HTMLButtonElement>('[data-sidebar-quick-action="settle"]')!,
