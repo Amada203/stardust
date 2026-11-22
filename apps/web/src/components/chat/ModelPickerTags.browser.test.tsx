@@ -210,6 +210,12 @@ it("renders real-data speed/price tags and respects low-quota priority in ModelP
     );
     expect(metas).toEqual(["4 档 · 剩 98%", "3 档 · 极速低价"]);
 
+    // V9 Spotlight search box with its icon, Chinese placeholder, and shortcut hint.
+    const search = document.querySelector("[data-v9-mp-search]");
+    expect(search?.querySelector("[data-v9-mp-search-icon]")).not.toBeNull();
+    expect(search?.querySelector("input")?.getAttribute("placeholder")).toBe("搜索模型…");
+    expect(search?.querySelector("[data-v9-mp-search-kbd]")?.textContent).toBeTruthy();
+
     // Codex tab: quota is 5% (<= 20%), so even Low-cost gpt-5.4-mini MUST show 剩 5% with data-low.
     const codexTab = screen.getByRole("button", { name: "Codex" });
     await codexTab.click();
