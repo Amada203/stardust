@@ -1,3 +1,4 @@
+import { testUiLocale } from "../../test/uiLocale";
 import "~/index.css";
 import { expect, it, vi } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser";
@@ -6,6 +7,7 @@ import { manualClipboard } from "../manualClipboard";
 import { ManualClipboardDialog } from "./ManualClipboardDialog";
 
 it("offers exact failed text for selection, updates on the next failure, and discards it on close", async () => {
+  using _locale = testUiLocale("zh-CN");
   manualClipboard.clear();
   using _clipboard = { [Symbol.dispose]: () => manualClipboard.clear() };
   // The clipboard store is independent of routing.

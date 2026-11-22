@@ -6,10 +6,12 @@ import * as EffectAcpErrors from "effect-acp/errors";
 import type * as EffectAcpSchema from "effect-acp/compat";
 
 const CLIENT_FILE_MAX_BYTES = 8 * 1024 * 1024;
+
 function isInsideRoot(path: Path.Path, root: string, candidate: string): boolean {
   const relative = path.relative(root, candidate);
   return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
 }
+
 /** Resolve all symlinks, including the final component, before checking workspace containment. */
 const resolveClientFilePath = Effect.fn("AntigravityClientFiles.resolveClientFilePath")(
   function* (input: {
@@ -53,6 +55,7 @@ const resolveClientFilePath = Effect.fn("AntigravityClientFiles.resolveClientFil
     return real;
   },
 );
+
 export const readAntigravityClientTextFile = Effect.fn("AntigravityClientFiles.readTextFile")(
   function* (input: {
     readonly fileSystem: FileSystem.FileSystem;

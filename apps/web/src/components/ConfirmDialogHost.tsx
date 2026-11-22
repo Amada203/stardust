@@ -1,5 +1,6 @@
-import { uiText } from "~/i18n";
+import { msg, T, useMessages } from "gt-react";
 import { useSyncExternalStore } from "react";
+
 import {
   completeConfirmDialogClose,
   readConfirmDialogState,
@@ -9,6 +10,7 @@ import {
 import {
   AlertDialog,
   AlertDialogClose,
+  AlertDialogAction,
   AlertDialogDescription,
   AlertDialogFooter,
   AlertDialogHeader,
@@ -16,14 +18,21 @@ import {
   AlertDialogTitle,
 } from "./ui/alert-dialog";
 import { Button } from "./ui/button";
+import type { MessageResolver } from "../i18n/messages";
+
 type ConfirmationCopy = {
   readonly title: string;
   readonly description: string | null;
 };
-function resolveConfirmDialogCopy(message: string): ConfirmationCopy {
+
+// LocalApi.confirm takes one string; translated questions may end in a full-width mark.
+const QUESTION_MARK = /[?？]/;
+
+function resolveConfirmDialogCopy(message: string, resolve: MessageResolver): ConfirmationCopy {
   const normalizedMessage = message.trim();
   const lines = normalizedMessage.split("\n");
-  const questionLineIndex = lines.findIndex((line) => line.trim().endsWith("?"));
+  const questionLineIndex = lines.findIndex((line) => QUESTION_MARK.test(line.trim().slice(-1)));
+
   if (questionLineIndex >= 0) {
     const title = lines[questionLineIndex]!.trim();
     const description = lines
@@ -32,28 +41,35 @@ function resolveConfirmDialogCopy(message: string): ConfirmationCopy {
       .trim();
     return { title, description: description || null };
   }
-  const questionMarkIndex = normalizedMessage.indexOf("?");
+
+  const questionMarkIndex = normalizedMessage.search(QUESTION_MARK);
   if (questionMarkIndex >= 0) {
     return {
       title: normalizedMessage.slice(0, questionMarkIndex + 1).trim(),
       description: normalizedMessage.slice(questionMarkIndex + 1).trim() || null,
     };
   }
+
   return {
-    title: uiText("Confirm action"),
-    description: normalizedMessage || "This action requires your confirmation.",
+    title: resolve(msg("Confirm action")),
+    description: normalizedMessage || resolve(msg("This action requires your confirmation.")),
   };
 }
+
 export function ConfirmDialogHost() {
+  const m = useMessages();
   const state = useSyncExternalStore(
     subscribeConfirmDialogHost,
     readConfirmDialogState,
     readConfirmDialogState,
   );
-  const copy = resolveConfirmDialogCopy(state.status === "idle" ? "" : state.message);
+
+  const copy = resolveConfirmDialogCopy(state.status === "idle" ? "" : state.message, m);
   const confirmVariant = state.status === "idle" ? "default" : state.variant;
+  const focusConfirm = state.status !== "idle" && state.initialFocus === "confirm";
   const onCancel = () => respondToConfirmDialog(false);
   const onConfirm = () => respondToConfirmDialog(true);
+
   return (
     <AlertDialog
       open={state.status === "confirming"}
@@ -75,11 +91,17 @@ export function ConfirmDialogHost() {
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogClose render={<Button variant="outline" />}>
-            {uiText("Cancel")}
+            <T>Cancel</T>
           </AlertDialogClose>
-          <Button variant={confirmVariant} onClick={onConfirm}>
-            {uiText("Confirm")}
-          </Button>
+          {focusConfirm && confirmVariant === "default" ? (
+            <AlertDialogAction onClick={onConfirm}>
+              <T>Confirm</T>
+            </AlertDialogAction>
+          ) : (
+            <Button variant={confirmVariant} onClick={onConfirm}>
+              <T>Confirm</T>
+            </Button>
+          )}
         </AlertDialogFooter>
       </AlertDialogPopup>
     </AlertDialog>

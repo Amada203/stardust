@@ -1,3 +1,4 @@
+import { uiText } from "./i18n";
 import type { ScopedThreadRef } from "@t3tools/contracts";
 import type { TaskProgressSnapshot } from "./taskProgress";
 import type { BoardTask } from "./taskBoard.logic";
@@ -105,13 +106,21 @@ export function resumeCardDetails(
     [
       board?.judge?.trim(),
       board?.next?.trim(),
-      failed ? "看一下出错原因，处理后点继续重试" : lastRequestSentence(lastAssistant),
+      failed
+        ? uiText("Check the error, address it, then continue to retry")
+        : lastRequestSentence(lastAssistant),
       request.attention?.trim(),
     ].find((candidate) => candidate && candidate !== blocked) ?? null;
   return {
     steps,
     currentIndex,
-    reached: current ? `第 ${displayedIndex + 1}/${steps.length} 步 · ${current.text}` : null,
+    reached: current
+      ? uiText("Step {count}/{total} · {text}", {
+          count: displayedIndex + 1,
+          total: steps.length,
+          text: current.text,
+        })
+      : null,
     blocked,
     action,
     after: currentIndex >= 0 ? (steps[currentIndex + 1]?.text ?? null) : null,

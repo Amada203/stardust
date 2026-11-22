@@ -1,3 +1,4 @@
+import { testUiLocale } from "../../../test/uiLocale";
 import { act, render, type Screen } from "../../../test/render";
 import { describe, expect, it, vi } from "vite-plus/test";
 import * as Option from "effect/Option";
@@ -141,6 +142,7 @@ describe("continuation panel interactions", () => {
   });
 
   it("opens an archived segment read-only without navigation or unarchive", async () => {
+    using _locale = testUiLocale("zh-CN");
     setup();
     test.shells = [shell("current", "parent")];
     test.archived.snapshots = [
@@ -159,6 +161,7 @@ describe("continuation panel interactions", () => {
     expect(test.navigate).not.toHaveBeenCalled();
   });
   it("distinguishes archive lookup failures and disconnects from broken links", async () => {
+    using _locale = testUiLocale("zh-CN");
     setup();
     test.shells = [];
     test.archived.error = "failed";
@@ -180,6 +183,7 @@ describe("continuation panel interactions", () => {
     expect(screen.container.textContent).not.toContain("续聊链已断开");
   });
   it("shows every generation, mounts only the selected transcript and pages on request", async () => {
+    using _locale = testUiLocale("zh-CN");
     setup();
     await using screen = await mount();
     expect(screen.container.textContent).toContain("parent");
@@ -198,6 +202,7 @@ describe("continuation panel interactions", () => {
     expect(test.navigate).not.toHaveBeenCalled();
   });
   it("filters loaded messages, quotes without navigation/send, and opens the handoff read-only", async () => {
+    using _locale = testUiLocale("zh-CN");
     setup();
     await using screen = await mount();
     await click(screen, "查看记录");

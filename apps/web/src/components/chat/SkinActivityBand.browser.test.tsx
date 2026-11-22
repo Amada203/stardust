@@ -1,3 +1,4 @@
+import { testUiLocale } from "../../../test/uiLocale";
 import "~/index.css";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { render, fakeTimers, act } from "../../../test/render";
@@ -15,6 +16,7 @@ describe("SkinActivityBand", () => {
   });
 
   it("shows progress while working, then a check, then eases out and unmounts", async () => {
+    using _locale = testUiLocale("zh-CN");
     await using screen = await render(
       <SkinActivityBand
         working

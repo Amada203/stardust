@@ -28,8 +28,8 @@ export function buildSpotlightGroups(input: {
                 {
                   kind: "submenu" as const,
                   value: "commands-menu",
-                  title: "操作命令",
-                  description: "新建任务、设置等操作，也可输入 >",
+                  title: uiText("Command actions"),
+                  description: uiText("Start a task, open settings, or type >"),
                   searchTerms: [],
                   icon: first.icon,
                   addonIcon: first.icon,
@@ -74,25 +74,35 @@ export function buildSpotlightGroups(input: {
     const related = best.searchRelatedItems ?? [];
     const latest = related[0];
     if (main.length)
-      groups.push({ value: `${key}:matches`, label: "相关会话 · 按匹配程度", items: main });
+      groups.push({
+        value: `${key}:matches`,
+        label: uiText("Related conversations · Best match first"),
+        items: main,
+      });
     if (latest && related.length > 1)
       groups.push({
         value: `${key}:latest`,
-        label: "继续这项工作",
+        label: uiText("Continue this work"),
         items: [
           {
             ...latest,
             value: `${latest.value}:latest`,
-            title: `打开最新会话 · ${typeof latest.title === "string" ? latest.title : ""}`,
+            title: uiText("Open latest conversation · {count}", {
+              count: typeof latest.title === "string" ? latest.title : "",
+            }),
           },
         ],
       });
     if (child.length)
-      groups.push({ value: `${key}:children`, label: "子任务中的匹配", items: child });
+      groups.push({ value: `${key}:children`, label: uiText("Matches in subtasks"), items: child });
     const matchedIds = new Set(members.map((m) => m.value));
     const other = related.filter((m) => !matchedIds.has(m.value));
     if (other.length)
-      groups.push({ value: `${key}:history`, label: "其他轮次 · 最近更新在前", items: other });
+      groups.push({
+        value: `${key}:history`,
+        label: uiText("Other turns · Most recent first"),
+        items: other,
+      });
     if (members.length === 1 && !best.searchSubagent && related.length <= 1) {
       items.push(best);
       continue;
@@ -101,7 +111,19 @@ export function buildSpotlightGroups(input: {
       kind: "submenu",
       value: `family:${key}`,
       title: best.searchFamilyTitle ?? best.title,
-      description: `${typeof best.description === "string" && best.description.includes("近似匹配") ? "近似匹配 · " : ""}${Math.max(main.length, related.length)} 个相关会话${child.length ? ` · ${child.length} 个子任务` : ""} · 展开选择`,
+      description: uiText("Related conversations · {count}{match}{subtasks} · Expand to choose", {
+        match:
+          typeof best.description === "string" &&
+          best.description.includes(uiText("Approximate match"))
+            ? uiText("Approximate match · ")
+            : "",
+        count: Math.max(main.length, related.length),
+        subtasks: child.length
+          ? child.length === 1
+            ? uiText(" · {count} subtask", { count: child.length })
+            : uiText(" · {count} subtasks", { count: child.length })
+          : "",
+      }),
       searchTerms: best.searchTerms,
       ...(best.searchScore !== undefined ? { searchScore: best.searchScore } : {}),
       ...(best.threadContentMatch ? { threadContentMatch: best.threadContentMatch } : {}),
@@ -115,6 +137,10 @@ export function buildSpotlightGroups(input: {
   if (input.projectItems.length)
     groups.push({ value: "projects-top", label: uiText("Projects"), items: input.projectItems });
   if (items.length)
-    groups.push({ value: "spotlight-results", label: "会话与任务 · 最佳匹配", items });
+    groups.push({
+      value: "spotlight-results",
+      label: uiText("Conversations and tasks · Best matches"),
+      items,
+    });
   return groups;
 }

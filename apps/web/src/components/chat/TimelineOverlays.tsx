@@ -1,6 +1,10 @@
-import { uiText } from "~/i18n";
-import { ChevronDownIcon, PaperclipIcon } from "lucide-react";
+import { T } from "gt-react";
+import { useUiText } from "~/i18n/useUiText";
+
+import { ArrowDownIcon, ChevronDownIcon, PaperclipIcon } from "lucide-react";
+
 import { Button } from "../ui/button";
+
 export function WorkspaceFileDropOverlay() {
   return (
     <div
@@ -12,7 +16,7 @@ export function WorkspaceFileDropOverlay() {
         className="flex items-center gap-2 rounded-full border border-primary/25 bg-background/95 px-4 py-2.5 text-sm font-medium text-foreground shadow-lg"
       >
         <PaperclipIcon className="size-4 text-primary" aria-hidden="true" />
-        {uiText("Drop files to attach")}
+        <T>Drop files to attach</T>
       </div>
     </div>
   );
@@ -40,14 +44,53 @@ export function ScrollToEndButton(props: {
         variant="glass"
       >
         <ChevronDownIcon className="size-3.5" />
-        {uiText("Scroll to end")}
+        <T>Scroll to end</T>
         {props.summary === null ? null : (
           <span className="text-muted-foreground">
-            <span aria-hidden>{"\u00B7 "}</span>
+            <span aria-hidden>· </span>
             {props.summary}
           </span>
         )}
       </Button>
     </div>
+  );
+}
+
+/**
+ * 32px circular glass button anchored inside ComposerFloatAnchor so it shares coordinates with
+ * the floating task capsule: centered when alone, smoothly docked to the composer right edge
+ * aligned with the capsule header row when a capsule is visible.
+ */
+export function ScrollToEndCircleButton(props: {
+  readonly show: boolean;
+  readonly unread: boolean;
+  readonly summary: string | null;
+  readonly onScrollToEnd: () => void;
+}) {
+  const uiText = useUiText();
+  const baseLabel = uiText("Jump to latest");
+  const fullLabel = [
+    baseLabel,
+    props.unread ? uiText("New messages") : null,
+    props.summary,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  return (
+    <button
+      type="button"
+      data-scroll-to-end="true"
+      data-show={props.show ? "true" : "false"}
+      data-unread={props.unread ? "true" : "false"}
+      tabIndex={props.show ? 0 : -1}
+      aria-hidden={!props.show}
+      aria-label={fullLabel}
+      onPointerDown={(event) => event.preventDefault()}
+      onClick={props.onScrollToEnd}
+      className="scroll-end-button"
+    >
+      <ArrowDownIcon className="size-4" strokeWidth={1.8} aria-hidden="true" />
+      {props.unread ? <span className="scroll-end-dot" aria-hidden="true" /> : null}
+    </button>
   );
 }

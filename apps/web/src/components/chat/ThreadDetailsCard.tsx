@@ -1,3 +1,4 @@
+import { useGT } from "gt-react";
 import { workspaceAreaProps } from "../../lib/workspaceFocus";
 import {
   useLayoutEffect,
@@ -7,8 +8,6 @@ import {
   type RefObject,
 } from "react";
 import type { ScopedThreadRef } from "@t3tools/contracts";
-import { useIsMobile } from "../../hooks/useMediaQuery";
-import { Sheet, SheetPopup, SheetTitle } from "../ui/sheet";
 import { ScrollArea } from "../ui/scroll-area";
 import { cn } from "../../lib/utils";
 import { Popover, PopoverPopup, PopoverCreateHandle } from "../ui/popover";
@@ -37,12 +36,12 @@ export function ThreadDetailsCard({
   onContextMenu?: MouseEventHandler<HTMLDivElement>;
   children: (density: "full" | "compact" | "essential") => ReactNode;
 }) {
-  const detailsArea = workspaceAreaProps("details", 3, "Thread details");
-  const mobile = useIsMobile();
+  const gt = useGT();
+  const detailsArea = workspaceAreaProps("details", 3, gt("Thread details"));
   const canvas = useChatCanvas();
   const preferredPlacement = canvas?.preferredDetailsCard ?? null;
   const placement = canvas?.detailsCardPlacement ?? null;
-  const mode = !mobile && placement ? "inline" : "popover";
+  const mode = placement ? "inline" : "popover";
   const topInset = canvas?.detailsCardTopInset ?? 0;
   const inlineOpen = useRightPanelStore((state) =>
     selectThreadPanelOpen(state.threadPanelVisibilityByThreadKey, threadRef, "inline"),
@@ -81,10 +80,10 @@ export function ThreadDetailsCard({
     const measure = () => {
       const frame = element.closest<HTMLElement>("[data-thread-details-card]");
       const next = element.offsetHeight + (frame ? frame.offsetHeight - frame.clientHeight : 0);
-      // PR lists, lineage, side chats and automations scroll as they grow. Counting them toward
-      // density would hide the section and workspace controls when the user asks to see more rows.
+      // PR lists, servers, lineage, side chats and automations scroll as they grow. Counting them
+      // toward density would hide the section and workspace controls when the user asks to see more.
       const lists = element.querySelectorAll<HTMLElement>(
-        "[data-thread-relationships-panel], [data-thread-side-chats-panel], [data-thread-details-pr-list], [data-thread-automations-panel]",
+        "[data-thread-relationships-panel], [data-thread-side-chats-panel], [data-thread-details-pr-list], [data-thread-automations-panel], [data-thread-details-server-overflow]",
       );
       const fittingHeight =
         next - Array.from(lists).reduce((sum, list) => sum + list.offsetHeight, 0);
@@ -115,30 +114,10 @@ export function ThreadDetailsCard({
     environmentId,
     threadId,
   ]);
-  if (mobile)
-    return (
-      <Sheet
-        open={popoverOpen}
-        onOpenChange={(open) =>
-          useRightPanelStore.getState().setThreadPanelOpen(threadRef, "popover", open)
-        }
-      >
-        <SheetPopup side="right" className="w-full max-w-none" aria-label="会话详情">
-          <div className="px-4 py-3">
-            <SheetTitle>{"\u4F1A\u8BDD\u8BE6\u60C5"}</SheetTitle>
-          </div>
-          <ScrollArea className="min-h-0 flex-1">
-            <div data-thread-details-card data-thread-details-panel="mobile">
-              {children("full")}
-            </div>
-          </ScrollArea>
-        </SheetPopup>
-      </Sheet>
-    );
   const card = (
     <div
       className={cn(
-        "dropdown-glass isolate contain-paint grid max-h-full grid-rows-[minmax(0,1fr)] overflow-hidden rounded-3xl",
+        "dropdown-glass isolate contain-paint grid max-h-full grid-rows-[minmax(0,1fr)] overflow-hidden rounded-2xl",
         mode === "popover" &&
           "max-h-[min(calc(100dvh-6.5rem),calc(var(--available-height,100dvh)-1rem))]",
       )}
@@ -191,8 +170,8 @@ export function ThreadDetailsCard({
         </aside>
       ) : null}
       {/* Rendered in both modes: base-ui keeps a popup that unmounts mid-open
-            mounted, because its exit animation never finishes. Staying in the tree
-            lets it close cleanly when the card switches inline. */}
+          mounted, because its exit animation never finishes. Staying in the tree
+          lets it close cleanly when the card switches inline. */}
       <PopoverPopup
         {...(mode === "popover" ? detailsArea : {})}
         role="dialog"

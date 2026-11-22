@@ -1,3 +1,4 @@
+import { testUiLocale } from "../test/uiLocale";
 import { expect, it } from "vite-plus/test";
 import { RuntimeRequestId, NodeId, PlanId, RunId, TurnItemId } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
@@ -9,6 +10,7 @@ import {
 } from "./approvalPresentation";
 
 it("classifies conservatively without treating compound commands as read-only", () => {
+  using _locale = testUiLocale("zh-CN");
   const base = {
     requestId: RuntimeRequestId.make("id"),
     requestKind: "command" as const,
@@ -39,6 +41,7 @@ it("classifies conservatively without treating compound commands as read-only", 
   expect(approvalResultLabel("acceptAlways")).toContain("始终允许");
 });
 it("shows only server-resolved decisions belonging to the displayed plan's run", () => {
+  using _locale = testUiLocale("zh-CN");
   const projection = makeThreadProjectionFixture();
   const now = DateTime.makeUnsafe("2026-01-01T00:00:00Z");
   const runId = RunId.make("current");

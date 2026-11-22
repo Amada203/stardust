@@ -1,3 +1,5 @@
+import { inboxLabel } from "~/i18n/inboxLabel";
+import { uiText } from "../../i18n";
 import type { PendingApproval } from "../../session-logic";
 import type { ProviderApprovalDecision, RuntimeRequestId } from "@t3tools/contracts";
 import { approvalPresentation } from "../../approvalPresentation";
@@ -55,8 +57,8 @@ export function ResumeCard({
     ? {
         ...baseDetails,
         blocked: approvalPresentation(approval).summary,
-        action: "批准或拒绝该请求",
-        after: "批准后 Agent 继续执行；拒绝后由 Agent 调整方案",
+        action: uiText("Approve or deny the request"),
+        after: uiText("The agent continues after approval or adapts after denial"),
       }
     : baseDetails;
   const canApprove =
@@ -75,11 +77,13 @@ export function ResumeCard({
         !("_tag" in result) ||
         result._tag !== "Success"
       ) {
-        setError("请求尚未提交成功，请重试或查看会话错误。");
+        setError(
+          uiText("The request hasn’t been submitted. Retry or check the conversation error."),
+        );
         setPending(false);
       }
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "操作失败，请重试。");
+      setError(cause instanceof Error ? cause.message : uiText("Something went wrong. Try again."));
       setPending(false);
     }
   };
@@ -91,7 +95,7 @@ export function ResumeCard({
       const until = await action();
       useResumeCardStore.getState().hide(request, typeof until === "number" ? until : undefined);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "操作失败，请重试。");
+      setError(cause instanceof Error ? cause.message : uiText("Something went wrong. Try again."));
     }
     setPending(false);
   };
@@ -106,11 +110,15 @@ export function ResumeCard({
         <div className="flex min-w-0 items-center gap-2">
           <span className="min-w-0 flex-1 truncate text-sm font-medium">{request.title}</span>
           <span className="shrink-0 rounded-full bg-warning/10 px-2 py-0.5 text-xs text-warning">
-            {approval ? "待授权" : request.reason}
+            {inboxLabel(approval ? "待授权" : request.reason)}
           </span>
         </div>
         {details.steps.length > 0 ? (
-          <div className="my-2.5 flex h-1 gap-1" aria-label="任务步骤">
+          <div
+            className="my-2.5 flex h-1 gap-1"
+            data-resume-steps
+            aria-label={uiText("Task steps")}
+          >
             {details.steps.map((step, index) => (
               <span
                 key={step.id}
@@ -122,25 +130,25 @@ export function ResumeCard({
         <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 text-xs leading-relaxed">
           {details.reached ? (
             <>
-              <dt className="text-muted-foreground">做到</dt>
+              <dt className="text-muted-foreground">{uiText("Reached ")}</dt>
               <dd className="min-w-0 break-words">{details.reached}</dd>
             </>
           ) : null}
           {details.blocked ? (
             <>
-              <dt className="text-muted-foreground">卡在</dt>
+              <dt className="text-muted-foreground">{uiText("Blocked at ")}</dt>
               <dd className="min-w-0 break-words">{details.blocked}</dd>
             </>
           ) : null}
           {details.action ? (
             <>
-              <dt className="text-muted-foreground">你要做</dt>
+              <dt className="text-muted-foreground">{uiText("Your action ")}</dt>
               <dd className="min-w-0 break-words font-semibold">{details.action}</dd>
             </>
           ) : null}
           {details.after ? (
             <>
-              <dt className="text-muted-foreground">之后</dt>
+              <dt className="text-muted-foreground">{uiText("Next ")}</dt>
               <dd className="min-w-0 break-words text-muted-foreground">{details.after}</dd>
             </>
           ) : null}
@@ -158,14 +166,16 @@ export function ResumeCard({
                 disabled={approvalDisabled || pending || approval.responseCapability !== "live"}
                 onClick={() => void approve()}
               >
-                {pending ? "处理中…" : "批准"}
+                {pending ? uiText("Working….") : uiText("Approve")}
               </Button>
             ) : (
-              <span className="text-xs text-muted-foreground">请在权限请求中选择可用选项</span>
+              <span className="text-xs text-muted-foreground">
+                {uiText("Choose an available option in the permission request")}
+              </span>
             )
           ) : (
             <Button size="sm" disabled={disabled || pending} onClick={() => void act(onContinue)}>
-              {pending ? "处理中…" : "我处理好了，继续"}
+              {pending ? uiText("Working….") : uiText("I’m done. Continue")}
             </Button>
           )}
           <Button
@@ -174,7 +184,7 @@ export function ResumeCard({
             disabled={disabled || pending}
             onClick={() => void act(onSnooze)}
           >
-            稍后提醒
+            {uiText("Remind me later")}
           </Button>
           {onDismiss && !approval ? (
             <Button
@@ -183,7 +193,7 @@ export function ResumeCard({
               disabled={disabled || pending}
               onClick={() => void act(onDismiss)}
             >
-              不做了
+              {uiText("Skip this")}
             </Button>
           ) : null}
         </div>
@@ -264,7 +274,7 @@ export function ThreadResumeCard({
       lastAssistant={lastAssistant}
       leaving={!visible}
       disabled={disabled}
-      onContinue={() => onContinue("已处理好，继续。")}
+      onContinue={() => onContinue(uiText("I’ve taken care of it. Continue."))}
       onSnooze={snooze}
       onDismiss={row.board ? undefined : onDismiss}
     />

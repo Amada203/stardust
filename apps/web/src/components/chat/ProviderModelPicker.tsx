@@ -1,4 +1,5 @@
-import { uiText } from "~/i18n";
+import { useUiText } from "~/i18n/useUiText";
+
 import {
   ANTIGRAVITY_DEFAULT_MODEL,
   type ProviderInstanceId,
@@ -21,7 +22,10 @@ import { Badge } from "../ui/badge";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { cn } from "~/lib/utils";
+import "./composerV9.css";
+import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { ModelPickerContent, resolveModelPickerSelectedModel } from "./ModelPickerContent";
+import { retainedModelWhileProviderLocked } from "./ProviderModelPicker.logic";
 import { ChatGptSharingControl } from "./ChatGptSharingControl";
 import { ProviderInstanceIcon } from "./ProviderInstanceIcon";
 import { ModelEsque, getDisplayModelName, getTriggerDisplayModelName } from "./providerIconUtils";
@@ -31,6 +35,7 @@ import { takeOpenTarget, useComposerMenuProps } from "./composerEventScope";
 import { shortcutLabelForCommand } from "../../keybindings";
 import { serverEnvironment } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
+
 /** Holds the page still behind the open picker; its lifetime is the popup element's. */
 function lockBackgroundScroll(popup: HTMLElement | null) {
   if (!popup) return;
@@ -39,11 +44,13 @@ function lockBackgroundScroll(popup: HTMLElement | null) {
   const previousBodyOverflow = body.style.overflow;
   const previousBodyPaddingRight = body.style.paddingRight;
   const scrollbarWidth = window.innerWidth - documentElement.clientWidth;
+
   documentElement.style.overscrollBehavior = "contain";
   body.style.overflow = "hidden";
   if (scrollbarWidth > 0) {
     body.style.paddingRight = `${scrollbarWidth}px`;
   }
+
   const shouldAllowOverlayScroll = (target: EventTarget | null) => {
     return (
       target instanceof Element &&
@@ -64,11 +71,13 @@ function lockBackgroundScroll(popup: HTMLElement | null) {
     }
     event.preventDefault();
   };
+
   document.addEventListener("wheel", preventBackgroundWheel, { capture: true, passive: false });
   document.addEventListener("touchmove", preventBackgroundTouchMove, {
     capture: true,
     passive: false,
   });
+
   return () => {
     document.removeEventListener("wheel", preventBackgroundWheel, { capture: true });
     document.removeEventListener("touchmove", preventBackgroundTouchMove, { capture: true });
@@ -83,12 +92,10 @@ export const DockedPickerContext = createContext<{ modelLabel: string }>({ model
 
 export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
   environmentId: EnvironmentId | null;
+  workspaceCwd?: string | null;
   activeInstanceId: ProviderInstanceId;
   model: string;
-  selectedModels?: ReadonlyArray<{
-    instanceId: ProviderInstanceId;
-    model: string;
-  }>;
+  selectedModels?: ReadonlyArray<{ instanceId: ProviderInstanceId; model: string }>;
   onToggleModel?: (instanceId: ProviderInstanceId, model: string) => void;
   lockedProvider: ProviderDriverKind | null;
   lockedContinuationGroupKey?: string | null;
@@ -124,6 +131,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
   effortColumn?: ReactNode;
   footer?: ReactNode;
 }) {
+  const uiText = useUiText();
   const composerFloatingLayerProps = useComposerMenuProps();
   const [uncontrolledIsMenuOpen, setUncontrolledIsMenuOpen] = useState(false);
   const isMenuOpen = props.open ?? uncontrolledIsMenuOpen;
@@ -146,11 +154,14 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
   const searchInputRef = useRef<HTMLInputElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const popupRef = useRef<HTMLDivElement | null>(null);
+  // Touch opens on the popup itself so the on-screen keyboard stays down until the search is tapped.
+  const isCoarsePointer = useMediaQuery({ pointer: "coarse" });
   const size = props.size ?? "sm";
   const docked = props.effortColumn !== undefined;
 
   const activeEntry =
     props.instanceEntries.find((entry) => entry.instanceId === props.activeInstanceId) ?? null;
+
   const activeInstanceId = props.activeInstanceId;
   const selectedInstanceOptions = props.modelOptionsByInstance.get(activeInstanceId) ?? [];
   const selectedModel =
@@ -159,11 +170,14 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
       model: props.model,
       options: selectedInstanceOptions,
     }) ??
+    retainedModelWhileProviderLocked(activeEntry, props.model) ??
     (activeEntry?.driverKind === "opencode" || activeEntry?.driverKind === "antigravity"
       ? undefined
       : selectedInstanceOptions[0]);
   const triggerTitle = selectedModel
-    ? getTriggerDisplayModelName(selectedModel, activeEntry?.driverKind)
+    ? props.isComposerOwned
+      ? getDisplayModelName(selectedModel)
+      : getTriggerDisplayModelName(selectedModel, activeEntry?.driverKind)
     : props.model === ANTIGRAVITY_DEFAULT_MODEL
       ? "Choose model"
       : props.model || "Choose model";
@@ -172,6 +186,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
     : triggerTitle;
   const showInstanceBadge =
     activeEntry !== null && shouldShowInstanceBadge(activeEntry, props.instanceEntries);
+
   const setIsMenuOpen = (open: boolean) => {
     props.onOpenChange?.(open);
     if (props.open === undefined) {
@@ -204,6 +219,13 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
       focusEffort("any");
       return;
     }
+    const checkedPermission = popupRef.current?.querySelector<HTMLButtonElement>(
+      '[data-composer-permission-option][aria-checked="true"]',
+    );
+    if (checkedPermission) {
+      checkedPermission.focus({ preventScroll: true });
+      return;
+    }
     popupRef.current
       ?.querySelector<HTMLButtonElement>("[data-composer-permissions-trigger]")
       ?.click();
@@ -219,6 +241,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
     // The column renders the new model's levels on commit.
     window.requestAnimationFrame(() => focusEffort("levels"));
   };
+
   const shortcutLabel = props.keybindings
     ? shortcutLabelForCommand(props.keybindings, "modelPicker.toggle")
     : null;
@@ -274,6 +297,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
     <ModelPickerContent
       searchInputRef={searchInputRef}
       environmentId={props.environmentId}
+      workspaceCwd={props.workspaceCwd ?? null}
       activeInstanceId={activeInstanceId}
       model={props.model}
       {...(props.selectedModels !== undefined ? { selectedModels: props.selectedModels } : {})}
@@ -338,6 +362,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
               .join(", ")}
             size={size}
             data-chat-provider-model-picker="true"
+            data-v9-unified-model-btn={props.isComposerOwned ? "true" : undefined}
             data-composer-shortcut={props.triggerShortcuts}
             onClick={(event) => {
               if (!isMenuOpen || !docked) return;
@@ -387,14 +412,18 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
                 )}
               {selectedEntries.length > 3 ? (
                 <span className="relative z-30 flex size-4 items-center justify-center rounded-full bg-(--chat-composer-glass-surface,var(--background)) text-3xs ring-2 ring-(--chat-composer-glass-surface,var(--background))">
-                  {"+"}
-                  {selectedEntries.length - 3}
+                  +{selectedEntries.length - 3}
                 </span>
               ) : null}
             </span>
           ) : activeEntry && props.triggerLabel === undefined ? (
             // Narrow compacted composers hide the provider icon before truncating the name.
-            <span data-chat-provider-model-picker-icon className="contents">
+            <span
+              data-chat-provider-model-picker-icon
+              data-v9-logo-chip={props.isComposerOwned ? "" : undefined}
+              data-size={props.isComposerOwned ? "trigger" : undefined}
+              className={props.isComposerOwned ? undefined : "contents"}
+            >
               <ProviderInstanceIcon
                 driverKind={activeEntry.driverKind}
                 displayName={activeEntry.displayName}
@@ -402,9 +431,16 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
                 acpRegistryAgentId={activeEntry.acpRegistryAgentId}
                 acpRegistryIconUrl={activeEntry.acpRegistryIconUrl}
                 showBadge={showInstanceBadge}
-                className="size-4"
-                iconClassName={cn("size-4", props.activeProviderIconClassName)}
-                indicatorBackground={props.instanceIndicatorBackground ?? "var(--contrast-input)"}
+                className={props.isComposerOwned ? "size-3.5" : "size-4"}
+                iconClassName={cn(
+                  props.isComposerOwned ? "size-3.5" : "size-4",
+                  props.activeProviderIconClassName,
+                )}
+                indicatorBackground={
+                  props.isComposerOwned
+                    ? "var(--v9-logo-bg)"
+                    : (props.instanceIndicatorBackground ?? "var(--contrast-input)")
+                }
                 badgeClassName={cn(
                   "right-[-0.125rem] bottom-[-0.125rem] h-3 min-w-3 px-0.5 text-5xs",
                   size === "xs" && "shadow-none",
@@ -438,12 +474,18 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
             unlock?.();
           };
         }}
-        initialFocus={searchInputRef}
+        initialFocus={isCoarsePointer ? popupRef : searchInputRef}
         align={props.popupAlign ?? "start"}
+        data-v9-model-picker-popup
+        data-align={props.popupAlign ?? "start"}
         // Docked, the popup opens above the composer and slides over it when that space is short,
         // so a short window gets its full height (Floating UI sizes to the viewport) instead of a sliver.
         {...(docked
-          ? { side: "top" as const, collisionAvoidance: { side: "shift", align: "shift" } as const }
+          ? {
+              side: "top" as const,
+              sideOffset: 10,
+              collisionAvoidance: { side: "shift", align: "shift" } as const,
+            }
           : {})}
         className="before:hidden"
         padding="none"
@@ -451,33 +493,25 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
       >
         {props.effortColumn ? (
           <DockedPickerContext value={{ modelLabel: triggerTitle }}>
-            <div className="flex max-h-(--available-height) flex-col">
-              {/* One fixed height, so a model with more options never resizes the popup. Short
-                  windows shrink it and keep the footer. */}
-              <div className="flex h-86.5 min-h-0 max-sm:h-auto max-sm:flex-col">
-                {picker}
-                <div
-                  data-model-picker-effort
-                  className="flex min-h-0 w-48 flex-col sm:shrink-0 border-l border-border/70 bg-muted/40 max-sm:h-64 max-sm:w-full max-sm:border-t max-sm:border-l-0"
-                  onKeyDown={(event) => {
-                    if (event.key !== "ArrowLeft" || event.altKey || event.ctrlKey || event.metaKey)
-                      return;
-                    event.preventDefault();
-                    event.stopPropagation();
-                    searchInputRef.current?.focus();
-                  }}
-                >
-                  {props.effortColumn}
-                </div>
+            <div data-v9-picker-stack className="max-h-(--available-height)">
+              {picker}
+              <div
+                data-model-picker-effort
+                onKeyDown={(event) => {
+                  if (event.key !== "ArrowLeft" || event.altKey || event.ctrlKey || event.metaKey)
+                    return;
+                  event.preventDefault();
+                  event.stopPropagation();
+                  searchInputRef.current?.focus();
+                }}
+              >
+                {props.effortColumn}
               </div>
               {props.footer}
             </div>
           </DockedPickerContext>
         ) : (
-          <>
-            {picker}
-            {props.footer ? <div className="border-t p-3">{props.footer}</div> : null}
-          </>
+          <div data-v9-picker-stack>{picker}</div>
         )}
         {props.selectedModels === undefined && !docked ? (
           <ChatGptSharingControl provider={activeEntry?.snapshot ?? null} />

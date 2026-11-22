@@ -13,7 +13,7 @@ vi.mock("~/i18n", () => ({
     return text.replace(/\{(\d)\}/g, (_, key) => String(values?.[key] ?? key));
   },
 }));
-import { usageMetricPresentation } from "./usageMetricPresentation";
+import { usageMetricPresentation, usageTableHeaders } from "./usageMetricPresentation";
 describe("usage currency and token presentation", () => {
   it.each(["zh-CN", "en"])(
     "keeps totals and provider shares on the selected metric in %s",
@@ -35,4 +35,9 @@ describe("usage currency and token presentation", () => {
       expect(tokens.share).toContain("78.0%");
     },
   );
+});
+
+it("labels total tokens and output tokens separately from monetary columns", () => {
+  expect(usageTableHeaders("cost")).toEqual({ primary: "Cost", secondary: "Tokens" });
+  expect(usageTableHeaders("tokens")).toEqual({ primary: "Processed tokens", secondary: "Output" });
 });

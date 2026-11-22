@@ -1,3 +1,10 @@
+import { inboxLabel } from "~/i18n/inboxLabel";
+import { ThreadCategorySuggestions } from "./sidebar/ThreadCategorySuggestions";
+import * as Schema from "effect/Schema";
+import { useLocalStorage } from "~/hooks/useLocalStorage";
+import { useSidebarCategories } from "~/hooks/useSidebarCategories";
+import type { SidebarCategorySettings } from "@t3tools/contracts/settings";
+import { useUiText } from "~/i18n/useUiText";
 import { TaskBoardDot } from "./TaskBoardPanel";
 import { uiText } from "~/i18n";
 import { SidebarTaskProgress } from "./sidebar/SidebarTaskProgress";
@@ -94,7 +101,7 @@ import {
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
 import { threadRuntimeCanArchive } from "@t3tools/client-runtime/state/models";
-import { useNavigate, useParams, useRouter } from "@tanstack/react-router";
+import { Link, useNavigate, useParams, useRouter } from "@tanstack/react-router";
 import {
   MAX_SIDEBAR_THREAD_PREVIEW_COUNT,
   MIN_SIDEBAR_THREAD_PREVIEW_COUNT,
@@ -228,7 +235,7 @@ import {
   useSidebarRowSubscriptionLease,
   useThreadJumpHintsVisible,
   ThreadStatusPill,
-} from "./Sidebar.logic";
+} from "./LegacySidebar.logic";
 import { sortThreads, getThreadSortTimestamp } from "@t3tools/client-runtime/state/thread-sort";
 import { SidebarChromeFooter, SidebarChromeHeader } from "./sidebar/SidebarChrome";
 import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
@@ -236,7 +243,8 @@ import { useProjectPin } from "~/hooks/useProjectGroupUpdate";
 import { useIsMobile } from "~/hooks/useMediaQuery";
 import { CommandDialogTrigger } from "./ui/command";
 import { useClientSettings, updateClientSettings } from "~/hooks/useSettings";
-import { primaryServerKeybindingsAtom, environmentServerConfigsAtom } from "../state/server";
+import { primaryServerKeybindingsAtom } from "../state/server";
+import { environmentPresentations } from "../state/presentation";
 import { appAtomRegistry } from "../rpc/atomRegistry";
 import { canShareWithGuestAtom } from "./chat/guestShareAvailability";
 import { openGuestShareDialog } from "./chat/guestShareDialogState";
@@ -301,13 +309,11 @@ import { WorkbenchInbox } from "./sidebar/WorkbenchInbox";
 import { activeWorkStatus } from "../sidebarActiveWork";
 import {
   CATEGORY_PROJECT_KEY_PREFIX,
-  THREAD_CATEGORIES,
-  THREAD_CATEGORY_GROUPS,
   isCategoryProjectKey,
   openThreadCategoryPicker,
   resolveThreadCategory,
-  threadCategoryById,
-  useThreadCategoryOverrides,
+  type ThreadCategory,
+  UNSORTED_CATEGORY_ID,
 } from "../threadCategories";
 import { ThreadCategoryPickerDialog } from "./sidebar/ThreadCategoryPicker";
 import { THREAD_PLACEMENT_DRAG_TYPE, useThreadPlacementStore } from "../sidebarThreadPlacement";
@@ -325,19 +331,35 @@ import {
   markSidebarOverviewNavigation,
 } from "./sidebar/routeReveal";
 const SIDEBAR_SORT_LABELS: Record<SidebarProjectSortOrder, string> = {
-  updated_at: uiText("Last user message"),
-  created_at: uiText("Created at"),
-  manual: uiText("Manual"),
+  get updated_at() {
+    return uiText("Last user message");
+  },
+  get created_at() {
+    return uiText("Created at");
+  },
+  get manual() {
+    return uiText("Manual");
+  },
 };
 const SIDEBAR_THREAD_SORT_LABELS: Record<SidebarThreadSortOrder, string> = {
-  updated_at: uiText("Last user message"),
-  created_at: uiText("Created at"),
+  get updated_at() {
+    return uiText("Last user message");
+  },
+  get created_at() {
+    return uiText("Created at");
+  },
 };
 const EMPTY_THREAD_JUMP_LABELS = new Map<string, string>();
 const PROJECT_GROUPING_MODE_LABELS: Record<SidebarProjectGroupingMode, string> = {
-  repository: uiText("Group by repository"),
-  repository_path: uiText("Group by repository path"),
-  separate: uiText("Keep separate"),
+  get repository() {
+    return uiText("Group by repository");
+  },
+  get repository_path() {
+    return uiText("Group by repository path");
+  },
+  get separate() {
+    return uiText("Keep separate");
+  },
 };
 const SIDEBAR_ICON_ACTION_BUTTON_CLASS =
   "inline-flex h-6 min-w-6 cursor-pointer items-center justify-center rounded-md px-0.75 text-icon-muted hover:text-foreground focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring";
@@ -481,6 +503,7 @@ const ThreadProviderLabelContext = createContext<ReadonlyMap<string, ThreadProvi
 );
 const MORE_PROJECTS_EXPANSION_KEY = "project-first:more";
 const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowProps) {
+  const uiText = useUiText();
   const {
     orderedProjectThreadKeys,
     isActive,
@@ -900,7 +923,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                     )}
                     data-testid={`thread-title-${thread.id}`}
                   >
-                    {thread.archivedAt ? "[\u5DF2\u5F52\u6863] " : ""}
+                    {thread.archivedAt ? uiText("[Archived] ") : ""}
                     {thread.title}
                   </span>
                 }
@@ -966,12 +989,12 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
               <TooltipTrigger
                 render={<span className="shrink-0 text-3xs text-sidebar-muted-foreground" />}
               >
-                {"\u539F\u76EE\u5F55"}
+                {uiText("Original folder")}
               </TooltipTrigger>
               <TooltipPopup side="top">
-                {"\u5DE5\u4F5C\u76EE\u5F55\uFF1A"}
-                {originalWorkspace ?? "\u539F\u9879\u76EE\u76EE\u5F55"}
-                {"\uFF08\u4FA7\u680F\u5F52\u7C7B\u4E0D\u6539\u53D8\u5DE5\u4F5C\u76EE\u5F55\uFF09"}
+                {uiText("Working directory:")}
+                {originalWorkspace ?? uiText("Original project folder")}
+                {uiText("(Sidebar categories leave the working directory as is.)")}
               </TooltipPopup>
             </Tooltip>
           )}
@@ -1121,7 +1144,7 @@ function SidebarSubtaskControl({
         [
           {
             id: "restore-subtasks",
-            label: `恢复子任务（${archived.length}）`,
+            label: uiText("Restore subtasks ({count})", { count: archived.length }),
             disabled: !archived.length,
           },
         ],
@@ -1136,13 +1159,16 @@ function SidebarSubtaskControl({
       if (failures.length)
         toastManager.add({
           type: "error",
-          title: `有 ${failures.length} 个子任务恢复失败`,
-          description: failures.map(({ thread }) => thread.title).join("\u3001"),
+          title:
+            failures.length === 1
+              ? uiText("Couldn’t restore {count} subtask", { count: failures.length })
+              : uiText("Couldn’t restore {count} subtasks", { count: failures.length }),
+          description: failures.map(({ thread }) => thread.title).join(uiText(", ")),
         });
     } catch {
       toastManager.add({
         type: "error",
-        title: "\u65E0\u6CD5\u6253\u5F00\u5B50\u4EFB\u52A1\u83DC\u5355",
+        title: uiText("Couldn’t open the subtask menu"),
       });
     }
   };
@@ -1151,7 +1177,7 @@ function SidebarSubtaskControl({
       <button
         type="button"
         className={SIDEBAR_ICON_ACTION_BUTTON_CLASS}
-        aria-label={`子任务 ${count}`}
+        aria-label={uiText("Subtask {count}", { count })}
         aria-expanded={expanded}
         onClick={(event) => {
           event.stopPropagation();
@@ -1166,7 +1192,7 @@ function SidebarSubtaskControl({
         <button
           type="button"
           className={SIDEBAR_ICON_ACTION_BUTTON_CLASS}
-          aria-label="子任务菜单"
+          aria-label={uiText("Subtask menu")}
           onClick={(event) => void openMenu(event)}
         >
           <ChevronRightIcon className="size-3 rotate-90" />
@@ -1304,7 +1330,7 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
             data-thread-selection-safe
             className="flex h-8 w-full translate-x-0 items-center px-2 text-left text-xs text-sidebar-muted-foreground/75"
           >
-            <span>{"\u6682\u65E0\u4F1A\u8BDD"}</span>
+            <span>{uiText("No conversations yet")}</span>
           </div>
         </SidebarMenuSubItem>
       ) : null}
@@ -1370,7 +1396,7 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
             <span className="flex min-w-0 flex-1 items-center gap-2">
               {hiddenThreadStatus && <ThreadStatusLabel status={hiddenThreadStatus} compact />}
               <span>
-                {"\u66F4\u591A "}
+                {uiText("Show more ")}
                 {hiddenThreadCount}
               </span>
             </span>
@@ -1387,7 +1413,7 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
               collapseThreadListForProject(projectKey);
             }}
           >
-            <span>{"\u6536\u8D77"}</span>
+            <span>{uiText("Collapse recommendation")}</span>
           </SidebarMenuSubButton>
         </SidebarMenuSubItem>
       )}
@@ -1415,6 +1441,7 @@ interface SidebarProjectItemProps {
   dragHandleProps: SortableProjectHandleProps | null;
 }
 const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjectItemProps) {
+  const uiText = useUiText();
   const {
     project,
     isThreadListExpanded,
@@ -1650,10 +1677,10 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
     ? projectThreads.some(
         (thread) => attentionReason(thread, acknowledgedErrors) === "\u5F85\u6388\u6743",
       )
-      ? "\u5F85\u6388\u6743"
-      : "\u5F85\u56DE\u7B54"
+      ? "待授权"
+      : "待回答"
     : projectAttentionCounts.errors
-      ? "\u8FD0\u884C\u5931\u8D25"
+      ? "运行失败"
       : null;
   const categoryRunning =
     isCategoryProjectKey(project.projectKey) &&
@@ -2087,15 +2114,15 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
             ? [
                 {
                   id: "toggle-pinned",
-                  label: isPinned ? "\u53D6\u6D88\u7F6E\u9876" : "\u7F6E\u9876",
+                  label: isPinned ? uiText("Unpin") : uiText("Pin"),
                 },
               ]
             : []),
           {
             id: "toggle-sticky",
             label: isSticky
-              ? "\u53D6\u6D88\u5E38\u9A7B\u9879\u76EE"
-              : "\u8BBE\u4E3A\u5E38\u9A7B\u9879\u76EE",
+              ? uiText("Remove from persistent projects")
+              : uiText("Keep project visible"),
           },
           buildTargetedItem("rename", "Rename", {
             isDisabled: (member) =>
@@ -2326,8 +2353,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
       ) {
         toastManager.add({
           type: "warning",
-          title:
-            "\u76EE\u5F55\u5DF2\u9009\u62E9\uFF0C\u4F46\u672C\u673A\u9ED8\u8BA4\u76EE\u5F55\u4FDD\u5B58\u5931\u8D25",
+          title: uiText("Folder selected. Couldn’t save the device default."),
         });
       }
       if (result._tag === "Success" && result.value && project.providerModelSelection) {
@@ -2367,10 +2393,16 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
         return;
       }
       const clickedResult = await settlePromise(() =>
-        api.contextMenu.show(projectMemberMenu(project.memberProjects, sidebarThreads), {
-          x: event.clientX,
-          y: event.clientY,
-        }),
+        api.contextMenu.show(
+          projectMemberMenu(project.memberProjects, sidebarThreads, {
+            heading: project.displayName,
+            remembered: readDefaultMember(project.sourceProjectKey ?? project.projectKey),
+          }),
+          {
+            x: event.clientX,
+            y: event.clientY,
+          },
+        ),
       );
       if (clickedResult._tag === "Failure") {
         const error = squashAtomCommandFailure(clickedResult);
@@ -2574,10 +2606,10 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
         ...(appAtomRegistry.get(canShareWithGuestAtom(thread.environmentId))
           ? [{ id: "share-guest", label: "Share with guest" }]
           : []),
-        { id: "set-category", label: "\u8C03\u6574\u5206\u7C7B\u2026" },
-        { id: "move-project", label: "\u79FB\u52A8\u5230\u9879\u76EE\u2026" },
+        { id: "set-category", label: uiText("Change category…") },
+        { id: "move-project", label: uiText("Move to project…") },
         ...(useThreadPlacementStore.getState().placements[threadKey]
-          ? [{ id: "restore-project", label: "\u6062\u590D\u539F\u9879\u76EE\u5F52\u7C7B" }]
+          ? [{ id: "restore-project", label: uiText("Restore original project grouping") }]
           : []),
         { id: "mark-unread", label: uiText("Mark unread") },
         { id: "copy-path", label: uiText("Copy Path") },
@@ -2777,11 +2809,11 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
                 <span
                   className="ml-auto flex shrink-0 items-center gap-1"
                   aria-label={[
-                    categoryRunning ? "\u6709\u8FD0\u884C\u4E2D" : null,
-                    projectAttentionReason,
+                    categoryRunning ? uiText("Work in progress") : null,
+                    projectAttentionReason ? inboxLabel(projectAttentionReason) : null,
                   ]
                     .filter(Boolean)
-                    .join("\u3001")}
+                    .join(uiText(", "))}
                 >
                   {categoryRunning ? <span className="size-1.5 rounded-full bg-primary" /> : null}
                   {projectAttentionReason ? (
@@ -2834,7 +2866,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
                 <div className="pointer-events-none absolute top-[calc(50%+1px)] right-0.5 -translate-y-1/2 opacity-0 transition-opacity duration-150 max-sm:pointer-events-auto max-sm:opacity-100 group-hover/project-header:pointer-events-auto group-hover/project-header:opacity-100 group-focus-within/project-header:pointer-events-auto group-focus-within/project-header:opacity-100">
                   <button
                     type="button"
-                    aria-label="新建会话（⌥ 选择目录）"
+                    aria-label={uiText("New conversation (⌥ to choose a folder)")}
                     data-testid="new-thread-button"
                     className={SIDEBAR_ICON_ACTION_BUTTON_CLASS}
                     onClick={handleCreateThreadClick}
@@ -2845,7 +2877,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
               }
             />
             <TooltipPopup side="top">
-              {"\u65B0\u5EFA\u4F1A\u8BDD\uFF08\u2325 \u9009\u62E9\u76EE\u5F55\uFF09"}
+              {uiText("New conversation (⌥ to choose a folder)")}
             </TooltipPopup>
           </Tooltip>
         </div>
@@ -3024,6 +3056,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
   );
 });
 function LocalSecondaryStatus() {
+  const uiText = useUiText();
   const { environments } = useEnvironments();
   // Poll desktop-local backends because the bridge has no change event.
   const secondaries = useDesktopLocalBootstraps();
@@ -3103,7 +3136,7 @@ type SortableProjectHandleProps = Pick<
   ReturnType<typeof useSortable>,
   "attributes" | "listeners" | "setActivatorNodeRef"
 >;
-function ProjectSortMenu({
+export function ProjectSortMenu({
   grouping,
   onGroupingChange,
   projectSortOrder,
@@ -3122,6 +3155,7 @@ function ProjectSortMenu({
   onThreadSortOrderChange: (sortOrder: SidebarThreadSortOrder) => void;
   onThreadPreviewCountChange: (count: SidebarThreadPreviewCount) => void;
 }) {
+  const uiText = useUiText();
   const handleThreadPreviewCountChange = (nextValue: number | null) => {
     if (nextValue === null) {
       return;
@@ -3154,15 +3188,15 @@ function ProjectSortMenu({
       <MenuPopup align="end" side="bottom">
         <MenuGroup>
           <div className="px-2 py-1 sm:text-xs font-medium text-muted-foreground">
-            {"\u5206\u7EC4\u65B9\u5F0F"}
+            {uiText("Group by")}
           </div>
           <MenuRadioGroup
             value={grouping}
             onValueChange={(value) => onGroupingChange(value as SidebarGrouping)}
           >
-            <MenuRadioItem value="category">{"\u6309\u5206\u7C7B"}</MenuRadioItem>
-            <MenuRadioItem value="project">{"\u6309\u9879\u76EE"}</MenuRadioItem>
-            <MenuRadioItem value={uiText("model")}>{"\u6309\u6A21\u578B"}</MenuRadioItem>
+            <MenuRadioItem value="category">{uiText("By category")}</MenuRadioItem>
+            <MenuRadioItem value="project">{uiText("By project")}</MenuRadioItem>
+            <MenuRadioItem value="model">{uiText("By model")}</MenuRadioItem>
           </MenuRadioGroup>
         </MenuGroup>
         <MenuGroup>
@@ -3304,7 +3338,10 @@ interface SidebarProjectsContentProps {
   sortedProjects: readonly SidebarProjectSnapshot[];
   projectSections: ProjectSections | null;
   categorySections: readonly CategorySection[] | null;
+  emptyCategories: readonly ThreadCategory[];
+  categorySuggestions?: React.ReactNode;
   sidebarGrouping: SidebarGrouping;
+  onSidebarGroupingChange: (grouping: SidebarGrouping) => void;
   expandedThreadListsByProject: ReadonlySet<string>;
   routeThreadKey: string | null;
   openPullRequestsInRightPanel: boolean;
@@ -3343,7 +3380,7 @@ function ProviderProjectSection({
   );
   const setExpanded = useUiStateStore((state) => state.setProjectExpanded);
   return (
-    <section className="mb-2" aria-label={`${provider} 项目`}>
+    <section className="mb-2" aria-label={uiText("{provider} projects", { provider })}>
       <button
         type="button"
         className="flex w-full items-center gap-1.5 rounded-md px-2 py-2 text-sm font-semibold hover:bg-accent"
@@ -3359,7 +3396,7 @@ function ProviderProjectSection({
           {children}
           {projectCount === 0 ? (
             <p className="px-3 py-2 text-xs text-muted-foreground">
-              {"\u6682\u65E0\u9879\u76EE\u6216\u5386\u53F2\u4F1A\u8BDD"}
+              {uiText("No projects or conversation history")}
             </p>
           ) : null}
         </div>
@@ -3376,6 +3413,7 @@ function ProjectListSection({
   projects: readonly SidebarProjectSnapshot[];
   children: React.ReactNode;
 }) {
+  const text = useUiText();
   return (
     <section className="mb-2" aria-label={label || undefined}>
       {label ? (
@@ -3388,7 +3426,7 @@ function ProjectListSection({
       ) : null}
       {children}
       {projects.length === 0 ? (
-        <p className="px-3 py-2 text-xs text-muted-foreground">{"\u6682\u65E0\u9879\u76EE"}</p>
+        <p className="px-3 py-2 text-xs text-muted-foreground">{text("No projects yet")}</p>
       ) : null}
     </section>
   );
@@ -3410,7 +3448,7 @@ function MoreProjectsSection({
     projects.some((project) => project.providerThreadKeys?.has(routeThreadKey));
   const expanded = stored ?? holdsActiveThread;
   return (
-    <section className="mb-2" aria-label="更多项目">
+    <section className="mb-2" aria-label={uiText("More projects")}>
       <button
         type="button"
         className="flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium text-sidebar-muted-foreground hover:bg-accent"
@@ -3418,7 +3456,7 @@ function MoreProjectsSection({
         onClick={() => setExpanded([MORE_PROJECTS_EXPANSION_KEY], !expanded)}
       >
         <ChevronRightIcon className={cn("size-3.5", expanded && "rotate-90")} />
-        <span>{`更多项目 ${projects.length}`}</span>
+        <span>{uiText("More projects ({count})", { count: projects.length })}</span>
       </button>
       {expanded ? children : null}
     </section>
@@ -3433,6 +3471,9 @@ function buildCategorySections(
   threads: readonly SidebarThreadSummary[],
   parentByKey: ReadonlyMap<string, SidebarThreadSummary>,
   overrides: Readonly<Record<string, string>>,
+  settings: SidebarCategorySettings,
+  categories: readonly ThreadCategory[],
+  groups: readonly string[],
 ): CategorySection[] {
   const threadByKey = new Map(
     threads.map(
@@ -3469,10 +3510,16 @@ function buildCategorySections(
       // Subtasks follow their root conversation, so a thread tree never splits.
       const root = rootOf(thread);
       const rootKey = scopedThreadKey(scopeThreadRef(root.environmentId, root.id));
-      const category = resolveThreadCategory(overrides, rootKey, {
-        title: root.title,
-        projectName: projectNameByThreadKey.get(rootKey) ?? project.displayName,
-      });
+      const category = resolveThreadCategory(
+        overrides,
+        rootKey,
+        {
+          title: root.title,
+          projectName: projectNameByThreadKey.get(rootKey) ?? project.displayName,
+        },
+        settings,
+        categories,
+      );
       let bucket = buckets.get(category);
       if (!bucket) {
         bucket = { base: project, keys: new Set(), members: new Map(), refs: new Map() };
@@ -3484,9 +3531,10 @@ function buildCategorySections(
       for (const ref of project.memberProjectRefs) bucket.refs.set(JSON.stringify(ref), ref);
     }
   }
-  return THREAD_CATEGORY_GROUPS.flatMap((group) => {
-    const rows = THREAD_CATEGORIES.filter((category) => category.group === group).flatMap(
-      (category) => {
+  return groups.flatMap((group) => {
+    const rows = categories
+      .filter((category) => (category.group ?? "") === group)
+      .flatMap((category) => {
         const bucket = buckets.get(category.id);
         if (!bucket) return [];
         const projectKey = `${CATEGORY_PROJECT_KEY_PREFIX}${category.id}`;
@@ -3495,7 +3543,7 @@ function buildCategorySections(
             ...bucket.base,
             projectKey,
             sourceProjectKey: projectKey,
-            displayName: threadCategoryById(category.id).label,
+            displayName: category.label,
             providerLabel: PROJECT_FIRST_LABEL,
             providerThreadKeys: bucket.keys,
             memberProjects: [...bucket.members.values()],
@@ -3504,14 +3552,14 @@ function buildCategorySections(
             pinned: false,
           } satisfies SidebarProjectSnapshot,
         ];
-      },
-    );
+      });
     return rows.length ? [{ group, projects: rows }] : [];
   });
 }
 const SidebarProjectsContent = memo(function SidebarProjectsContent(
   props: SidebarProjectsContentProps,
 ) {
+  const uiText = useUiText();
   const {
     openArchivedHistory,
     workbenchInbox,
@@ -3540,7 +3588,10 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
     sortedProjects,
     projectSections,
     categorySections,
+    emptyCategories,
+    categorySuggestions,
     sidebarGrouping,
+    onSidebarGroupingChange,
     expandedThreadListsByProject,
     routeThreadKey,
     openPullRequestsInRightPanel,
@@ -3563,6 +3614,11 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
     isMobile,
   } = props;
   const setProjectExpanded = useUiStateStore((state) => state.setProjectExpanded);
+  const [introSeen, setIntroSeen] = useLocalStorage(
+    "t3code:sidebar-category-intro-seen:v1",
+    false,
+    Schema.Boolean,
+  );
   const handleProjectSortOrderChange = (sortOrder: SidebarProjectSortOrder) => {
     updateSettings({ sidebarProjectSortOrder: sortOrder });
   };
@@ -3617,14 +3673,12 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
                 render={<SidebarMenuButton data-testid="command-palette-trigger" />}
               >
                 <SearchIcon />
-                <span className="flex-1 truncate">
-                  {"\u641C\u7D22\u9879\u76EE\u3001\u4F1A\u8BDD\u2026"}
-                </span>
+                <span className="flex-1 truncate">{uiText("Search projects, threads…")}</span>
                 {commandPaletteShortcutLabel ? <Kbd>{commandPaletteShortcutLabel}</Kbd> : null}
               </CommandDialogTrigger>
               <SidebarMenuButton
                 size="icon"
-                aria-label="新建任务"
+                aria-label={uiText("New thread")}
                 onClick={() => openCommandPalette({ open: "new-thread-in" })}
               >
                 <SquarePenIcon />
@@ -3636,7 +3690,10 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
     >
       {/* Running work and the inline inbox scroll with the list, as in the mockup; the
       header keeps only search, so a long inbox never squeezes the list. */}
-      <SidebarGroup>{workbenchInbox}</SidebarGroup>
+      <SidebarGroup>
+        {workbenchInbox}
+        {categorySuggestions}
+      </SidebarGroup>
       {showArm64IntelBuildWarning && arm64IntelBuildWarningDescription ? (
         <SidebarGroup>
           <Alert variant="warning">
@@ -3668,10 +3725,10 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
             data-sidebar-cap=""
           >
             {sidebarGrouping === "category"
-              ? "\u5206\u7C7B"
+              ? uiText("Categories")
               : sidebarGrouping === "project"
-                ? "\u9879\u76EE"
-                : "\u6A21\u578B / \u9879\u76EE"}
+                ? uiText("Projects")
+                : uiText("Models / projects")}
           </span>
           {/* Tools appear on hover or focus; touch screens keep them visible. */}
           <div className="flex items-center gap-0.5 opacity-0 transition-opacity duration-150 group-hover/cap:opacity-100 focus-within:opacity-100 pointer-coarse:opacity-100 max-sm:opacity-100 motion-reduce:transition-none">
@@ -3682,7 +3739,7 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
                     <Button
                       size="icon-xs"
                       variant="ghost-muted"
-                      aria-label={"\u5168\u90E8\u6298\u53E0"}
+                      aria-label={uiText("Collapse all")}
                       onClick={() =>
                         setProjectExpanded(
                           categorySections.flatMap((section) =>
@@ -3696,12 +3753,12 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
                 >
                   <ChevronsDownUpIcon className="size-3.5" />
                 </TooltipTrigger>
-                <TooltipPopup side="right">{"\u5168\u90E8\u6298\u53E0"}</TooltipPopup>
+                <TooltipPopup side="right">{uiText("Collapse all")}</TooltipPopup>
               </Tooltip>
             ) : null}
             <ProjectSortMenu
               grouping={sidebarGrouping}
-              onGroupingChange={setSidebarGrouping}
+              onGroupingChange={onSidebarGroupingChange}
               projectSortOrder={projectSortOrder}
               threadSortOrder={threadSortOrder}
               threadPreviewCount={threadPreviewCount}
@@ -3766,17 +3823,57 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
                   </SidebarMenu>
                 </ProjectListSection>
               ))}
+              {emptyCategories.length ? (
+                <ul
+                  className="space-y-1 px-2 py-1 text-xs text-sidebar-muted-foreground/75"
+                  aria-label={uiText("Empty categories")}
+                >
+                  {emptyCategories.map((category) => (
+                    <li key={category.id} className="flex min-h-6 items-center gap-2">
+                      <span aria-hidden className="size-2 shrink-0 rounded-sm bg-current/30" />
+                      <span className="truncate">{category.label}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+              {emptyCategories.length > 0 && !introSeen ? (
+                <aside className="m-2 space-y-2 rounded-xl border bg-card p-3 text-xs">
+                  <div className="flex items-center justify-between gap-2">
+                    <b>{uiText("Categories grow with you")}</b>
+                    <button
+                      type="button"
+                      onClick={() => setIntroSeen(true)}
+                      className="text-muted-foreground"
+                    >
+                      {uiText("Dismiss")}
+                    </button>
+                  </div>
+                  <p className="text-muted-foreground">
+                    {uiText(
+                      "New threads are filed by title. Right-click a thread to change its category.",
+                    )}
+                  </p>
+                  <Link
+                    to="/settings/threads"
+                    hash="sidebar-categories"
+                    onClick={() => setIntroSeen(true)}
+                    className="text-primary"
+                  >
+                    {uiText("Sidebar categories")}
+                  </Link>
+                </aside>
+              ) : null}
             </div>
           ) : projectSections ? (
             <>
               {projectSections.pinned.length > 0 ? (
-                <ProjectListSection label="置顶" projects={projectSections.pinned}>
+                <ProjectListSection label={uiText("Pinned")} projects={projectSections.pinned}>
                   <SidebarMenu ref={attachProjectListAutoAnimateRef}>
                     {projectSections.pinned.map((project) => renderProjectItem(project, true))}
                   </SidebarMenu>
                 </ProjectListSection>
               ) : null}
-              <ProjectListSection label="最近" projects={projectSections.recent}>
+              <ProjectListSection label={uiText("Latest")} projects={projectSections.recent}>
                 <SidebarMenu ref={attachProjectListAutoAnimateRef}>
                   {projectSections.recent.map((project) => renderProjectItem(project, true))}
                 </SidebarMenu>
@@ -3797,7 +3894,7 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
               ...new Set([
                 "Codex",
                 "Claude",
-                ...sortedProjects.map((project) => project.providerLabel ?? "\u5176\u4ED6"),
+                ...sortedProjects.map((project) => project.providerLabel ?? uiText("Other")),
               ]),
             ].map((provider) => {
               const providerProjects = sortedProjects.filter(
@@ -3829,9 +3926,9 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
             })
           )}
         </DndContext>
-        {projectsLength === 0 && (
+        {projectsLength === 0 && !categorySections && (
           <div className="px-2 pt-4 text-center text-secondary-label text-xs">
-            {"\u6682\u65E0\u9879\u76EE"}
+            {uiText("No projects yet")}
           </div>
         )}
       </SidebarGroup>
@@ -3847,7 +3944,14 @@ function clearThreadSelectionOnOutsideMouseDown(event: globalThis.MouseEvent) {
     selection.clearSelection();
 }
 export default function LegacySidebar(props: { routeReveal: SidebarRouteReveal }) {
+  const uiText = useUiText();
   const projects = useProjects();
+  const {
+    settings: categorySettings,
+    overrides: categoryOverrides,
+    categories,
+    groups,
+  } = useSidebarCategories();
   const liveSidebarThreads = useThreadShells();
   const archiveEnvironmentIds = (() => [
     ...new Set(liveSidebarThreads.map((thread) => thread.environmentId)),
@@ -3942,6 +4046,8 @@ export default function LegacySidebar(props: { routeReveal: SidebarRouteReveal }
   const physicalToLogicalKey = (() => {
     return buildPhysicalToLogicalProjectKeyMap({
       projects: orderedProjects,
+      workspaceCollections: true,
+      legacyCategoryRules: categorySettings.legacyRules,
       settings: projectGroupingSettings,
       primaryEnvironmentId,
     });
@@ -3956,6 +4062,8 @@ export default function LegacySidebar(props: { routeReveal: SidebarRouteReveal }
   const sidebarProjects = (() => {
     return buildSidebarProjectSnapshots({
       projects: orderedProjects,
+      workspaceCollections: true,
+      legacyCategoryRules: categorySettings.legacyRules,
       settings: projectGroupingSettings,
       primaryEnvironmentId,
       resolveEnvironmentLabel: (environmentId) => environmentLabelById.get(environmentId) ?? null,
@@ -4109,7 +4217,8 @@ export default function LegacySidebar(props: { routeReveal: SidebarRouteReveal }
   const openArchivedHistory = () => {
     void navigate({ to: "/settings/archived" });
   };
-  const providerConfigs = useAtomValue(environmentServerConfigsAtom);
+  // Group labels depend on settings; quota/status probes must not rebuild the archived sidebar.
+  const providerConfigs = useAtomValue(environmentPresentations.serverConfigsAtom);
   const placements = useThreadPlacementStore((state) => state.placements);
   const providerSortedProjects = (() =>
     groupSidebarWithSubtasks(
@@ -4117,9 +4226,13 @@ export default function LegacySidebar(props: { routeReveal: SidebarRouteReveal }
       sidebarThreads,
       providerConfigs,
       placements,
+      categorySettings.legacyRules,
     ))();
-  const sidebarGrouping = useSidebarGrouping();
-  const categoryOverrides = useThreadCategoryOverrides();
+  const storedGrouping = useSidebarGrouping();
+  const sidebarGrouping =
+    categorySettings.preset === "project" && storedGrouping === "category"
+      ? "project"
+      : storedGrouping;
   const pinnedProjects = usePinnedProjects();
   const isManualProjectSorting = sidebarProjectSortOrder === "manual";
   // Project rows only age out by the clock, so a slow tick is enough to move one into "more".
@@ -4167,10 +4280,15 @@ export default function LegacySidebar(props: { routeReveal: SidebarRouteReveal }
           sidebarThreads,
           subtaskTree.parentByKey,
           categoryOverrides,
+          categorySettings,
+          categories,
+          groups,
         )
       : null;
   const categoryOrder = useStableCategoryOrder(
-    unsortedCategorySections
+    unsortedCategorySections &&
+      categorySettings.legacyRules &&
+      categorySettings.preset === "general"
       ? sortCategorySections(
           unsortedCategorySections,
           sidebarThreads,
@@ -4180,7 +4298,34 @@ export default function LegacySidebar(props: { routeReveal: SidebarRouteReveal }
         )
       : null,
   );
-  const categorySections = categoryOrder.sections;
+  const categorySections = categoryOrder.sections ?? unsortedCategorySections;
+  const occupied = new Set(
+    categorySections?.flatMap((section) => section.projects.map((project) => project.projectKey)),
+  );
+  const emptyCategories =
+    categorySections && !(categorySettings.legacyRules && categorySettings.preset === "general")
+      ? categories.filter(
+          (category) => !occupied.has(`${CATEGORY_PROJECT_KEY_PREFIX}${category.id}`),
+        )
+      : [];
+  const unsortedKeys = categorySections
+    ?.flatMap((section) => section.projects)
+    .find(
+      (project) => project.projectKey === `${CATEGORY_PROJECT_KEY_PREFIX}${UNSORTED_CATEGORY_ID}`,
+    )?.providerThreadKeys;
+  const categorySuggestions =
+    categorySettings.suggestions && categorySections ? (
+      <ThreadCategorySuggestions
+        candidates={visibleThreads.flatMap((thread) => {
+          const key = scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id));
+          return !thread.archivedAt && !thread.deletedAt && unsortedKeys?.has(key)
+            ? [{ key, title: thread.title }]
+            : [];
+        })}
+        categories={categories.filter((category) => category.id !== UNSORTED_CATEGORY_ID)}
+        modelSelection={categorySettings.suggestionModel}
+      />
+    ) : null;
   const sortedProjects = categorySections
     ? categorySections.flatMap((section) => section.projects)
     : projectSections
@@ -4604,7 +4749,7 @@ export default function LegacySidebar(props: { routeReveal: SidebarRouteReveal }
         setProjectExpanded(
           [
             ...projectExpansionPreferenceKeys(targetProject),
-            providerExpansionKey(targetProject.providerLabel ?? "\u5176\u4ED6"),
+            providerExpansionKey(targetProject.providerLabel ?? uiText("Other")),
           ],
           true,
         );
@@ -4672,7 +4817,17 @@ export default function LegacySidebar(props: { routeReveal: SidebarRouteReveal }
               sortedProjects={sortedProjects}
               projectSections={projectSections}
               categorySections={categorySections}
+              emptyCategories={emptyCategories}
+              categorySuggestions={categorySuggestions}
               sidebarGrouping={sidebarGrouping}
+              onSidebarGroupingChange={(grouping) => {
+                if (grouping === "category" && categorySettings.preset === "project") {
+                  void updateClientSettings({
+                    sidebarCategories: { ...categorySettings, preset: "general" },
+                  });
+                }
+                setSidebarGrouping(grouping);
+              }}
               expandedThreadListsByProject={expandedThreadListsByProject}
               routeThreadKey={routeThreadKey}
               openPullRequestsInRightPanel={routeThreadRef !== null}

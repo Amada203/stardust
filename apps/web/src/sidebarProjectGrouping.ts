@@ -10,7 +10,11 @@ import {
   derivePhysicalProjectKey,
   type ProjectGroupingSettings,
 } from "./logicalProject";
-import { resolveScratchProjectScopeKey } from "@t3tools/client-runtime/state/project-grouping";
+import {
+  isPickableProjectMember,
+  resolveScratchProjectScopeKey,
+  selectGroupDefaultProject,
+} from "@t3tools/client-runtime/state/project-grouping";
 import { buildWorkspaceCollections, isWorkspaceCollectionKey } from "./workspaceCollections";
 import type { Project } from "./types";
 
@@ -81,6 +85,7 @@ export function getSidebarProjectSettingsKey(
   projects: ReadonlyArray<Project>,
   projectRef?: ScopedProjectRef,
 ): string {
+  if (!group.isScratch && !isWorkspaceCollectionKey(group.projectKey)) return group.projectKey;
   const project =
     group.memberProjects.find(
       (member) =>
@@ -155,14 +160,16 @@ export function buildPhysicalToLogicalProjectKeyMap(input: {
   settings: ProjectGroupingSettings;
   primaryEnvironmentId: EnvironmentId | null;
   workspaceCollections?: boolean;
+  legacyCategoryRules?: Parameters<typeof buildWorkspaceCollections>[0]["legacyCategoryRules"];
 }): Map<string, string> {
   const mapping = new Map<string, string>();
   const buildGroups =
-    input.workspaceCollections === false ? buildProjectGroups : buildWorkspaceCollections;
+    input.workspaceCollections === true ? buildWorkspaceCollections : buildProjectGroups;
   const groups = buildGroups({
     projects: input.projects,
     settings: input.settings,
     preferredEnvironmentId: input.primaryEnvironmentId,
+    legacyCategoryRules: input.legacyCategoryRules,
   });
   for (const group of groups) {
     for (const member of group.members) {
@@ -179,16 +186,18 @@ export function buildSidebarProjectSnapshots(input: {
   primaryEnvironmentId: EnvironmentId | null;
   resolveEnvironmentLabel: (environmentId: EnvironmentId) => string | null;
   workspaceCollections?: boolean;
+  legacyCategoryRules?: Parameters<typeof buildWorkspaceCollections>[0]["legacyCategoryRules"];
   isDesktopLocalEnvironment?: (environmentId: EnvironmentId) => boolean;
   isWslEnvironment?: (environmentId: EnvironmentId) => boolean;
-}): SidebarProjectSnapshot[] {
+}, _resolve?: unknown): SidebarProjectSnapshot[] {
   const buildGroups =
-    input.workspaceCollections === false ? buildProjectGroups : buildWorkspaceCollections;
+    input.workspaceCollections === true ? buildWorkspaceCollections : buildProjectGroups;
   return buildGroups({
     projects: input.projects,
     groupScratchProjects: input.groupScratchProjects ?? false,
     settings: input.settings,
     preferredEnvironmentId: input.primaryEnvironmentId,
+    legacyCategoryRules: input.legacyCategoryRules,
   }).map((group): SidebarProjectSnapshot => {
     const members = group.members.map(
       ({ physicalProjectKey, project }): SidebarProjectGroupMember => ({
@@ -228,7 +237,7 @@ export function buildSidebarProjectSnapshots(input: {
 
     return {
       ...representative,
-      title: group.label,
+      ...(input.workspaceCollections === true ? { title: group.label } : {}),
       projectKey: group.key,
       displayName: group.label,
       groupedProjectCount: members.length,
@@ -251,6 +260,7 @@ export function buildSidebarProjectPickerEntries(input: {
 }) {
   const preferredProjectRef = input.preferredProjectRef;
   const entries = input.groups.flatMap((group): SidebarProjectPickerEntry[] => {
+    const members = group.memberProjects.filter(isPickableProjectMember);
     const isPreferred = preferredProjectRef
       ? group.memberProjectRefs.some(
           (projectRef) =>
@@ -259,29 +269,27 @@ export function buildSidebarProjectPickerEntries(input: {
         )
       : false;
     const preferredProject = preferredProjectRef
-      ? (group.memberProjects.find(
+      ? (members.find(
           (project) =>
             project.environmentId === preferredProjectRef.environmentId &&
             project.id === preferredProjectRef.projectId,
         ) ??
-        group.memberProjects.find(
-          (project) => project.environmentId === preferredProjectRef.environmentId,
+        selectGroupDefaultProject(
+          members.filter((project) => project.environmentId === preferredProjectRef.environmentId),
         ))
       : null;
     const targetProject =
       preferredProject ??
-      group.memberProjects.find(
+      members.find(
         (project) => project.environmentId === group.environmentId && project.id === group.id,
       ) ??
-      group.memberProjects[0];
+      members[0];
     if (!targetProject) return [];
 
     return [{ group, targetProject, isPreferred }];
   });
-  // The preferred project leads the unpinned ones; pinned projects stay first.
+  // The current project leads, even ahead of pinned projects.
   const preferred = entries.find((entry) => entry.isPreferred);
-  if (!preferred || preferred.group.pinned) return entries;
-  const rest = entries.filter((entry) => entry !== preferred);
-  const pinnedCount = rest.filter((entry) => entry.group.pinned).length;
-  return [...rest.slice(0, pinnedCount), preferred, ...rest.slice(pinnedCount)];
+  if (!preferred) return entries;
+  return [preferred, ...entries.filter((entry) => entry !== preferred)];
 }

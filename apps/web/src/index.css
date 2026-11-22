@@ -1,11 +1,14 @@
 /* Clerk injects its component styles into the clerk layer (clerkAppearance.cssLayerName). */
 @layer theme, base, clerk, components, utilities;
 @import "tailwindcss";
-@import "./liquidGlass.css";
 @import "./windowsProfile.css";
+@import "./liquidGlass.css";
 @import "./skins.css";
-@import "./components/chat/taskTrailCombo.css";
+@import "./components/chat/taskPlanCapsule.css";
+@import "./components/chat/cosmicEffortSlider.css";
+@import "./components/chat/taskCommandActivities.css";
 @import "./themes/apple.css";
+@import "./components/usage/usagePresentation.css";
 
 @custom-variant dark (&:is(.dark, .dark *));
 @custom-variant light (&:not(.dark, .dark *));
@@ -121,7 +124,7 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   /* App layer order: the bottom terminal drawer (45, above the timeline minimap),
      docked sheets, then the floating preview player (47–49, see
      previewMiniPlayerLayout.ts), then dialogs and popovers (50 and up). */
-  --z-sheet: 46;
+  --z-sheet: 500;
   --glass-blur: 12px;
   --glass-opacity: 80%;
   --glass-saturation: 1.14;
@@ -150,8 +153,9 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
 
   @variant dark {
     --appearance-contrast-target: white;
-    --app-scrollbar-thumb: rgb(255 255 255 / 8%);
-    --app-scrollbar-thumb-hover: rgb(255 255 255 / 12%);
+    /* Keeps the idle thumb above 3:1 (WCAG 1.4.11) on #000; 35% renders as gray 89, just under. */
+    --app-scrollbar-thumb: rgb(255 255 255 / 36%);
+    --app-scrollbar-thumb-hover: rgb(255 255 255 / 45%);
     --glass-blur: 16px;
     --glass-saturation: 1.08;
   }
@@ -181,6 +185,14 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
 }
 
 @theme inline {
+  --text-stardust-title: 1.75rem;
+  --text-stardust-title--line-height: 1.2;
+  --text-stardust-section: 1.0625rem;
+  --text-stardust-section--line-height: 1.4;
+  --text-stardust-card: 0.9375rem;
+  --text-stardust-card--line-height: 1.4;
+  --text-stardust-body: 0.8125rem;
+  --text-stardust-body--line-height: 1.5;
   --radius-composer-control: 0.4375rem;
   /* Two steps below Tailwind's text-xs (12px) for dense UI: metadata rows,
      badges, counters, keyboard hints and diagnostics tables. 2xs is 11px,
@@ -223,7 +235,7 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
     linear-gradient(
       to top,
       transparent 0 var(--chat-composer-attachment-overlap),
-      rgb(0 0 0 / 18%) var(--chat-composer-attachment-overlap),
+      var(--chat-composer-attached-seam, rgb(0 0 0 / 18%)) var(--chat-composer-attachment-overlap),
       transparent calc(var(--chat-composer-attachment-overlap) + 10px)
     );
   --color-zinc-25: oklch(99.2% 0 0);
@@ -254,6 +266,7 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --color-diff-deletion-foreground: var(--diff-deletion-foreground);
   --color-info-foreground: var(--info-foreground);
   --color-info: var(--info);
+  --color-annotation: #0a7cff;
   --color-guest: var(--guest);
   --color-guest-foreground: var(--guest-foreground);
   --color-guest-surface: var(--guest-surface);
@@ -512,6 +525,61 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
     var(--app-scrollbar-width) 100%;
 }
 
+/* Smooth 48px alpha fade above the floating composer so scrolled content never hard-clips. */
+.messages-timeline-scroll.composer-bottom-fade {
+  --composer-bottom-mask: linear-gradient(
+    to top,
+    transparent 0,
+    transparent max(0px, calc(var(--composer-fade-d, 0px) - 8px)),
+    rgb(0 0 0 / 16%) calc(var(--composer-fade-d, 0px) + 4px),
+    rgb(0 0 0 / 50%) calc(var(--composer-fade-d, 0px) + 16px),
+    rgb(0 0 0 / 84%) calc(var(--composer-fade-d, 0px) + 28px),
+    black calc(var(--composer-fade-d, 0px) + 40px)
+  );
+  -webkit-mask-image: var(--composer-bottom-mask), linear-gradient(black, black);
+  -webkit-mask-position: left, right;
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-size:
+    calc(100% - var(--app-scrollbar-width)) 100%,
+    var(--app-scrollbar-width) 100%;
+  mask-image: var(--composer-bottom-mask), linear-gradient(black, black);
+  mask-position: left, right;
+  mask-repeat: no-repeat;
+  mask-size:
+    calc(100% - var(--app-scrollbar-width)) 100%,
+    var(--app-scrollbar-width) 100%;
+}
+.messages-timeline-scroll.topbar-scroll-fade.composer-bottom-fade {
+  --composer-top-bottom-mask: linear-gradient(
+    to bottom,
+    transparent 0%,
+    rgb(0 0 0 / 10%) calc(var(--workspace-titlebar-scroll-fade-height) * 0.1),
+    rgb(0 0 0 / 30%) calc(var(--workspace-titlebar-scroll-fade-height) * 0.24),
+    rgb(0 0 0 / 58%) calc(var(--workspace-titlebar-scroll-fade-height) * 0.42),
+    rgb(0 0 0 / 82%) calc(var(--workspace-titlebar-scroll-fade-height) * 0.62),
+    rgb(0 0 0 / 96%) calc(var(--workspace-titlebar-scroll-fade-height) * 0.82),
+    black var(--workspace-titlebar-scroll-fade-height),
+    black calc(100% - var(--composer-fade-d, 0px) - 40px),
+    rgb(0 0 0 / 84%) calc(100% - var(--composer-fade-d, 0px) - 28px),
+    rgb(0 0 0 / 50%) calc(100% - var(--composer-fade-d, 0px) - 16px),
+    rgb(0 0 0 / 16%) calc(100% - var(--composer-fade-d, 0px) - 4px),
+    transparent calc(100% - max(0px, calc(var(--composer-fade-d, 0px) - 8px))),
+    transparent 100%
+  );
+  -webkit-mask-image: var(--composer-top-bottom-mask), linear-gradient(black, black);
+  -webkit-mask-position: left, right;
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-size:
+    calc(100% - var(--app-scrollbar-width)) 100%,
+    var(--app-scrollbar-width) 100%;
+  mask-image: var(--composer-top-bottom-mask), linear-gradient(black, black);
+  mask-position: left, right;
+  mask-repeat: no-repeat;
+  mask-size:
+    calc(100% - var(--app-scrollbar-width)) 100%,
+    var(--app-scrollbar-width) 100%;
+}
+
 /* Virtualizers own their native scroll element, so they cannot use ScrollArea's
    viewport fade. Keep the scrollbar lane opaque while sharing the same fade
    contract across those lists. */
@@ -663,7 +731,7 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
 
 @utility live-activity-focus-aligned {
   width: calc(100% - var(--live-activity-focus-width) - var(--live-activity-focus-width));
-  margin-left: var(--live-activity-focus-width);
+  margin-inline-start: var(--live-activity-focus-width);
 }
 
 @property --assistant-citation-highlight-opacity {
@@ -1924,21 +1992,21 @@ code {
   -webkit-app-region: no-drag;
 }
 
-/* Scrollbar styling */
-::-webkit-scrollbar {
+/* Keep parent scrollbar styles off iframe owners to avoid WebKit resize loops: https://webkit.org/b/324485 */
+:where(:not(iframe))::-webkit-scrollbar {
   width: var(--app-scrollbar-width);
 }
 
-::-webkit-scrollbar-track {
+:where(:not(iframe))::-webkit-scrollbar-track {
   background: transparent;
 }
 
-::-webkit-scrollbar-thumb {
+:where(:not(iframe))::-webkit-scrollbar-thumb {
   background: var(--app-scrollbar-thumb);
   border-radius: 3px;
 }
 
-::-webkit-scrollbar-thumb:hover {
+:where(:not(iframe))::-webkit-scrollbar-thumb:hover {
   background: var(--app-scrollbar-thumb-hover);
 }
 
@@ -2010,13 +2078,11 @@ code {
   list-style-type: disc;
 }
 
-/* --list-gutter defaults to the same 1.25rem as .chat-markdown ul, but
-   ChatMarkdown's `ol` renderer widens it (via inline style) for lists whose
-   widest marker has multiple characters so it isn't clipped by list-style-position:
-   outside painting the marker past the padding box. Reset it here too so a
-   nested ol without its own widened marker doesn't inherit the outer one. */
+/* Outside markers paint past the padding box, so the gutter must fit `0. `,
+   measured per font in appearanceFonts. ChatMarkdown widens it inline for
+   multi-digit markers; setting it here stops a nested ol inheriting that. */
 :is(.chat-markdown, .composer-tiptap) ol {
-  --list-gutter: 1.25rem;
+  --list-gutter: max(1.25rem, var(--list-marker-sans, 0px));
   padding-inline-start: var(--list-gutter, 1.25rem);
   list-style-type: decimal;
 }
@@ -2089,6 +2155,18 @@ code {
   list-style-type: lower-roman;
 }
 
+.chat-markdown.user-message-markdown ol {
+  list-style-type: decimal;
+}
+
+/* Spaces a user typed at the start of a line, which Markdown would otherwise drop. pre-wrap, not
+   pre, so an indent wider than the bubble wraps instead of pushing the line's text out of view.
+   Not selectable, so a selection, a drag or a copy carries the text as it did before. */
+.chat-markdown.user-message-markdown [data-leading-whitespace] {
+  white-space: pre-wrap;
+  user-select: none;
+}
+
 .chat-markdown li + li {
   margin-top: 0.25rem;
 }
@@ -2112,6 +2190,25 @@ code {
 
 .chat-markdown a {
   text-decoration: none;
+}
+
+/* Triple-click selection stops at block-level boxes, flex items included, so file chips in
+   prose stay inline-level down to the icon and label. */
+.chat-markdown-file-link {
+  display: inline-block;
+  overflow-x: clip;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-markdown-file-link > :is(svg, img) {
+  display: inline;
+  margin-inline-end: 0.2em;
+  vertical-align: -0.125em;
+}
+
+.chat-markdown-file-link > [data-slot="context-chip-label"] {
+  display: inline;
 }
 
 /* File links and context chips own their color and focus ring. */
@@ -2213,8 +2310,13 @@ code {
   font-size: 0.85em;
 }
 
+.chat-markdown.user-message-markdown :not(pre) > code {
+  background: color-mix(in srgb, var(--contrast-message-foreground) 10%, transparent);
+  color: var(--contrast-message-foreground);
+}
+
 .chat-markdown strong {
-  font-weight: 600;
+  font-weight: 700;
 }
 
 .chat-markdown pre {
@@ -2275,6 +2377,18 @@ code {
   & :is(pre, pre *) {
     color: inherit !important;
   }
+}
+
+/* Sent messages color prose with the message foreground, which is not chosen
+   for the code surface, so their plain-text fences keep the global foreground. */
+.chat-markdown.user-message-markdown
+  .chat-markdown-codeblock:is(
+    [data-language="text" i],
+    [data-language="txt" i],
+    [data-language="plain" i],
+    [data-language="plaintext" i]
+  ) {
+  color: var(--contrast-foreground) !important;
 }
 
 /* Paragraphs and code blocks arrive in chunks while a response streams. Fade
@@ -2347,6 +2461,15 @@ code {
   max-width: none;
 }
 
+/* Keep overflow discoverable when the edge fade falls between columns. */
+.chat-markdown
+  .chat-markdown-table-container
+  [data-slot="scroll-area-scrollbar"][data-orientation="horizontal"] {
+  opacity: 1;
+  --app-scrollbar-thumb: color-mix(in srgb, var(--muted-foreground) 60%, transparent);
+  --app-scrollbar-thumb-hover: color-mix(in srgb, var(--muted-foreground) 80%, transparent);
+}
+
 :root {
   --diff-addition: var(--success);
   --diff-deletion: var(--destructive);
@@ -2387,12 +2510,14 @@ code {
   color: var(--code-foreground);
 }
 
-/* Pierre's find panel and match highlights read these. */
-.diff-render-surface {
+/* Pierre's find panel is a sibling of the diff containers, so it misses their theme tokens.
+   The top inset clears the 32px sticky file header and its line counts. */
+.diff-render-surface > [data-search-panel] {
   --diffs-search-panel-bg: var(--popover);
   --diffs-search-panel-fg: var(--popover-foreground);
-  --diffs-search-panel-accent: var(--primary);
-  --diffs-search-panel-font: var(--font-sans);
+  --diffs-search-panel-modified: var(--primary);
+  --diffs-header-font-fallback: var(--font-sans);
+  --diffs-search-panel-inset-top: 40px;
 }
 
 /* Pierre's file renderer owns its own surface tokens. Keep the root of a file
@@ -2506,6 +2631,16 @@ code {
   position: relative;
 }
 
+/* Tiptap's injected base CSS disables ligatures; match sent messages.
+   Chromium reshapes edited text from a reused prefix that assumes two
+   characters of context, so long contextual runs (Fira Code's dots) vanish.
+   Any non-zero word-spacing makes it reshape the whole run instead. */
+.composer-tiptap.ProseMirror {
+  font-variant-ligatures: normal;
+  font-feature-settings: normal;
+  word-spacing: 0.01px;
+}
+
 .composer-tiptap p {
   margin: 0;
 }
@@ -2523,14 +2658,18 @@ code {
   padding: 0.05em 0.25em;
 }
 
+/* Markdown delimiters shown, as editable text, around styled text with the caret in it. */
 .composer-rich-marker {
   color: var(--muted-foreground);
   opacity: 0.75;
   font-weight: 400;
   font-style: normal;
   text-decoration: none;
-  user-select: none;
-  pointer-events: none;
+}
+
+/* Delimiters of source restored by undo or redo, once the caret leaves it. */
+.composer-rich-marker-hidden {
+  display: none;
 }
 
 /* Selected chips (node selection from arrowing into or clicking a chip). */
@@ -2641,8 +2780,16 @@ code {
   }
 }
 
-/* A workspace area with no control of its own takes F6 focus itself; keep that visible. */
+/* A workspace area with no control of its own takes F6 focus itself; keep that visible.
+   workspaceFocus.ts marks those, since :focus-visible also matches a clicked area after a key press.
+   The conversation's timeline takes it instead, and its top fade mask would hide its own ring. */
 [data-workspace-area]:focus-visible {
+  outline: none;
+}
+[data-workspace-keyboard-focus]:focus,
+[data-workspace-area="conversation"]:has(
+  .messages-timeline-scroll[data-workspace-keyboard-focus]:focus
+) {
   outline: 2px solid var(--ring);
   outline-offset: -2px;
 }
@@ -2749,4 +2896,202 @@ html[data-sidebar-font-size] [data-app-sidebar] .text-3xs {
 }
 html[data-sidebar-font-size] [data-app-sidebar] .text-2xs {
   font-size: calc(var(--font-size-sidebar) * 0.6875);
+}
+
+.messages-timeline-scroll:focus-visible {
+  outline: none;
+}
+
+.stardust-nebula {
+  background:
+    radial-gradient(ellipse at 35% 40%, rgba(91, 140, 255, 0.1), transparent 48%),
+    radial-gradient(ellipse at 65% 45%, rgba(155, 123, 255, 0.09), transparent 48%);
+}
+.stardust-star {
+  opacity: 0.3;
+  animation: stardust-arrival 1.3s cubic-bezier(0.3, 0.7, 0.2, 1) both;
+}
+@keyframes stardust-arrival {
+  0% {
+    opacity: 0;
+    transform: scale(0.2);
+  }
+  40% {
+    opacity: 0.9;
+    transform: scale(1.5);
+  }
+  100% {
+    opacity: 0.3;
+    transform: scale(1);
+  }
+}
+.stardust-project-name {
+  background: linear-gradient(90deg, #4d7dff, #8b6bff, #d86fb4);
+  background-clip: text;
+  color: transparent;
+}
+.stardust-project-name [data-draft-project-trigger] {
+  color: inherit;
+  border: 0;
+}
+[data-stardust-newchat] [data-testid="composer-editor"] {
+  min-height: 64px;
+}
+[data-stardust-heading] svg {
+  stroke-width: 1.6;
+}
+.stardust-resume-tile {
+  transition: transform 0.2s cubic-bezier(0.3, 0.7, 0.2, 1);
+}
+.stardust-resume-tile:hover {
+  transform: translateY(-2px);
+}
+[data-theme-id="apple"] .stardust-resume-tile {
+  box-shadow: var(--apple-card-shadow);
+}
+@media (prefers-reduced-motion: reduce) {
+  .stardust-star {
+    animation: none;
+  }
+  .stardust-resume-tile {
+    transition: none;
+  }
+}
+
+@utility usage-grow {
+  transform-origin: left;
+}
+@utility usage-motion {
+  min-width: 0;
+}
+
+/* C72 composer attention strip. */
+.inbox-strip-wrap {
+  overflow: clip;
+  max-height: 220px;
+  opacity: 1;
+  transform: translateY(0);
+  transition:
+    opacity 0.28s cubic-bezier(0.3, 0.7, 0.2, 1),
+    transform 0.28s cubic-bezier(0.3, 0.7, 0.2, 1),
+    max-height 0.28s cubic-bezier(0.3, 0.7, 0.2, 1);
+  border-bottom: 1px solid var(--border);
+}
+.inbox-strip-leaving {
+  opacity: 0;
+  transform: translateY(6px);
+  max-height: 0;
+  pointer-events: none;
+}
+@utility inbox-strip-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 5px 10px;
+  font-size: 12.5px;
+  color: var(--muted-foreground);
+}
+.inbox-strip-line strong {
+  font-weight: 600;
+  white-space: nowrap;
+  color: var(--foreground);
+}
+@utility inbox-strip-dot {
+  width: 5px;
+  height: 5px;
+  flex: none;
+  border-radius: 50%;
+  background: #d99844;
+}
+.inbox-strip-dot-new {
+  background: var(--primary);
+}
+@utility inbox-strip-sentence {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@utility inbox-strip-link {
+  color: var(--primary);
+  white-space: nowrap;
+  cursor: pointer;
+}
+@utility inbox-strip-primary {
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 3px 8px;
+  color: #fff;
+  background: #007aff;
+  white-space: nowrap;
+  cursor: pointer;
+}
+@utility inbox-strip-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
+  flex: none;
+  cursor: pointer;
+}
+.inbox-strip-icon svg {
+  width: 14px;
+  height: 14px;
+  stroke-width: 1.5;
+}
+.inbox-strip-icon:hover {
+  background: var(--muted);
+}
+.inbox-strip-primary:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.inbox-strip-line button:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+@utility inbox-strip-hint {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  padding: 0 12px 6px;
+  font-size: 10px;
+  color: var(--muted-foreground);
+}
+.inbox-strip-hint svg {
+  width: 12px;
+  height: 12px;
+  color: var(--primary);
+}
+@utility inbox-strip-details {
+  padding: 4px 12px 9px;
+  font-size: 11px;
+  line-height: 1.65;
+  color: var(--muted-foreground);
+}
+.inbox-strip-error {
+  padding: 4px 12px;
+  color: var(--destructive);
+  font-size: 11px;
+}
+@media (max-width: 540px) {
+  .inbox-strip-line {
+    gap: 5px;
+  }
+  .inbox-strip-sentence {
+    max-width: 18vw;
+  }
+  .inbox-strip-primary {
+    padding: 3px 5px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .inbox-strip-wrap {
+    transition: none;
+    transform: none;
+  }
 }

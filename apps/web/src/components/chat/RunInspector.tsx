@@ -1,3 +1,4 @@
+import { useUiText } from "~/i18n/useUiText";
 import { useState } from "react";
 import type {
   EnvironmentId,
@@ -9,7 +10,7 @@ import { deriveThreadTurnSubagents } from "@t3tools/client-runtime/state/thread-
 import { remainingPercent } from "@t3tools/shared/usageLimits";
 import { useQuietThreadProjection } from "../../state/entities";
 import { useEnvironmentProviders } from "../../state/environments";
-import { uiText } from "~/i18n";
+
 import { accountAlias, quotaSnapshot } from "./runInspectorModel";
 import { Button } from "../ui/button";
 import { useNavigate } from "@tanstack/react-router";
@@ -24,6 +25,7 @@ export function RunQuota({
   connected: boolean;
   now: number;
 }) {
+  const uiText = useUiText();
   const quota = quotaSnapshot(limits, connected, now);
   return (
     <div className="space-y-1">
@@ -53,11 +55,12 @@ export function SubtaskList({
   environmentId: EnvironmentId;
   providers: readonly ServerProvider[];
 }) {
+  const uiText = useUiText();
   const [visible, setVisible] = useState(30);
   const navigate = useNavigate();
   if (tasks.length === 0) return null;
   return (
-    <section aria-label="子任务" className="space-y-3 p-4 text-xs">
+    <section aria-label={uiText("Subtask")} className="space-y-3 p-4 text-xs">
       <ul className="space-y-2">
         {tasks.slice(0, visible).map((task) => {
           const provider = providers.find((entry) => entry.instanceId === task.providerInstanceId);

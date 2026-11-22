@@ -1,3 +1,4 @@
+import { testUiLocale } from "../../../test/uiLocale";
 import { ThreadTaskTrail } from "./ThreadTaskTrail";
 import { makeThreadProjectionFixture } from "../../test-fixtures";
 import { NodeId, PlanId, RunId, TurnItemId } from "@t3tools/contracts";
@@ -11,7 +12,7 @@ import {
   type ProviderApprovalDecision,
 } from "@t3tools/contracts";
 import { act, render } from "../../../test/render";
-import { TaskProgressSteps } from "./TaskProgressSteps";
+import { TaskPlanCapsule } from "./TaskPlanCapsule";
 import { TaskTrailApproval, ApprovalResult, type TrailApprovalInput } from "./TaskTrailApproval";
 import { approvalPresentation } from "../../approvalPresentation";
 import { applyThemePalette } from "../../themePalette";
@@ -51,11 +52,8 @@ function request(id = "cmd", overrides: Partial<PendingApproval> = {}): PendingA
 function trail(input: TrailApprovalInput, result?: ProviderApprovalDecision) {
   const current = input.pending[0];
   return (
-    <TaskProgressSteps
-      variant="trail"
+    <TaskPlanCapsule
       progress={progress}
-      defaultExpanded={false}
-      expansionKey="c66-test"
       {...(current
         ? {
             approval: {
@@ -77,8 +75,8 @@ function input(pending = [request()]): TrailApprovalInput {
     onRespond: vi.fn(async () => ({ _tag: "Success" })),
   };
 }
-it("opens a persisted collapsed trail, uses only provider options, and advances the queue on server removal", async () => {
-  localStorage.setItem("t3code:task-trail-expanded:v1:c66-test", "false");
+it("opens for a pending approval, uses only provider options, and advances the queue on server removal", async () => {
+  using _locale = testUiLocale("zh-CN");
   const data = input([
     request(),
     request("file", {
@@ -92,8 +90,7 @@ it("opens a persisted collapsed trail, uses only provider options, and advances 
   ]);
   await using screen = await render(trail(data));
   await expect.element(screen.getByRole("group", { name: "权限请求" })).toBeVisible();
-  expect(screen.container.querySelector(".combo-bar")?.getAttribute("aria-expanded")).toBe("true");
-  expect(screen.container.querySelector("[data-task-trail-spinner]")).toBeNull();
+  expect(screen.container.querySelector(".plan-bar")?.getAttribute("aria-expanded")).toBe("true");
   expect(screen.container.querySelectorAll(".trail-approval-actions button")).toHaveLength(3);
   await expect.element(screen.getByText("还有 1 个")).toBeVisible();
   await screen.getByRole("button", { name: "本会话都允许", exact: true }).click();
@@ -109,7 +106,6 @@ it("opens a persisted collapsed trail, uses only provider options, and advances 
   await expect.element(screen.getByText("✕ 已拒绝")).toBeVisible();
   expect(screen.container.querySelector(".trail-approval")).toBeNull();
   await expect.element(screen.getByRole("button", { name: "撤销" })).not.toBeInTheDocument();
-  localStorage.removeItem("t3code:task-trail-expanded:v1:c66-test");
 });
 it("does not infer success, double-submit, or enable held, disconnected and unavailable requests", async () => {
   let finish!: (result: unknown) => void;
@@ -140,6 +136,7 @@ it("does not infer success, double-submit, or enable held, disconnected and unav
   }
 });
 it("scopes keyboard approval to a focused card or the unique request and never takes typing, modifiers or button Enter", async () => {
+  using _locale = testUiLocale("zh-CN");
   const data = input([request(), request("second")]);
   await using screen = await render(
     <>
@@ -184,6 +181,7 @@ it("scopes keyboard approval to a focused card or the unique request and never t
   expect(data.onRespond).toHaveBeenCalledTimes(count + 1);
 });
 it("keeps the full detail accessible and respects reduced motion", async () => {
+  using _locale = testUiLocale("zh-CN");
   const long = "src/" + "very-long-path/".repeat(80);
   using _media = vi.spyOn(window, "matchMedia").mockReturnValue({
     matches: true,
@@ -201,6 +199,7 @@ it("keeps the full detail accessible and respects reduced motion", async () => {
   expect(animation).not.toHaveBeenCalled();
 });
 it("approves from the resume card through the approval callback and never sends a continuation", async () => {
+  using _locale = testUiLocale("zh-CN");
   const onContinue = vi.fn(async () => {});
   const onApprove = vi.fn(async () => ({ _tag: "Success" }));
   const props = {
@@ -282,9 +281,7 @@ it("captures command, external file and network approvals in the Apple theme wit
       </div>,
     );
     const root = screen.getByTestId("approval-fixture").element() as HTMLElement;
-    expect(getComputedStyle(root.querySelector(".trail-approval")!).backgroundColor).toBe(
-      getComputedStyle(root.querySelector(".combo-trail")!).backgroundColor,
-    );
+    expect(getComputedStyle(root.querySelector(".trail-approval")!).borderRadius).toBe("14px");
     root.style.width = "320px";
     expect(root.scrollWidth).toBeLessThanOrEqual(root.clientWidth);
     root.style.width = "760px";
@@ -298,6 +295,7 @@ it("captures command, external file and network approvals in the Apple theme wit
 });
 
 it("keeps a server-confirmed result under the original step when the plan advances", async () => {
+  using _locale = testUiLocale("zh-CN");
   const base = makeThreadProjectionFixture();
   const runId = RunId.make("run");
   const nodeId = NodeId.make("node");

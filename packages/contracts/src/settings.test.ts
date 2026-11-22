@@ -10,10 +10,12 @@ import {
 import {
   ClientSettingsSchema,
   ClientSettingsPatch,
+  ClientServerSettingsPatch,
   ClaudeSettings,
   DEFAULT_SERVER_SETTINGS,
   globalIdleCompaction,
   idleCompactionPatch,
+  PROJECT_SCOPED_SERVER_SETTING_KEYS,
   requiredScopesForProjectMutation,
   resolveIdleCompaction,
   resolveProjectProviderInstanceEnabled,
@@ -36,38 +38,21 @@ const decodeStringOnlyEnvironment = Schema.decodeUnknownSync(
   ),
 );
 const decodeServerSettingsPatch = Schema.decodeUnknownSync(ServerSettingsPatch);
+const decodeClientServerSettingsPatch = Schema.decodeUnknownSync(ClientServerSettingsPatch);
 const encodeServerSettings = Schema.encodeSync(ServerSettings);
 const encodeServerSettingsPatch = Schema.encodeSync(ServerSettingsPatch);
 const decodeClaudeSettings = Schema.decodeUnknownSync(ClaudeSettings);
 
-describe("provider quota fallback", () => {
-  it("defaults missing settings off and round-trips the configured chain and billing label", () => {
-    expect(decodeServerSettings({}).providerFallbackEnabled).toBe(false);
-    expect(decodeServerSettings({}).providerFallbackChains).toEqual({});
-    const settings = decodeServerSettings({
-      providerFallbackEnabled: true,
-      providerFallbackChains: { codex: ["fx"] },
-      providerInstances: { fx: { driver: "fx", billingMode: "metered" } },
-    });
-    const restored = decodeServerSettings(encodeServerSettings(settings));
-    expect(restored.providerFallbackChains).toEqual({ codex: ["fx"] });
-    expect(Object.values(restored.providerInstances)[0]?.billingMode).toBe("metered");
-    expect(decodeServerSettingsPatch({ providerFallbackEnabled: false })).toEqual({
-      providerFallbackEnabled: false,
-    });
-  });
-});
-
-describe("image revision preference", () => {
-  it("keeps existing installations off and round-trips an explicit choice", () => {
-    expect(decodeClientSettings({}).artifactRevisionEnabled).toBe(false);
-    const enabled = decodeClientSettings({ artifactRevisionEnabled: true });
-    expect(decodeClientSettings(encodeClientSettings(enabled)).artifactRevisionEnabled).toBe(true);
-    expect(decodeClientSettingsPatch({ artifactRevisionEnabled: false })).toEqual({
-      artifactRevisionEnabled: false,
-    });
-    expect(() => decodeClientSettingsPatch({ artifactRevisionEnabled: "false" })).toThrow();
-  });
+it("drops theme defaults from a client's settings patch", () => {
+  expect(
+    decodeClientServerSettingsPatch({
+      newWorktreesStartFromOrigin: false,
+      defaultTheme: "grove",
+      defaultThemeSetAt: "2026-11-13T00:00:00.000Z",
+      defaultAppearance: "dark",
+      defaultAppearanceSetAt: "2026-11-13T00:00:00.000Z",
+    }),
+  ).toEqual({ newWorktreesStartFromOrigin: false });
 });
 
 describe("storage cleanup settings", () => {
@@ -141,6 +126,12 @@ describe("storage cleanup settings", () => {
     expect(() =>
       decodeServerSettingsPatch({ storageCleanup: { worktreeKeepWhen: "unknown" } }),
     ).toThrow();
+  });
+});
+
+describe("ClientSettings terminal close confirmation", () => {
+  it("keeps confirmation enabled for settings without a saved preference", () => {
+    expect(decodeClientSettings({}).confirmTerminalClose).toBe(true);
   });
 });
 
@@ -259,18 +250,6 @@ describe("ServerSettings secret providers", () => {
 });
 
 describe("custom model settings", () => {
-  it("keeps Claude's interactive runtime opt-in and preserves the saved choice", () => {
-    expect(decodeClaudeSettings({}).interactiveCli).toBe(false);
-    const encode = Schema.encodeSync(ClaudeSettings);
-    for (const interactiveCli of [true, false]) {
-      const saved = encode(decodeClaudeSettings({ interactiveCli, homePath: "/isolated/account" }));
-      expect(decodeClaudeSettings(saved)).toMatchObject({
-        interactiveCli,
-        homePath: "/isolated/account",
-      });
-    }
-  });
-
   const capabilities = {
     optionDescriptors: [
       {
@@ -445,17 +424,17 @@ describe("ServerSettings environment icon", () => {
 
 const decodeDeviceHostSettings = Schema.decodeSync(ServerSettings);
 
-// `deviceHosts` as it was decoded before EAS hosts existed: an SSH host needs a target.
+// `deviceHosts` as it was decoded before Expo hosts existed: an SSH host needs a target.
 const decodeOlderDeviceHostSettings = Schema.decodeUnknownSync(
   Schema.Struct({
     deviceHosts: Schema.Array(Schema.Struct({ id: Schema.String, target: Schema.String })),
   }),
 );
 
-it("keeps EAS hosts out of the SSH host list servers and clients before EAS hosts decode", () => {
+it("keeps Expo hosts out of the SSH host list servers and clients before Expo hosts decode", () => {
   const settings = decodeDeviceHostSettings({
     deviceHosts: [{ id: "mini", label: "Mac mini", target: "user@mini" }],
-    easDeviceHosts: [{ kind: "eas", id: "eas", label: "EAS Simulator" }],
+    easDeviceHosts: [{ kind: "eas", id: "eas", label: "Expo Simulators" }],
   });
   const wire = encodeServerSettings(settings);
   expect(decodeOlderDeviceHostSettings(wire).deviceHosts).toEqual([
@@ -466,7 +445,7 @@ it("keeps EAS hosts out of the SSH host list servers and clients before EAS host
 
 it("validates remote device hosts and rejects ambiguous host ids", () => {
   const host = { id: "mini", label: "Mac mini", target: "user@mini", port: 2222 };
-  // Hosts saved before EAS hosts existed have no `kind`; they are SSH hosts.
+  // Hosts saved before Expo hosts existed have no `kind`; they are SSH hosts.
   expect(decodeDeviceHostSettings({ deviceHosts: [host] }).deviceHosts).toEqual([
     { kind: "ssh", ...host },
   ]);
@@ -535,6 +514,36 @@ describe("requiredScopesForProjectMutation", () => {
   });
 });
 
+describe("voice settings", () => {
+  it("does not import voice consent from ordinary device preferences", () => {
+    const imported = {
+      voiceTranscriptionEnvironmentId: "env-1",
+      voiceTranscriptionDestination: { kind: "environment", environmentId: "env-1" },
+      speechPostProcessingEnabled: true,
+    };
+    expect(decodeClientSettings({}).speechSilenceFiltering).toBe(true);
+    expect(decodeClientSettings({}).speechStreaming).toBe(true);
+    expect(decodeClientSettings({ speechStreaming: false }).speechStreaming).toBe(false);
+    expect(decodeClientSettingsPatch({ speechStreaming: false })).toEqual({
+      speechStreaming: false,
+    });
+    expect(decodeClientSettingsPatch({ speechSilenceFiltering: false })).toEqual({
+      speechSilenceFiltering: false,
+    });
+    for (const key of Object.keys(imported)) {
+      expect(decodeClientSettings(imported)).not.toHaveProperty(key);
+      expect(decodeClientSettingsPatch(imported)).not.toHaveProperty(key);
+    }
+  });
+
+  it("keeps the correction cue personal and project vocabulary on the environment", () => {
+    expect(decodeClientSettings({}).speechCorrectionWord).toBe("");
+    expect(() => decodeClientSettingsPatch({ speechCorrectionWord: "x".repeat(51) })).toThrow();
+    expect(DEFAULT_SERVER_SETTINGS.speechProjectCustomWords).toEqual([]);
+    expect(PROJECT_SCOPED_SERVER_SETTING_KEYS).toContain("speechProjectCustomWords");
+  });
+});
+
 describe("server model preferences", () => {
   it("distinguishes unmigrated lists from deliberately cleared lists", () => {
     expect(decodeServerSettings({})).toMatchObject({
@@ -547,64 +556,6 @@ describe("server model preferences", () => {
   });
 });
 
-it("defaults to the legacy sidebar this fork builds on", () => {
-  expect(decodeClientSettings({}).legacySidebarEnabled).toBe(true);
-});
-
-describe("ServerSettings keepAwake", () => {
-  it("keeps the screen awake while working by default", () => {
-    expect(decodeServerSettings({}).keepAwake).toBe("display");
-  });
-  it("accepts each mode and rejects unknown ones", () => {
-    for (const mode of ["off", "system", "display"] as const) {
-      expect(decodeServerSettings({ keepAwake: mode }).keepAwake).toBe(mode);
-      expect(decodeServerSettingsPatch({ keepAwake: mode })).toEqual({ keepAwake: mode });
-    }
-    expect(() => decodeServerSettingsPatch({ keepAwake: "always" })).toThrow();
-  });
-});
-
-describe("sidebar appearance settings", () => {
-  it("adds defaults to old saved settings without changing existing preferences", () => {
-    const legacy = { fontFamilySans: "Menlo", fontSizeInterface: 18, wordWrap: false };
-    expect(decodeClientSettings(legacy)).toMatchObject({
-      ...legacy,
-      interfaceStyle: "standard",
-      fontFamilySidebar: "",
-      fontSizeSidebar: 0,
-      sidebarTextColorLight: "default",
-      sidebarTextColorDark: "default",
-    });
-  });
-  it.each(["standard", "macos"] as const)(
-    "round-trips the %s interface style",
-    (interfaceStyle) => {
-      const patch = { interfaceStyle };
-      expect(decodeClientSettingsPatch(patch)).toEqual(patch);
-      const settings = decodeClientSettings(patch);
-      expect(decodeClientSettings(encodeClientSettings(settings))).toEqual(settings);
-      expect(() => decodeClientSettingsPatch({ interfaceStyle: "unsupported" })).toThrow();
-    },
-  );
-  it("round-trips sidebar values through the storage schema and patch contract", () => {
-    const patch = {
-      fontFamilySidebar: "Menlo",
-      fontSizeSidebar: 18,
-      sidebarTextColorLight: "high-contrast",
-      sidebarTextColorDark: "default",
-    };
-    expect(decodeClientSettingsPatch(patch)).toEqual(patch);
-    const settings = decodeClientSettings(patch);
-    expect(decodeClientSettings(encodeClientSettings(settings))).toEqual(settings);
-  });
-  it.each([-1, 1, 11, 21, 16.5, Number.NaN])(
-    "rejects unsupported sidebar size %s",
-    (fontSizeSidebar) => {
-      expect(() => decodeClientSettingsPatch({ fontSizeSidebar })).toThrow();
-    },
-  );
-  it("rejects arbitrary color strings and oversized family preferences", () => {
-    expect(() => decodeClientSettingsPatch({ sidebarTextColorDark: "#777777" })).toThrow();
-    expect(() => decodeClientSettingsPatch({ fontFamilySidebar: "a".repeat(201) })).toThrow();
-  });
+it("keeps Cursor Keychain usage opt-in when restoring a setting removed by C72", () => {
+  expect(DEFAULT_SERVER_SETTINGS.cursorKeychainUsageEnabled).toBe(false);
 });

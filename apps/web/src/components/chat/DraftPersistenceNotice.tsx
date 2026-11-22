@@ -1,4 +1,5 @@
-import { uiText } from "~/i18n";
+import { useUiText } from "~/i18n/useUiText";
+
 import { Button } from "../ui/button";
 import {
   exportComposerDraftRecovery,
@@ -7,6 +8,7 @@ import {
 } from "../../composerDraftStore";
 
 export function DraftPersistenceNotice() {
+  const uiText = useUiText();
   const status = useComposerDraftPersistenceStatus();
   if (status !== "unavailable" && status !== "corrupt") return null;
   return (

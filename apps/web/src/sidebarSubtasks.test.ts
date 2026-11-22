@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { EnvironmentId, ProjectId, ThreadId, ProviderInstanceId, RunId } from "@t3tools/contracts";
 import { scopeProjectRef } from "@t3tools/client-runtime/environment";
 import { makeThreadFixture } from "./test-fixtures";
+import { testUiLocale } from "../test/uiLocale";
 import {
   buildSubtaskTree,
   groupSidebarWithSubtasks,
@@ -125,6 +126,7 @@ describe("subtask sidebar tree", () => {
 });
 describe("subtask inbox and archive lifecycle", () => {
   it("filters child results and failures but retains child permission/answer requests everywhere", () => {
+    using _locale = testUiLocale("zh-CN");
     const complete = child("complete", {
       latestRun: run("completed"),
       lastVisitedAt: "2026-10-05",

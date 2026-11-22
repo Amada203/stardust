@@ -30,9 +30,11 @@ import {
 import * as AcpSessionRuntime from "@t3tools/provider-acp/server/AcpSessionRuntime";
 import {
   type AcpToolCallState,
+  extractMcpToolCallIdentity,
   mergeToolCallState,
   parseSessionUpdateEvent,
 } from "@t3tools/provider-acp/server/runtimeModel";
+import { compactDynamicToolOutput, htmlRenderFromToolItem } from "@t3tools/shared/toolOutput";
 
 const decodeXAiAskUserQuestionRequest = Schema.decodeUnknownSync(XAiAskUserQuestionRequest);
 
@@ -340,6 +342,80 @@ describe("XAiAcpExtension", () => {
     expect(extractXAiMonitorTaskId(normalized)).toBe("019f44a5-87d1-7640-8e35-6a4667ffc873");
   });
 
+  // regression: #23714 Recorded from Grok 1.0.77 calling stdio MCP tools through `use_tool`.
+  it("rewrites use_tool MCP calls and results into the generic ACP MCP shapes", () => {
+    const meta = { "x.ai/tool": { version: 1, name: "use_tool", kind: "use_tool" } };
+    const grokCall = (
+      toolCallId: string,
+      tool: string,
+      toolInput: Record<string, unknown>,
+      completion: Record<string, unknown>,
+    ) => {
+      const rawInput = { tool_name: tool, tool_input: toolInput };
+      const updates = [
+        { sessionUpdate: "tool_call", toolCallId, title: "use_tool", rawInput, _meta: meta },
+        {
+          sessionUpdate: "tool_call_update",
+          toolCallId,
+          kind: "other",
+          title: tool,
+          rawInput: { variant: "UseTool", ...rawInput },
+          _meta: meta,
+        },
+        { sessionUpdate: "tool_call_update", toolCallId, ...completion },
+      ];
+      let state: AcpToolCallState | undefined;
+      for (const update of updates) {
+        state = normalizeXAiAcpToolCallState(
+          mergeToolCallState(state, parseRecordedToolCallUpdate(update)),
+        );
+      }
+      return state!;
+    };
+    const page = { attachmentId: "abc-html", title: "T", height: 300 };
+
+    const rendered = grokCall(
+      "call-85597c6c-6fb8-4c9c-a6a8-12c4a74ebc96-1",
+      "t3-code__html_render",
+      { path: "a.html" },
+      {
+        status: "completed",
+        rawOutput: {
+          type: "MCP",
+          tool_name: "html_render",
+          server_name: "t3-code",
+          output: { OkayOutput: JSON.stringify({ htmlRender: page, message: "Shown" }) },
+        },
+      },
+    );
+    expect(extractMcpToolCallIdentity(rendered)).toEqual({
+      server: "t3-code",
+      tool: "html_render",
+    });
+    expect(rendered.data.rawInput).toMatchObject({ arguments: { path: "a.html" } });
+    expect(
+      htmlRenderFromToolItem({ toolName: "t3-code.html_render", output: rendered.data.rawOutput }),
+    ).toEqual(page);
+
+    const failed = grokCall(
+      "call-2baebdc5-2446-4ac2-9652-85f97a76a05b-2",
+      "pencil__browser",
+      { action: "load-page" },
+      {
+        status: "failed",
+        rawOutput: {
+          type: "MCP",
+          tool_name: "browser",
+          server_name: "pencil",
+          output: { Error: "Page not found" },
+          is_error: true,
+        },
+      },
+    );
+    expect(extractMcpToolCallIdentity(failed)).toEqual({ server: "pencil", tool: "browser" });
+    expect(compactDynamicToolOutput(failed.data.rawOutput)?.isError).toBe(true);
+  });
+
   it("keeps Monitor ticks running while Grok reports them in progress", () => {
     // Grok 1.0.41 ticks report in_progress with exit_code 0; only _x.ai/task_completed ends the monitor.
     const command = "for i in 1 2 3; do sleep 8; echo tick $i; done";
@@ -463,6 +539,18 @@ describe("XAiAcpExtension", () => {
         ...toolCall,
         data: {
           ...toolCall.data,
+          rawOutput: {
+            ...toolCall.data.rawOutput,
+            command: `git commit -m "${"x".repeat(61)}🎉 ship it"`,
+          },
+        },
+      }).title,
+    ).toBe(`git commit -m "${"x".repeat(61)}...`);
+    expect(
+      normalizeXAiAcpToolCallState({
+        ...toolCall,
+        data: {
+          ...toolCall.data,
           rawOutput: { ...toolCall.data.rawOutput, exit_code: 2 },
         },
       }).status,
@@ -480,73 +568,6 @@ describe("XAiAcpExtension", () => {
       },
     });
     expect(normalized.status).toBe("inProgress");
-  });
-
-  it("completes structured command TaskOutput ids without treating them as subagents", () => {
-    // Oracle: BackgroundTaskStarted and TaskOutput from the Grok hang incident.
-    const toolCall: AcpToolCallState = {
-      toolCallId: "call-poll",
-      title: "get_command_or_subagent_output",
-      status: "completed",
-      data: {
-        rawInput: {
-          variant: "TaskOutput",
-          task_ids: ["call-7c835a60-7bf5-4284-a5c7-cf42a4212ece-29"],
-        },
-        rawOutput: {
-          type: "TaskOutput",
-          Result: {
-            task_id: "call-7c835a60-7bf5-4284-a5c7-cf42a4212ece-29",
-            status: "completed",
-            exit_code: 0,
-            output: "done",
-          },
-        },
-      },
-    };
-    expect(extractXAiBackgroundTaskCompletion(toolCall)).toEqual([
-      {
-        taskId: "call-7c835a60-7bf5-4284-a5c7-cf42a4212ece-29",
-        status: "completed",
-        appendOutput: "done",
-      },
-    ]);
-    expect(extractXAiAcpSubagentUpdate(toolCall)).toBeUndefined();
-  });
-
-  it("keeps the normal tool frame for a command result from a mixed-ID poll", () => {
-    // Oracle: review 4325739061 requires the result ID to override requested subagent IDs.
-    const toolCall: AcpToolCallState = {
-      toolCallId: "call-mixed-poll",
-      title: "get_command_or_subagent_output",
-      status: "completed",
-      data: {
-        rawInput: {
-          variant: "TaskOutput",
-          task_ids: [
-            "019f44a6-4820-7402-925d-bc862ee711dd",
-            "call-7c835a60-7bf5-4284-a5c7-cf42a4212ece-29",
-          ],
-        },
-        rawOutput: {
-          type: "TaskOutput",
-          Result: {
-            task_id: "call-7c835a60-7bf5-4284-a5c7-cf42a4212ece-29",
-            status: "completed",
-            exit_code: 0,
-            output: "done",
-          },
-        },
-      },
-    };
-    expect(extractXAiAcpSubagentUpdate(toolCall)).toBeUndefined();
-    expect(extractXAiBackgroundTaskCompletion(toolCall)).toEqual([
-      {
-        taskId: "call-7c835a60-7bf5-4284-a5c7-cf42a4212ece-29",
-        status: "completed",
-        appendOutput: "done",
-      },
-    ]);
   });
 
   it("completes structured command TaskOutput ids without treating them as subagents", () => {

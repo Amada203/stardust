@@ -1,4 +1,3 @@
-import { uiText } from "~/i18n";
 import {
   GitMergeIcon,
   GitPullRequestArrowIcon,
@@ -10,6 +9,7 @@ import {
   TriangleAlertIcon,
 } from "lucide-react";
 import type { PullRequestState } from "@t3tools/contracts";
+import { msg } from "gt-react";
 
 export const PullRequestGlyph = {
   pullRequest: GitPullRequestArrowIcon,
@@ -33,22 +33,22 @@ export interface PullRequestStatePresentation {
 
 export const PULL_REQUEST_STATE_PRESENTATION = {
   open: {
-    label: uiText("Open"),
+    label: msg("Open", { $context: "pull request state" }),
     toneClassName: "text-emerald-600 dark:text-emerald-300/90",
     Icon: PullRequestGlyph.pullRequest,
   },
   draft: {
-    label: uiText("Draft"),
+    label: msg("Draft", { $context: "pull request state" }),
     toneClassName: "text-zinc-500 dark:text-zinc-400/80",
     Icon: PullRequestGlyph.draft,
   },
   closed: {
-    label: uiText("Closed"),
+    label: msg("Closed", { $context: "pull request state" }),
     toneClassName: "text-red-600 dark:text-red-300/90",
     Icon: PullRequestGlyph.closed,
   },
   merged: {
-    label: uiText("Merged"),
+    label: msg("Merged", { $context: "pull request state" }),
     toneClassName: "text-violet-600 dark:text-violet-300/90",
     Icon: PullRequestGlyph.merged,
   },

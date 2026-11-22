@@ -48,6 +48,8 @@ import tempfile
 with tempfile.TemporaryDirectory() as temporary:
  base=Path(temporary).resolve();state=base/'storage-management';root=base/'userdata/logs';root.mkdir(parents=True)
  old=root/'worker.log.1';old.write_bytes(b'old-log\\n'*8192)
+ # macOS /private/tmp can inherit wheel; the recoverable fixture must use our actual group.
+ os.chown(old,os.geteuid(),os.getegid())
  now=time.time();os.utime(old,(now-31*86400,now-31*86400))
  live=root/'worker.log';live.write_text('keep current');os.utime(live,(now-50*86400,now-50*86400))
  recent=root/'worker.log.2';recent.write_text('keep recent')

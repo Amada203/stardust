@@ -14,12 +14,15 @@ const localRequest = Effect.gen(function* () {
   const url = HttpServerRequest.toURL(request);
   return (
     isLoopbackHostname(config.host ?? "127.0.0.1") &&
+    Boolean(request.headers.host) &&
     Option.isSome(url) &&
     isLoopbackHostname(url.value.hostname) &&
-    !request.headers["x-forwarded-for"]
+    !request.headers["x-forwarded-for"] &&
+    !request.headers["x-forwarded-host"] &&
+    !request.headers.forwarded
   );
 });
-export const layer = Layer.mergeAll(
+export const routes = Layer.mergeAll(
   HttpRouter.add(
     "GET",
     "/api/artifact-wall/list",
@@ -71,4 +74,5 @@ export const layer = Layer.mergeAll(
       );
     }).pipe(Effect.orElseSucceed(() => HttpServerResponse.empty({ status: 403 }))),
   ),
-).pipe(HttpRouter.provideRequest(ArtifactWall.layer));
+);
+export const layer = routes.pipe(HttpRouter.provideRequest(ArtifactWall.layer));

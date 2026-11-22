@@ -1,3 +1,4 @@
+import { uiText } from "../../i18n";
 import {
   resolveProviderInstanceEnabled,
   type ProviderInstanceConfig,
@@ -65,11 +66,11 @@ export function ProviderFallbackSettings({
   return (
     <FoldedSettingsSection
       id="provider-fallback"
-      title="额度用完自动切换"
-      summary={settings.providerFallbackEnabled ? "开启" : "关闭"}
+      title={uiText("Switch providers when quota runs out")}
+      summary={settings.providerFallbackEnabled ? uiText("Turn on") : uiText("Switch off")}
       control={
         <Switch
-          aria-label="额度用完自动切换"
+          aria-label={uiText("Switch providers when quota runs out")}
           checked={settings.providerFallbackEnabled}
           disabled={!canWriteSettings}
           onCheckedChange={(providerFallbackEnabled) => onUpdate({ providerFallbackEnabled })}
@@ -77,38 +78,45 @@ export function ProviderFallbackSettings({
       }
     >
       <p className="px-3 py-2.5 text-xs text-muted-foreground sm:px-4">
-        仅在额度用完或限流时重试当前消息；切换后继续使用新通道。跨通道沿用现有历史交接，可能受上下文预算限制。
+        {uiText(
+          "Retries the current message only on quota or rate limits, then stays on the new provider. The handoff uses existing history, subject to context limits.",
+        )}
       </p>
       {source ? (
         <>
           <SettingsRow
-            title="当前通道"
-            description="为每个通道设置备用顺序。首次未匹配到同名模型时，使用备用通道的默认模型。"
+            title={uiText("Current provider")}
+            description={uiText(
+              "Set a fallback order for each provider. If the same model is unavailable, use the fallback provider’s default.",
+            )}
           >
             <Select
               value={source.instanceId}
               items={instances.map(({ instanceId, label }) => ({ value: instanceId, label }))}
               onValueChange={setSelected}
             >
-              <SelectTrigger aria-label="配置备用通道的来源">
+              <SelectTrigger aria-label={uiText("Source for fallback providers")}>
                 <SelectValue />
               </SelectTrigger>
               <SelectPopup>
                 {instances.map(({ instanceId, label, instance }) => (
                   <SelectItem key={instanceId} value={instanceId}>
                     {label}
-                    {instance.billingMode === "metered" ? " · 按量计费" : ""}
+                    {instance.billingMode === "metered" ? uiText(" · Usage-based billing") : ""}
                   </SelectItem>
                 ))}
               </SelectPopup>
             </Select>
           </SettingsRow>
           <SettingsRow
-            title="按量计费"
-            description={`将 ${source.label} 标为付费 API，选择备用通道时显示费用标签。`}
+            title={uiText("Usage-based billing")}
+            description={uiText(
+              "Mark {label} as a paid API to show billing information when choosing a fallback.",
+              { label: source.label },
+            )}
           >
             <Switch
-              aria-label={`${source.label} 按量计费`}
+              aria-label={uiText("{label} usage-based billing", { label: source.label })}
               checked={source.instance.billingMode === "metered"}
               disabled={!canManageProviders}
               onCheckedChange={(metered) =>
@@ -128,7 +136,7 @@ export function ProviderFallbackSettings({
                   {instances.find((instance) => instance.instanceId === id)?.instance
                     .billingMode === "metered" ? (
                     <Badge variant="warning" size="sm">
-                      按量计费
+                      {uiText("Usage-based billing")}
                     </Badge>
                   ) : null}
                 </span>
@@ -138,7 +146,7 @@ export function ProviderFallbackSettings({
                 <Button
                   variant="ghost-muted"
                   size="icon-xs"
-                  aria-label={`上移 ${label(id)}`}
+                  aria-label={uiText("Move {count} up", { count: label(id) })}
                   disabled={!canWriteSettings || index === 0}
                   onClick={() => move(index, -1)}
                 >
@@ -147,7 +155,7 @@ export function ProviderFallbackSettings({
                 <Button
                   variant="ghost-muted"
                   size="icon-xs"
-                  aria-label={`下移 ${label(id)}`}
+                  aria-label={uiText("Move {count} down", { count: label(id) })}
                   disabled={!canWriteSettings || index === chain.length - 1}
                   onClick={() => move(index, 1)}
                 >
@@ -156,7 +164,7 @@ export function ProviderFallbackSettings({
                 <Button
                   variant="ghost-muted"
                   size="icon-xs"
-                  aria-label={`移除 ${label(id)}`}
+                  aria-label={uiText("Remove {count}", { count: label(id) })}
                   disabled={!canWriteSettings}
                   onClick={() => updateChain(chain.filter((_, i) => i !== index))}
                 >
@@ -166,28 +174,34 @@ export function ProviderFallbackSettings({
             </SettingsRow>
           ))}
           <SettingsRow
-            title={chain.length === 0 ? "尚未设置备用通道" : "添加备用通道"}
-            description="按顺序尝试，每轮每个通道最多一次；全部耗尽时保留原错误。"
+            title={
+              chain.length === 0
+                ? uiText("No fallback providers configured")
+                : uiText("Add fallback provider")
+            }
+            description={uiText(
+              "Tries each provider once per turn in order. If all fail, the original error is kept.",
+            )}
           >
             <Select<ProviderInstanceId>
               value={null}
               items={available.map(({ instanceId, label, instance }) => ({
                 value: instanceId,
-                label: `${label}${instance.billingMode === "metered" ? " · 按量计费" : ""}`,
+                label: `${label}${instance.billingMode === "metered" ? uiText(" · Usage-based billing") : ""}`,
               }))}
               disabled={!canWriteSettings || available.length === 0}
               onValueChange={(id) => {
                 if (id !== null) updateChain([...chain, id]);
               }}
             >
-              <SelectTrigger aria-label="添加备用通道">
-                <SelectValue placeholder="选择备用通道" />
+              <SelectTrigger aria-label={uiText("Add fallback provider")}>
+                <SelectValue placeholder={uiText("Select fallback provider")} />
               </SelectTrigger>
               <SelectPopup>
                 {available.map(({ instanceId, label, instance }) => (
                   <SelectItem key={instanceId} value={instanceId}>
                     {label}
-                    {instance.billingMode === "metered" ? " · 按量计费" : ""}
+                    {instance.billingMode === "metered" ? uiText(" · Usage-based billing") : ""}
                   </SelectItem>
                 ))}
               </SelectPopup>

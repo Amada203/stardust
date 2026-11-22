@@ -9,6 +9,7 @@ import {
   type OrchestrationV2TurnItem,
   type ThreadId,
 } from "@t3tools/contracts";
+import type { ToolCallVisibility } from "@t3tools/contracts/settings";
 import {
   resolveT3McpSummaryAction,
   resolveT3McpToolDefinition,
@@ -21,13 +22,16 @@ import { sourceControlClients } from "@t3tools/client-runtime/source-control-cli
 import { isWorkspaceImagePreviewPath } from "@t3tools/shared/mediaPreview";
 import { formatTokens } from "@t3tools/shared/usageFormat";
 import { classifyToolActivity } from "@t3tools/shared/toolActivity";
-import { toolOutputIndicatesFailure } from "@t3tools/shared/toolOutput";
+import { commandHadNoMatches, toolOutputIndicatesFailure } from "@t3tools/shared/toolOutput";
 
 import {
   summarizeT3ToolCalls,
   t3ToolResultIndicatesFailure,
   type T3ToolSummaryCall,
 } from "@t3tools/client-runtime/t3ToolSummary";
+import { mFallback, msg } from "gt-i18n";
+import { t3ToolSentence } from "./t3ToolSentences.ts";
+import type { MFunctionType } from "gt-i18n/types";
 
 export type WorkLogToolLifecycleStatus = RuntimeItemStatus | "stopped" | "idle";
 
@@ -51,18 +55,13 @@ export function toolItemForDisplay(item: OrchestrationV2TurnItem): Orchestration
 }
 
 type CompactionLabelItem = Pick<
-  Extract<
-    OrchestrationV2TurnItem,
-    {
-      type: "compaction";
-    }
-  >,
-  "status" | "beforeTokenCount" | "afterTokenCount" | "completionConfirmed"
+  Extract<OrchestrationV2TurnItem, { type: "compaction" }>,
+  "status" | "beforeTokenCount" | "afterTokenCount"
 >;
-export function contextCompactionTokenCounts(item: CompactionLabelItem): {
-  readonly before: string;
-  readonly after: string;
-} | null {
+
+export function contextCompactionTokenCounts(
+  item: CompactionLabelItem,
+): { readonly before: string; readonly after: string } | null {
   if (
     item.status === "running" ||
     item.beforeTokenCount === undefined ||
@@ -73,16 +72,18 @@ export function contextCompactionTokenCounts(item: CompactionLabelItem): {
   return { before: formatTokens(item.beforeTokenCount), after: formatTokens(item.afterTokenCount) };
 }
 
-export function contextCompactionLabel(item: CompactionLabelItem): string {
-  if (item.completionConfirmed === false) return "Context compaction result unconfirmed";
-  if (item.status === "failed") return "Context compaction failed";
+export function contextCompactionLabel(
+  item: CompactionLabelItem,
+  resolve: MFunctionType = mFallback,
+): string {
+  if (item.status === "failed") return resolve(msg("Context compaction failed"));
   if (item.status === "cancelled" || item.status === "interrupted")
-    return "Context compaction stopped";
-  if (isOrchestrationV2WorkActive(item.status)) return "Compacting context";
+    return resolve(msg("Context compaction stopped"));
+  if (isOrchestrationV2WorkActive(item.status)) return resolve(msg("Compacting context"));
   const tokens = contextCompactionTokenCounts(item);
   return tokens
-    ? `Context compacted ${tokens.before} → ${tokens.after} tokens`
-    : "Context compacted";
+    ? resolve(msg("Context compacted {before} → {after} tokens", tokens))
+    : resolve(msg("Context compacted"));
 }
 
 export interface WorkLogPresentationEntry {
@@ -170,25 +171,24 @@ function workEntryToolOutput(
     : (data?.output ?? data?.result ?? data?.rawOutput ?? data?.content);
 }
 
+function t3ToolStatusKey(status: string | undefined) {
+  return status === "inProgress" ||
+    status === "completed" ||
+    status === "failed" ||
+    status === "declined" ||
+    status === "stopped"
+    ? status
+    : "other";
+}
+
 function resolveT3McpToolPresentation(
   definition: T3McpToolDefinition | null,
   status: string | undefined,
-  data?: unknown,
+  data: unknown,
+  resolve: MFunctionType,
 ) {
   if (!definition) return null;
-  const [action, running, completed, detail] = definition.labels;
-  const verb =
-    status === "inProgress"
-      ? running
-      : status === "completed"
-        ? completed
-        : status === "failed"
-          ? `Failed to ${action.toLowerCase()}`
-          : status === "declined"
-            ? `Declined to ${action.toLowerCase()}`
-            : status === "stopped"
-              ? `Stopped ${running.toLowerCase()}`
-              : running;
+  const detail = definition.labels[3];
 
   const actionKind =
     definition.summaryAction === "link-pr" ||
@@ -206,16 +206,42 @@ function resolveT3McpToolPresentation(
   const number = urlTarget?.link.number ?? input?.number;
   const { shortLabel } = (urlTarget?.definition ?? sourceControlClients.get(undefined))
     .changeRequest;
-  const target =
+  const pullRequestNumber =
     actionKind !== undefined &&
     actionKind !== "list-prs" &&
     typeof number === "number" &&
     Number.isSafeInteger(number) &&
     number > 0
-      ? `${shortLabel} #${number}`
-      : detail;
+      ? number
+      : null;
+  const sentence = t3ToolSentence(definition.labels);
+  const statusKey = t3ToolStatusKey(status);
+  // A tool added to the shared table after `t3ToolSentences.ts` was generated.
+  const [action, running, completed] = definition.labels;
+  const fallbackVerb =
+    status === "inProgress"
+      ? running
+      : status === "completed"
+        ? completed
+        : status === "failed"
+          ? `Failed to ${action.toLowerCase()}`
+          : status === "declined"
+            ? `Declined to ${action.toLowerCase()}`
+            : status === "stopped"
+              ? `Stopped ${running.toLowerCase()}`
+              : running;
+  const displayName =
+    sentence === undefined
+      ? `${fallbackVerb} ${pullRequestNumber === null ? detail : `${shortLabel} #${pullRequestNumber}`}`
+      : pullRequestNumber !== null && sentence.changeRequest !== undefined
+        ? resolve(sentence.changeRequest, {
+            status: statusKey,
+            changeRequest: shortLabel,
+            number: String(pullRequestNumber),
+          })
+        : resolve(sentence.detail, { status: statusKey });
   return {
-    displayName: `${verb} ${target}`,
+    displayName,
     icon: definition.icon,
     ...(actionKind === undefined ? {} : { action: actionKind }),
   };
@@ -229,12 +255,50 @@ export function liveActivityToolStatus(status: string | undefined, presentTense:
   return "completed";
 }
 
+export function genericCommandStatusLabel(
+  status: ReturnType<typeof liveActivityToolStatus>,
+  resolve: MFunctionType = mFallback,
+) {
+  return resolve(
+    status === "inProgress"
+      ? msg("Running command")
+      : status === "failed"
+        ? msg("Failed command")
+        : status === "declined"
+          ? msg("Declined command")
+          : status === "stopped"
+            ? msg("Stopped command")
+            : msg("Ran command"),
+  );
+}
+
+const GENERIC_COMMAND_TITLES = new Set(["Ran command", "Run command", "Command"]);
+
+export function commandlessCommandLabel(
+  entry: Pick<
+    WorkLogPresentationEntry,
+    "itemType" | "command" | "toolTitle" | "label" | "structuredPayload"
+  >,
+  status: ReturnType<typeof liveActivityToolStatus>,
+  resolve: MFunctionType = mFallback,
+): string | null {
+  if (entry.itemType !== "command_execution" || entry.command?.trim()) return null;
+  // The provider's own title, before a client substitutes its translated fallback.
+  const title = (
+    entry.structuredPayload ? entry.structuredPayload.title : entry.toolTitle || entry.label
+  )?.trim();
+  return !title || GENERIC_COMMAND_TITLES.has(normalizeCompactToolLabel(title))
+    ? genericCommandStatusLabel(status, resolve)
+    : null;
+}
+
 export function resolveWorkEntryToolPresentation(
   entry: Pick<
     WorkLogPresentationEntry,
     "label" | "toolTitle" | "toolData" | "toolLifecycleStatus" | "structuredPayload"
   >,
   fallbackStatus?: "inProgress" | "completed",
+  resolve: MFunctionType = mFallback,
 ) {
   const definition = resolveT3McpToolDefinition(
     workEntryToolName(entry),
@@ -245,6 +309,7 @@ export function resolveWorkEntryToolPresentation(
     definition,
     definition && t3ToolResultIndicatesFailure(workEntryToolOutput(entry)) ? "failed" : status,
     entry.toolData,
+    resolve,
   );
 }
 
@@ -261,10 +326,16 @@ function workLogEntryIsToolLike(entry: WorkLogPresentationEntry): boolean {
   return entry.itemType !== undefined && isToolLifecycleItemType(entry.itemType);
 }
 
+export function workEntryHasNoMatches(entry: WorkLogPresentationEntry): boolean {
+  const item = entry.structuredPayload;
+  return item?.type === "command_execution" && commandHadNoMatches(item);
+}
+
 function workEntryIndicatesToolFailureFromOutput(
   entry: WorkLogPresentationEntry,
   includeCommand: boolean,
 ): boolean {
+  if (workEntryHasNoMatches(entry)) return false;
   if (
     entry.tone === "error" ||
     entry.toolLifecycleStatus === "failed" ||
@@ -322,6 +393,23 @@ export function workEntryDisplayIndicatesToolFailure(entry: WorkLogPresentationE
     entry,
     false,
   ));
+}
+
+const HIDEABLE_TOOL_CALL_ITEM_TYPES: ReadonlySet<WorkLogPresentationEntry["itemType"]> = new Set([
+  "command_execution",
+  "file_change",
+  "file_search",
+  "web_search",
+  "dynamic_tool",
+]);
+
+export function workEntryHiddenByToolCallVisibility(
+  entry: WorkLogPresentationEntry,
+  visibility: ToolCallVisibility,
+): boolean {
+  if (visibility === "showAll" || !HIDEABLE_TOOL_CALL_ITEM_TYPES.has(entry.itemType)) return false;
+  if (visibility !== "hideSuccessful") return true;
+  return entry.toolLifecycleStatus === "completed" && !workEntryDisplayIndicatesToolFailure(entry);
 }
 
 function workLogEntryIsLocalCodeSearch(entry: WorkLogPresentationEntry): boolean {
@@ -402,13 +490,15 @@ export function workEntryViewedImagePath(entry: WorkLogPresentationEntry): strin
     : null;
 }
 
+/** Distinct images the agent opened across a tool group, in viewing order. */
+export function workEntriesViewedImagePaths(
+  entries: ReadonlyArray<WorkLogPresentationEntry>,
+): string[] {
+  return [...new Set(entries.flatMap((entry) => workEntryViewedImagePath(entry) ?? []))];
+}
+
 export interface ViewedImageAsset {
-  readonly resource: Extract<
-    AssetResource,
-    {
-      readonly _tag: "media-file";
-    }
-  >;
+  readonly resource: Extract<AssetResource, { readonly _tag: "media-file" }>;
   readonly alt: string;
   readonly srcFragment: string;
 }
@@ -453,84 +543,115 @@ function toolGroupActionCount(
   return changedFiles.size + editsWithoutFileDetails;
 }
 
-type WorkLogTranslate = (source: string, values?: Readonly<Record<string, unknown>>) => string;
-
-const englishWorkLog: WorkLogTranslate = (source, values) =>
-  source.replace(/\{([A-Za-z0-9_]+)\}/g, (placeholder, name: string) =>
-    values && Object.hasOwn(values, name) ? String(values[name]) : placeholder,
-  );
-
-function workLogList(items: ReadonlyArray<string>, text: WorkLogTranslate): string {
-  if (items.length < 2) return items[0] ?? "";
-  if (items.length === 2) return text("{first} and {last}", { first: items[0], last: items[1] });
-  return text("{items}, and {last}", {
-    items: items.slice(0, -1).reduce((first, next) => text("{first}, {next}", { first, next })),
-    last: items.at(-1),
-  });
-}
-
 function toolGroupActionLabel(
   action: ToolGroupAction,
   count: number,
-  text: WorkLogTranslate,
+  resolve: MFunctionType,
 ): string {
   switch (action) {
     case "link-pr":
-      return text(count === 1 ? "Linked {count} pull request" : "Linked {count} pull requests", {
-        count,
-      });
+      return resolve(
+        msg(
+          "{count, plural, one {Linked {count} pull request} other {Linked {count} pull requests}}",
+          {
+            count,
+          },
+        ),
+      );
     case "unlink-pr":
-      return text(
-        count === 1 ? "Unlinked {count} pull request" : "Unlinked {count} pull requests",
-        { count },
+      return resolve(
+        msg(
+          "{count, plural, one {Unlinked {count} pull request} other {Unlinked {count} pull requests}}",
+          { count },
+        ),
       );
     case "watch-pr":
-      return text(
-        count === 1 ? "Watching {count} pull request" : "Watching {count} pull requests",
-        { count },
+      return resolve(
+        msg(
+          "{count, plural, one {Watching {count} pull request} other {Watching {count} pull requests}}",
+          { count },
+        ),
       );
     case "unwatch-pr":
-      return text(
-        count === 1
-          ? "Stopped watching {count} pull request"
-          : "Stopped watching {count} pull requests",
-        { count },
+      return resolve(
+        msg(
+          "{count, plural, one {Stopped watching {count} pull request} other {Stopped watching {count} pull requests}}",
+          { count },
+        ),
       );
     case "list-prs":
-      return count === 1
-        ? text("Checked linked pull requests")
-        : text("Checked linked pull requests {count} times", { count });
+      return resolve(
+        msg(
+          "{count, plural, =1 {Checked linked pull requests} other {Checked linked pull requests {count} times}}",
+          { count },
+        ),
+      );
     case "read":
-      return text(count === 1 ? "Read {count} file" : "Read {count} files", { count });
+      return resolve(
+        msg("{count, plural, one {Read {count} file} other {Read {count} files}}", { count }),
+      );
     case "edit":
-      return text(count === 1 ? "Changed {count} file" : "Changed {count} files", { count });
+      return resolve(
+        msg("{count, plural, one {Changed {count} file} other {Changed {count} files}}", { count }),
+      );
     case "command":
-      return text(count === 1 ? "Ran {count} command" : "Ran {count} commands", { count });
+      return resolve(
+        msg("{count, plural, one {Ran {count} command} other {Ran {count} commands}}", { count }),
+      );
     case "thread-create":
-      return text(count === 1 ? "Created {count} thread" : "Created {count} threads", { count });
+      return resolve(
+        msg("{count, plural, one {Created {count} thread} other {Created {count} threads}}", {
+          count,
+        }),
+      );
     case "device":
-      return text(
-        count === 1 ? "Used device controls {count} time" : "Used device controls {count} times",
-        { count },
+      return resolve(
+        msg(
+          "{count, plural, one {Used device controls {count} time} other {Used device controls {count} times}}",
+          { count },
+        ),
       );
     case "browser":
-      return text(count === 1 ? "Used browser {count} time" : "Used browser {count} times", {
-        count,
-      });
+      return resolve(
+        msg("{count, plural, one {Used browser {count} time} other {Used browser {count} times}}", {
+          count,
+        }),
+      );
     case "search":
-      return text(
-        count === 1 ? "Searched the web {count} time" : "Searched the web {count} times",
-        { count },
+      return resolve(
+        msg(
+          "{count, plural, one {Searched the web {count} time} other {Searched the web {count} times}}",
+          { count },
+        ),
       );
     case "code-search":
-      return text(count === 1 ? "Searched code {count} time" : "Searched code {count} times", {
-        count,
-      });
+      return resolve(
+        msg(
+          "{count, plural, one {Searched code {count} time} other {Searched code {count} times}}",
+          { count },
+        ),
+      );
     case "other":
-      return text(count === 1 ? "Used {count} tool" : "Used {count} tools", { count });
+      return resolve(
+        msg("{count, plural, one {Used {count} tool} other {Used {count} tools}}", { count }),
+      );
     case "update":
-      return text(count === 1 ? "Received {count} update" : "Received {count} updates", { count });
+      return resolve(
+        msg("{count, plural, one {Received {count} update} other {Received {count} updates}}", {
+          count,
+        }),
+      );
   }
+}
+
+function joinClauses(items: ReadonlyArray<string>, resolve: MFunctionType): string {
+  if (items.length < 2) return items[0] ?? "";
+  if (items.length === 2) {
+    return resolve(msg("{first} and {second}", { first: items[0]!, second: items[1]! }));
+  }
+  return resolve(
+    msg("{items}, and {last}", { items: items.slice(0, -1).join(", "), last: items.at(-1)! }),
+  );
 }
 
 function t3ToolSummaryCall(entry: WorkLogPresentationEntry): T3ToolSummaryCall {
@@ -579,6 +700,7 @@ function summaryActionPriority(action: ToolGroupAction | T3McpToolSummaryAction)
     case "project-delete":
     case "project-clone":
     case "environment-update":
+    case "theme-set":
     case "attachment-prepare":
     case "attachment-discard":
     case "attachment-send":
@@ -593,7 +715,7 @@ function summaryActionPriority(action: ToolGroupAction | T3McpToolSummaryAction)
 
 export function summarizeToolGroup(
   entries: ReadonlyArray<WorkLogPresentationEntry>,
-  text: WorkLogTranslate = englishWorkLog,
+  resolve: MFunctionType = mFallback,
 ): {
   summary: string;
   hasFailure: boolean;
@@ -603,8 +725,8 @@ export function summarizeToolGroup(
     return {
       summary:
         entries.length === 1
-          ? text("Thought")
-          : text("Thought (×{count})", { count: entries.length }),
+          ? resolve(msg("Thought", { $context: "noun, a reasoning step" }))
+          : resolve(msg("Thought (×{count})", { count: entries.length })),
       hasFailure: false,
     };
   }
@@ -638,12 +760,12 @@ export function summarizeToolGroup(
     count: group.entries.length,
     priority: summaryActionPriority(action),
     ...(group.t3Action
-      ? summarizeT3ToolCalls(group.t3Action, group.entries.map(t3ToolSummaryCall))
+      ? summarizeT3ToolCalls(group.t3Action, group.entries.map(t3ToolSummaryCall), resolve)
       : {
           label: toolGroupActionLabel(
             group.action,
             toolGroupActionCount(group.action, group.entries),
-            text,
+            resolve,
           ),
           failedCount: group.entries.filter(workEntryDisplayIndicatesToolFailure).length,
         }),
@@ -656,17 +778,17 @@ export function summarizeToolGroup(
   if (sources.size > 0) {
     const sourceValues = [...sources.values()];
     const sourceNames = [...new Set(sourceValues.map((source) => source.name))];
-    const formattedNames = workLogList(sourceNames, text);
+    const names = joinClauses(sourceNames, resolve);
     const allIntegrations = sourceValues.every((source) => source.kind === "integration");
     labels.unshift(
-      text(
-        allIntegrations
-          ? sourceNames.length === 1
-            ? "Used {names} integration"
-            : "Used {names} integrations"
-          : "Used {names}",
-        { names: formattedNames },
-      ),
+      allIntegrations
+        ? resolve(
+            msg(
+              "{count, plural, =1 {Used {names} integration} other {Used {names} integrations}}",
+              { count: sourceNames.length, names },
+            ),
+          )
+        : resolve(msg("Used {names}", { names })),
     );
   }
   const sourcedCount = entries.filter(
@@ -678,16 +800,18 @@ export function summarizeToolGroup(
     entries.length - sourcedCount - selected.reduce((count, group) => count + group.count, 0);
   if (remainingCount > 0) {
     labels.push(
-      text(
-        remainingCount === 1 ? "Performed {count} other action" : "Performed {count} other actions",
-        { count: remainingCount },
+      resolve(
+        msg(
+          "{count, plural, one {Performed {count} other action} other {Performed {count} other actions}}",
+          { count: remainingCount },
+        ),
       ),
     );
   }
   const sentenceLabels = labels.map((label, index) =>
     index === 0 ? label : label.charAt(0).toLowerCase() + label.slice(1),
   );
-  const summary = workLogList(sentenceLabels, text);
+  const summary = joinClauses(sentenceLabels, resolve);
   return { summary, hasFailure: summaries.some((group) => group.failedCount > 0) };
 }
 
@@ -728,6 +852,7 @@ export function liveThoughtLine(markdown: string): string {
     .replace(/\s+/g, " ")
     .trim();
   if (heading !== undefined) return text;
-  const end = /[.?!]["'”’)]?(?=\s)/.exec(text);
+  // CJK sentences end in full-width marks with no space after them.
+  const end = /[.?!]["'”’)]?(?=\s)|[。！？]["'”’）」』]?/.exec(text);
   return end ? text.slice(0, end.index + end[0].length) : text;
 }

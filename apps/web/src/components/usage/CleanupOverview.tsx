@@ -1,3 +1,11 @@
+import { serverCopy } from "~/i18n/serverCopy";
+import { uiText } from "../../i18n";
+import { UsageDetailsSheet } from "./UsageDetailsSheet";
+import { cleanupRisk } from "./cleanupModel";
+import { useTheme } from "../../hooks/useTheme";
+import { CleanupDashboard, CleanupHistory } from "./CleanupDashboard";
+import { UsageCount } from "./UsageMotion";
+import { HardDriveIcon, LockKeyholeIcon, FolderArchiveIcon, ArrowRightIcon } from "lucide-react";
 import type { StorageActionInput, StorageInspection, StorageOperation } from "@t3tools/contracts";
 import { useId, useRef, useState } from "react";
 import { Button } from "../ui/button";
@@ -9,70 +17,56 @@ import {
   selectedCleanupEntry,
   volumeGauge,
 } from "./cleanupModel";
-import { cleanupText as text } from "./cleanupText";
 import { type StorageEntry } from "./storageInventoryModel";
 import { CleanupDetails } from "./CleanupDetails";
+import { CleanupRecords } from "./CleanupRecords";
 import styles from "./cleanupOverview.module.css";
 
 const groups = [
-  { id: "safe", en: "Verified generated files", zh: "已核验的生成文件" },
-  { id: "review", en: "Review before releasing", zh: "需要你确认" },
-  { id: "locked", en: "Protected or not yet verified", zh: "已保护 / 尚未核验" },
+  { id: "safe", label: "Verified generated files" },
+  { id: "review", label: "Needs your confirmation" },
+  { id: "locked", label: "Protected / Unverified" },
 ] as const;
 
 function VolumeGauge({ volume }: { volume: StorageInspection["volumes"][number] }) {
   const gauge = volumeGauge(volume);
-  const angle = ((gauge.reservePercent ?? 0) / 100) * Math.PI * 2 - Math.PI / 2;
   return (
-    <div className={styles.volume} data-low={gauge.low}>
-      <div className={styles.dial}>
-        <svg viewBox="0 0 120 120" aria-hidden="true">
-          <circle className={styles.track} cx="60" cy="60" r="50" />
-          {gauge.freePercent !== null ? (
-            <>
-              <circle
-                className={styles.arc}
-                cx="60"
-                cy="60"
-                r="50"
-                pathLength="100"
-                strokeDasharray={`${gauge.freePercent} 100`}
-                transform="rotate(-90 60 60)"
-              />
-              <line
-                className={styles.tick}
-                x1={60 + 43 * Math.cos(angle)}
-                y1={60 + 43 * Math.sin(angle)}
-                x2={60 + 57 * Math.cos(angle)}
-                y2={60 + 57 * Math.sin(angle)}
-              />
-            </>
-          ) : null}
-        </svg>
-        <div className={styles.dialValue}>
-          <strong key={volume.freeBytes} className={styles.number}>
-            {(volume.freeBytes / GIB).toFixed(1)}
-          </strong>
-          <span>GiB {text("free", "可用")}</span>
+    <div data-usage-card className={styles.volume} data-low={gauge.low}>
+      <div className="flex items-center justify-between gap-2 text-xs">
+        <strong className="flex items-center gap-2">
+          <HardDriveIcon className="size-4" />
+          {serverCopy(volume.name)}
+        </strong>
+        <span className="text-muted-foreground">
+          {volume.totalBytes ? formatBytes(volume.totalBytes) : uiText("Total unavailable")}
+        </span>
+      </div>
+      <div className="my-3 text-3xl font-semibold tabular-nums">
+        <UsageCount value={volume.freeBytes / GIB} format={formatGiB} />
+        <span className="ml-1 text-xs font-normal text-muted-foreground">GiB {uiText("free")}</span>
+      </div>
+      {gauge.freePercent !== null ? (
+        <div className="relative h-3 rounded-full bg-muted">
+          <div
+            className="usage-grow h-full rounded-full bg-primary"
+            style={{ width: `${100 - gauge.freePercent}%` }}
+          />
+          <span
+            data-usage-pace
+            className="absolute -top-1 h-5 w-px bg-foreground"
+            style={{ right: `${gauge.reservePercent ?? 0}%` }}
+          />
         </div>
-      </div>
-      <div className={styles.volumeCaption}>
-        <strong>{volume.name}</strong>
-        <span>
-          {volume.totalBytes
-            ? `${text("Total", "总容量")} ${(volume.totalBytes / GIB).toFixed(0)} GiB`
-            : text("Total unavailable", "总容量未知")}
-        </span>
-        <span className={styles.reserve}>
-          {gauge.low ? text("Below", "低于") : text("Reserve", "保护线")} {volume.reserveGiB ?? 40}{" "}
-          GiB ·{" "}
-          {volume.reserveGiB === undefined
-            ? text("display only", "仅显示")
-            : text("enforced", "执行保护")}
-        </span>
-      </div>
+      ) : null}
+      <p className="mt-3 text-2xs text-muted-foreground">
+        {uiText("Used / available · Reserve")} {volume.reserveGiB ?? 40} GiB
+        {volume.reserveGiB === undefined ? uiText(" · display only") : ""}
+      </p>
     </div>
   );
+}
+function formatGiB(n: number) {
+  return n.toFixed(1);
 }
 
 export function CleanupOverview({
@@ -101,7 +95,11 @@ export function CleanupOverview({
   completed: StorageOperation | undefined;
   previewPlan: StorageOperation | null;
 }) {
+  const { theme } = useTheme();
+  const apple = theme === "apple";
   const selectionName = useId();
+  const [diskPath, setDiskPath] = useState("/");
+  const [detailEntry, setDetailEntry] = useState<StorageEntry | null>(null);
   const awaitingConfirmation = previewPlan?.phase === "planned";
   const controlsDisabled = busy || awaitingConfirmation;
   const [selection, setSelection] = useState<string | null | undefined>(undefined);
@@ -122,86 +120,249 @@ export function CleanupOverview({
   const titleFor = (g: (typeof suggestions)[number]) =>
     g.entries.length === 1
       ? g.entries[0]!.name
-      : `${g.category === "rollback-apps" ? text("Old T3 rollback apps", "旧 T3 回滚版本") : g.category === "old-builds" ? text("Build staging", "外盘构建暂存") : text("Cold backups", "冷备份")} ×${g.entries.length}`;
-  const renderSuggestion = (g: (typeof suggestions)[number]) => (
-    <div key={g.id} className={styles.entry}>
-      <div className={styles.entryChoice}>
-        <strong className={styles.entryName}>{titleFor(g)}</strong>
-        <span className={styles.entryBytes}>
-          {g.incomplete ? (g.bytes ? "≥ " : "") : ""}
-          {g.bytes || !g.incomplete ? formatBytes(g.bytes) : text("Not measured", "尚未测量")}
-        </span>
-      </div>
-      <p>
-        {g.risk === "locked" ? text("Locked · ", "已加锁 · ") : ""}
-        {g.entries[0]!.reason}
-      </p>
-      <p>
-        {g.entries[0]!.destination === "trash"
-          ? text("Move to Trash · no immediate space released", "移入废纸篓 · 不立即释放空间")
-          : g.entries[0]!.destination === "delete-rebuildable"
-            ? text("Delete · rebuildable", "永久删除 · 可重建")
-            : ""}
-      </p>
-      <details
-        className={styles.path}
-        open={(g.entries.length > 1 && g.entries.some((e) => e.id === selected?.id)) || undefined}
-      >
-        <summary>
-          {text("Paths and dates · review one item at a time", "路径与日期 · 逐项复核")}
-        </summary>
+      : `${g.category === "rollback-apps" ? uiText("Old T3 rollback apps") : g.category === "old-builds" ? uiText("Build staging") : uiText("Cold backups")} ×${g.entries.length}`;
+  const renderSuggestion = (g: (typeof suggestions)[number]) =>
+    apple ? (
+      <div key={g.id}>
         {g.entries.map((entry) => (
-          <div key={entry.id}>
-            <label className={styles.entryChoice}>
-              {g.entries.length > 1 ? (
-                <input
-                  type="radio"
-                  name={selectionName}
-                  checked={selected?.id === entry.id}
-                  disabled={g.risk === "locked" || controlsDisabled || !allowed}
-                  onChange={() => setSelection(entry.id)}
-                />
-              ) : null}
-              <span className={styles.entryName}>{entry.path}</span>
-              <span>
-                {entry.bytes == null ? text("Not measured", "尚未测量") : formatBytes(entry.bytes)}
-              </span>
-            </label>
-            {entry.childPaths?.map((path) => (
-              <span key={path}>{path}</span>
-            ))}
-            {entry.modifiedAt ? <span>{new Date(entry.modifiedAt).toLocaleString()}</span> : null}
+          <div key={entry.id} className="usage-clean-row">
+            <input
+              type="checkbox"
+              aria-label={uiText("Select {name}", { name: serverCopy(entry.name) })}
+              checked={selected?.id === entry.id}
+              disabled={g.risk === "locked" || controlsDisabled || !allowed}
+              onChange={(event) => setSelection(event.target.checked ? entry.id : null)}
+            />
+            <button type="button" onClick={() => setDetailEntry(entry)}>
+              <strong>{serverCopy(entry.name)}</strong>
+              <small>
+                {entry.destination === "trash"
+                  ? uiText("Move to Trash · Space stays occupied")
+                  : entry.destination === "delete-rebuildable"
+                    ? uiText("Delete rebuildable files")
+                    : g.risk === "locked"
+                      ? uiText("Keep in place")
+                      : uiText("Free after verifying archive")}
+              </small>
+            </button>
+            <span>{entry.bytes == null ? uiText("Not measured") : formatBytes(entry.bytes)}</span>
+            <span className="usage-tag">
+              {g.risk === "safe"
+                ? uiText("Safe")
+                : g.risk === "review"
+                  ? uiText("Confirmation needed")
+                  : uiText("Protected")}
+            </span>
           </div>
         ))}
-      </details>
-      {g.entries.length === 1 && g.risk !== "locked" ? (
-        <label className={styles.entryChoice}>
-          <input
-            type="radio"
-            name={selectionName}
-            aria-label={`${text("Select", "选择")} ${g.entries[0]!.name}`}
-            checked={selected?.id === g.entries[0]!.id}
-            disabled={controlsDisabled || !allowed}
-            onChange={() => setSelection(g.entries[0]!.id)}
-          />
-          <span>{text("Select for preview", "选择并预览")}</span>
+      </div>
+    ) : (
+      <div key={g.id} className={styles.entry} data-risk={g.risk}>
+        <div className={styles.entryChoice}>
+          <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-muted">
+            {g.risk === "locked" ? (
+              <LockKeyholeIcon className="size-4" />
+            ) : (
+              <FolderArchiveIcon className="size-4" />
+            )}
+          </span>
+          <strong className={styles.entryName}>{titleFor(g)}</strong>
+          <span className="rounded-full bg-muted px-2 py-0.5 text-3xs">
+            {g.risk === "safe"
+              ? uiText("Safe")
+              : g.risk === "review"
+                ? uiText("Review.")
+                : uiText("Protected")}
+          </span>
+          <span className={styles.entryBytes}>
+            {g.incomplete ? (g.bytes ? "≥ " : "") : ""}
+            {g.bytes || !g.incomplete ? formatBytes(g.bytes) : uiText("Not measured.")}
+          </span>
+        </div>
+        <p>
+          {g.risk === "locked" ? uiText("Locked · ") : ""}
+          {serverCopy(g.entries[0]!.reason)}
+        </p>
+        <p>
+          {g.entries[0]!.destination === "trash"
+            ? uiText("Move to Trash · no immediate space released")
+            : g.entries[0]!.destination === "delete-rebuildable"
+              ? uiText("Delete · rebuildable")
+              : ""}
+        </p>
+        <details
+          className={styles.path}
+          open={(g.entries.length > 1 && g.entries.some((e) => e.id === selected?.id)) || undefined}
+        >
+          <summary>{uiText("Paths and dates · review one item at a time")}</summary>
+          {g.entries.map((entry) => (
+            <div key={entry.id}>
+              <label className={styles.entryChoice}>
+                {g.entries.length > 1 ? (
+                  <input
+                    type="radio"
+                    name={selectionName}
+                    checked={selected?.id === entry.id}
+                    disabled={g.risk === "locked" || controlsDisabled || !allowed}
+                    onChange={() => setSelection(entry.id)}
+                  />
+                ) : null}
+                <span className={styles.entryName}>{entry.path}</span>
+                <span>
+                  {entry.bytes == null ? uiText("Not measured.") : formatBytes(entry.bytes)}
+                </span>
+              </label>
+              {entry.childPaths?.map((path) => (
+                <span key={path}>{path}</span>
+              ))}
+              {entry.modifiedAt ? <span>{new Date(entry.modifiedAt).toLocaleString()}</span> : null}
+            </div>
+          ))}
+        </details>
+        {g.entries.length === 1 && g.risk !== "locked" ? (
+          <label className={styles.entryChoice}>
+            <input
+              type="radio"
+              name={selectionName}
+              aria-label={`${uiText("Select")} ${g.entries[0]!.name}`}
+              checked={selected?.id === g.entries[0]!.id}
+              disabled={controlsDisabled || !allowed}
+              onChange={() => setSelection(g.entries[0]!.id)}
+            />
+            <span>{uiText("Select for preview")}</span>
+          </label>
+        ) : null}
+      </div>
+    );
+  const targets = data.volumes.filter((volume) => volume.internal === false);
+  const target = targets.find((volume) => volume.id === volumeId);
+  const action = apple ? (
+    <div className="usage-clean-action">
+      <span>
+        {uiText("Selected")}{" "}
+        <strong>{selected?.bytes == null ? "0" : (selected.bytes / GIB).toFixed(1)} GiB</strong>
+        {selected && cleanupRisk(selected) === "review" ? uiText(" · Review required") : ""}
+      </span>
+      <button
+        type="button"
+        disabled={
+          !allowed ||
+          controlsDisabled ||
+          scanning ||
+          !selected ||
+          (!selected.destination && !target)
+        }
+        onClick={() => {
+          if (selected) onPreview(selected);
+        }}
+      >
+        {busy
+          ? uiText("Working…")
+          : awaitingConfirmation
+            ? uiText("Confirm the plan")
+            : uiText("Preview cleanup")}
+      </button>
+      {selected && !selected.destination ? (
+        <label>
+          {uiText("Archive to")}
+          <select
+            value={volumeId}
+            disabled={controlsDisabled}
+            onChange={(event) => onVolumeChange(event.target.value)}
+          >
+            <option value="">{uiText("Choose external volume")}</option>
+            {targets.map((v) => (
+              <option key={v.id} value={v.id}>
+                {v.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      ) : null}
+    </div>
+  ) : (
+    <div data-usage-card className={styles.action} data-clean-action={apple || undefined}>
+      <span className={styles.eyebrow}>{uiText("Selected safe space")}</span>
+      {releaseBytes > 0 ? (
+        <div className={styles.amount}>
+          <strong key={releaseBytes} className={styles.number}>
+            {(releaseBytes / GIB).toFixed(1)}
+          </strong>
+          <span>GiB</span>
+        </div>
+      ) : (
+        <strong className={styles.emptyAmount}>
+          {uiText("No safe items selected for release")}
+        </strong>
+      )}
+      <p>
+        {releaseBytes > 0
+          ? uiText(
+              "Only the selected safe object is counted; actual free space is measured after completion.",
+            )
+          : hasReview
+            ? `${uiText("Another")} ${(reviewBytes / GIB).toFixed(1)} GiB ${uiText("needs your review")}`
+            : uiText("Scan or select a verified object from the suggestions.")}
+      </p>
+      <Button
+        size="lg"
+        disabled={
+          !allowed ||
+          controlsDisabled ||
+          scanning ||
+          (selected !== undefined && !selected.destination && !target)
+        }
+        onClick={() =>
+          selected ? onPreview(selected) : suggestions.length ? showSuggestions() : onScan()
+        }
+      >
+        {awaitingConfirmation ? (
+          uiText("Confirm the plan below")
+        ) : busy ? (
+          uiText("Processing…")
+        ) : selected ? (
+          <>
+            {uiText("Preview cleanup")}
+            <ArrowRightIcon className="size-4" />
+          </>
+        ) : hasReview ? (
+          uiText("Review confirmation items")
+        ) : suggestions.length ? (
+          uiText("View suggestions")
+        ) : (
+          uiText("Scan")
+        )}
+      </Button>
+      <span className={styles.hint}>
+        {selected
+          ? `${uiText("Selected")} ${selected.name} · ${selected.bytes == null ? uiText("Not measured.") : formatBytes(selected.bytes)}`
+          : uiText("Logs older than 30 days; confirm the exact list before cleanup.")}
+      </span>
+      {selected && !selected.destination ? (
+        <label className={styles.destination}>
+          {uiText("Archive destination")}
+          <select
+            value={volumeId}
+            disabled={controlsDisabled}
+            onChange={(event) => onVolumeChange(event.target.value)}
+          >
+            <option value="">{uiText("Choose external volume")}</option>
+            {targets.map((volume) => (
+              <option key={volume.id} value={volume.id}>
+                {serverCopy(volume.name)} · {formatBytes(volume.freeBytes)}
+              </option>
+            ))}
+          </select>
         </label>
       ) : null}
     </div>
   );
-  const targets = data.volumes.filter((volume) => volume.internal === false);
-  const target = targets.find((volume) => volume.id === volumeId);
   return (
-    <div className={styles.root}>
+    <div className={styles.root} data-clean-dashboard={apple || undefined}>
       <header className={styles.heading}>
         <div>
-          <h3>{text("Cleanup & organization", "清理与整理")}</h3>
-          <p>
-            {text(
-              "Preview paths and destinations before confirming.",
-              "先预览路径与去向，再确认清理。",
-            )}
-          </p>
+          <h3>{uiText("Cleanup & organization")}</h3>
+          <p>{uiText("Preview paths and destinations before confirming.")}</p>
         </div>
         <Button
           variant="outline"
@@ -209,133 +370,70 @@ export function CleanupOverview({
           disabled={controlsDisabled || scanning}
           onClick={onScan}
         >
-          {scanning ? text("Scanning…", "正在扫描…") : text("Scan sizes", "扫描大小")}
+          {scanning ? uiText("Scanning…") : uiText("Scan sizes")}
         </Button>
       </header>
-      {scanning ? (
-        <p role="status" className={styles.scan}>
-          {text(
-            "Measuring managed directories. No files are being removed.",
-            "正在测量可管理目录，未删除任何文件。",
-          )}
-          {data.scan ? ` ${data.scan.checked} / ${data.scan.total} · ${data.scan.current}` : ""}
-        </p>
+      <div className={styles.scanWrap} data-scanning={scanning || undefined}>
+        <div className={styles.scanInner}>
+          <p role="status" className={styles.scan}>
+            {scanning ? (
+              <>
+                {uiText("Measuring managed directories. No files are being removed.")}
+                {data.scan ? ` ${data.scan.checked} / ${data.scan.total} · ${data.scan.current}` : ""}
+              </>
+            ) : null}
+          </p>
+        </div>
+      </div>
+      {apple ? (
+        <CleanupDashboard
+          data={data}
+          releaseBytes={releaseBytes}
+          volumePath={diskPath}
+          onVolumeChange={setDiskPath}
+        />
       ) : null}
       <div className={styles.hero}>
-        <div className={styles.action}>
-          <span className={styles.eyebrow}>{text("Selected safe space", "已选安全项可释放")}</span>
-          {releaseBytes > 0 ? (
-            <div className={styles.amount}>
-              <strong key={releaseBytes} className={styles.number}>
-                {(releaseBytes / GIB).toFixed(1)}
-              </strong>
-              <span>GiB</span>
-            </div>
-          ) : (
-            <strong className={styles.emptyAmount}>
-              {text("No safe items selected for release", "暂无可直接释放的安全项")}
-            </strong>
-          )}
-          <p>
-            {releaseBytes > 0
-              ? text(
-                  "Only the selected safe object is counted; actual free space is measured after completion.",
-                  "仅统计已选安全项；实际释放量以完成后实测为准。",
-                )
-              : hasReview
-                ? `${text("Another", "另有")} ${(reviewBytes / GIB).toFixed(1)} GiB ${text("needs your review", "需你确认")}`
-                : text(
-                    "Scan or select a verified object from the suggestions.",
-                    "扫描或从建议中选择已核验对象。",
-                  )}
-          </p>
-          <Button
-            size="lg"
-            disabled={
-              !allowed ||
-              controlsDisabled ||
-              scanning ||
-              (selected !== undefined && !selected.destination && !target)
-            }
-            onClick={() =>
-              selected ? onPreview(selected) : suggestions.length ? showSuggestions() : onScan()
-            }
-          >
-            {awaitingConfirmation
-              ? text("Confirm the plan below", "请在下方确认计划")
-              : busy
-                ? text("Processing…", "正在处理…")
-                : selected
-                  ? text("Preview cleanup →", "预览清理 →")
-                  : hasReview
-                    ? text("Review confirmation items", "查看需确认项")
-                    : suggestions.length
-                      ? text("View suggestions", "查看建议")
-                      : text("Scan", "扫描")}
-          </Button>
-          <span className={styles.hint}>
-            {selected
-              ? `${text("Selected", "已选")} ${selected.name} · ${selected.bytes == null ? text("Not measured", "尚未测量") : formatBytes(selected.bytes)}`
-              : text(
-                  "Logs older than 30 days; confirm the exact list before cleanup.",
-                  "扫描后可手动选择需要确认的项目。",
-                )}
-          </span>
-          {selected && !selected.destination ? (
-            <label className={styles.destination}>
-              {text("Archive destination", "归档到")}
-              <select
-                value={volumeId}
-                disabled={controlsDisabled}
-                onChange={(event) => onVolumeChange(event.target.value)}
-              >
-                <option value="">{text("Choose external volume", "选择外置卷")}</option>
-                {targets.map((volume) => (
-                  <option key={volume.id} value={volume.id}>
-                    {volume.name} · {formatBytes(volume.freeBytes)}
-                  </option>
-                ))}
-              </select>
-            </label>
-          ) : null}
-        </div>
+        {action}
         <div className={styles.volumes}>
           {data.volumes.map((volume) => (
             <VolumeGauge key={volume.id} volume={volume} />
           ))}
-          {data.volumes.length === 0 ? (
-            <p>{text("Volume information unavailable.", "暂未取得磁盘容量信息。")}</p>
-          ) : null}
+          {data.volumes.length === 0 ? <p>{uiText("Volume information unavailable.")}</p> : null}
         </div>
       </div>
       {completed ? (
         <div key={completed.id} role="status" className={styles.completed}>
-          <strong>{text("Cleanup completed", "清理已完成")}</strong>
+          <strong>{uiText("Cleanup completed")}</strong>
           {completed.freeBefore !== undefined && completed.freeAfter !== undefined ? (
             <span>
-              {text("Observed free-space change", "实测空闲变化")}{" "}
+              {uiText("Observed free-space change.")}{" "}
               {completed.freeAfter >= completed.freeBefore ? "+" : "−"}
               {formatBytes(Math.abs(completed.freeAfter - completed.freeBefore))} ·{" "}
-              {text("includes other disk activity", "含其他磁盘活动")}
+              {uiText("includes other disk activity")}
             </span>
           ) : (
-            <span>{text("Refreshing space measurements", "正在刷新空间测量")}</span>
+            <span>{uiText("Refreshing space measurements")}</span>
           )}
         </div>
+      ) : null}
+      {apple ? (
+        <CleanupDetails
+          selectedVolumePath={diskPath}
+          data={data}
+          disabled={controlsDisabled || !allowed}
+          onSettings={onSettings}
+          onSelect={(id) => setSelection(id)}
+        />
       ) : null}
       <section
         ref={suggestionsRef}
         className={styles.suggestions}
-        aria-label={text("Cleanup suggestions", "整理建议")}
+        aria-label={uiText("Cleanup suggestions")}
       >
         <div className={styles.listHeading}>
-          <h4>{text("Cleanup suggestions", "整理建议")}</h4>
-          <span>
-            {text(
-              "Largest safe object ≥200 MB preselected; review each path.",
-              "仅默认选中 ≥200 MB 的最大安全项；逐项预览。",
-            )}
-          </span>
+          <h4>{uiText("Cleanup suggestions")}</h4>
+          <span>{uiText("Largest safe object ≥200 MB preselected; review each path.")}</span>
         </div>
         {[
           ...new Set([...data.volumes.map((v) => v.path), ...suggestions.map((g) => g.volumePath)]),
@@ -355,9 +453,10 @@ export function CleanupOverview({
                     open={group.id !== "locked" || undefined}
                   >
                     <summary>
-                      <span>{text(group.en, group.zh)}</span>
+                      <span>{uiText(group.label)}</span>
                       <span>
-                        {objects.length} {text("objects", "项建议")}
+                        {objects.length}{" "}
+                        {uiText(objects.length === 1 ? "cleanup item" : "cleanup items")}
                       </span>
                     </summary>
                     <div className={styles.entries}>{objects.map(renderSuggestion)}</div>
@@ -371,16 +470,14 @@ export function CleanupOverview({
           <details className={styles.group}>
             <summary>
               <span>
-                {text("More small objects", "还有")} {small.length}{" "}
-                {text("small objects (<50 MB)", "个小项（<50 MB）")}
+                {uiText("And")} {small.length}{" "}
+                {uiText(small.length === 1 ? "small item (<50 MB)" : "small items (<50 MB)")}
               </span>
             </summary>
             <div className={styles.entries}>{small.map(renderSuggestion)}</div>
           </details>
         ) : null}
-        {!suggestions.length ? (
-          <p>{text("No nonempty objects in this scan.", "本次扫描没有非空清理对象。")}</p>
-        ) : null}
+        {!suggestions.length ? <p>{uiText("No nonempty objects in this scan.")}</p> : null}
         {selected ? (
           <button
             className={styles.clear}
@@ -388,34 +485,63 @@ export function CleanupOverview({
             disabled={controlsDisabled}
             onClick={() => setSelection(null)}
           >
-            {text("Clear selection", "取消选择")}
+            {uiText("Clear selection")}
           </button>
         ) : null}
+        {apple ? action : null}
         {data.truncated ? (
-          <p>
-            {text(
-              "Scan limit reached; inspect individual directories below.",
-              "已达扫描上限，可在下方逐个检查目录。",
-            )}
+          <p className="text-xs text-muted-foreground" data-scan-limit-note>
+            {uiText("Scan limit reached; inspect individual directories below.")}
           </p>
         ) : null}
       </section>
-      <CleanupDetails
-        data={data}
-        disabled={controlsDisabled || !allowed}
-        onSettings={onSettings}
-        onSelect={(id) => setSelection(id)}
-      />
+      {apple ? (
+        <div className="usage-clean-bottom" data-single>
+          <CleanupHistory data={data} />
+          {data.archives.length || data.operations.length ? <CleanupRecords data={data} /> : null}
+        </div>
+      ) : null}
+      {detailEntry ? (
+        <UsageDetailsSheet
+          open
+          onOpenChange={(open) => {
+            if (!open) setDetailEntry(null);
+          }}
+          title={serverCopy(detailEntry.name)}
+          description={
+            cleanupRisk(detailEntry) === "locked"
+              ? uiText("Protected and excluded from cleanup")
+              : uiText("Review paths and actions")
+          }
+        >
+          <div className="usage-clean-detail">
+            <p>{serverCopy(detailEntry.reason ?? "")}</p>
+            <p>{detailEntry.path}</p>
+            {detailEntry.childPaths?.map((path) => (
+              <p key={path}>{path}</p>
+            ))}
+            <p>{detailEntry.modifiedAt ?? detailEntry.lastModified}</p>
+            <p>
+              {detailEntry.bytes == null ? uiText("Unmeasured") : formatBytes(detailEntry.bytes)}
+            </p>
+          </div>
+        </UsageDetailsSheet>
+      ) : null}
+      {!apple ? (
+        <CleanupDetails
+          data={data}
+          disabled={controlsDisabled || !allowed}
+          onSettings={onSettings}
+          onSelect={(id) => setSelection(id)}
+        />
+      ) : null}
       <p className={styles.scope}>
-        {text(
+        {uiText(
           "Bounded allowlist scan; protected data is never selected. Trash does not free disk space.",
-          "仅限白名单范围；受保护数据不会选中。移入废纸篓不会立即释放磁盘空间。",
         )}
       </p>
       {!allowed ? (
-        <p className={styles.scope}>
-          {text("This connection has view-only storage access.", "此连接仅可查看，不能执行整理。")}
-        </p>
+        <p className={styles.scope}>{uiText("This connection has view-only storage access")}</p>
       ) : null}
     </div>
   );

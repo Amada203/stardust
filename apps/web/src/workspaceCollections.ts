@@ -1,3 +1,6 @@
+import { uiText } from "./i18n";
+import type { SidebarCategorySettings } from "@t3tools/contracts/settings";
+import { matchLocalCategoryRule } from "./threadCategories";
 import type { Project } from "./types";
 import { buildProjectGroups, type ProjectGroupingSettings } from "./logicalProject";
 import type { EnvironmentId } from "@t3tools/contracts";
@@ -12,14 +15,31 @@ export const COLLECTION_ORDER = [
   "其他项目",
 ] as const;
 
+const collectionLabel = {
+  项目管理: "Project management",
+  自媒体: "Content creation",
+  公司管理: "Business operations",
+  交易: "Trading",
+  "AI 工作台": "AI workbench",
+  自动化与测试: "Automation and tests",
+  其他项目: "Other projects",
+} as const;
+
 /** A presentation layer: physical workspaces and resume identities never move. */
-function workspaceCollection(path: string): (typeof COLLECTION_ORDER)[number] {
+function workspaceCollection(
+  path: string,
+  legacy?: SidebarCategorySettings["legacyRules"],
+): (typeof COLLECTION_ORDER)[number] {
   const p = path.replaceAll("\\", "/").replace(/\/+$/, "");
   if (/(?:\/\.hermes(?:\/|$)|\/work\/.*(?:smoke|test)(?:\/|$)|\/automations?(?:\/|$))/i.test(p))
     return "自动化与测试";
   if (/\/Documents\/(?:项目管理|项目资料)(?:\/|$)|\/Obsidian\/.*\/03-项目复盘(?:\/|$)/.test(p))
     return "项目管理";
-  if (/\/Documents\/(?:自媒体|小岛经济学)(?:\/|$)|\/Obsidian\/.*\/公众号文章(?:\/|$)/.test(p))
+  if (
+    legacy?.contentWorkspace
+      ? matchLocalCategoryRule(legacy.contentWorkspace, p)
+      : /\/Documents\/自媒体(?:\/|$)|\/Obsidian\/.*\/Content(?:\/|$)/i.test(p)
+  )
     return "自媒体";
   if (/\/Documents\/公司管理(?:\/|$)/.test(p)) return "公司管理";
   if (/\/Documents\/交易(?:\/|$)/.test(p)) return "交易";
@@ -40,11 +60,15 @@ export function buildWorkspaceCollections(input: {
   projects: readonly Project[];
   settings: ProjectGroupingSettings;
   preferredEnvironmentId?: EnvironmentId | null;
+  legacyCategoryRules?: SidebarCategorySettings["legacyRules"];
 }) {
   const originals = buildProjectGroups(input);
   const collections = new Map<string, (typeof originals)[number]>();
   for (const group of originals) {
-    const label = workspaceCollection(group.representative.workspaceRoot);
+    const label = workspaceCollection(
+      group.representative.workspaceRoot,
+      input.legacyCategoryRules,
+    );
     const key = JSON.stringify(["workspace-collection", group.representative.environmentId, label]);
     const current = collections.get(key);
     if (!current) {
@@ -69,9 +93,24 @@ export function buildWorkspaceCollections(input: {
       memberProjectRefs: [...current.memberProjectRefs, ...group.memberProjectRefs],
     });
   }
-  return [...collections.values()].sort(
-    (a, b) =>
-      COLLECTION_ORDER.indexOf(a.label as (typeof COLLECTION_ORDER)[number]) -
-      COLLECTION_ORDER.indexOf(b.label as (typeof COLLECTION_ORDER)[number]),
-  );
+  return [...collections.values()]
+    .sort(
+      (a, b) =>
+        COLLECTION_ORDER.indexOf(a.label as (typeof COLLECTION_ORDER)[number]) -
+        COLLECTION_ORDER.indexOf(b.label as (typeof COLLECTION_ORDER)[number]),
+    )
+    .map((collection) => ({
+      ...collection,
+      label: uiText(collectionLabel[collection.label as (typeof COLLECTION_ORDER)[number]]),
+    }));
+}
+
+export function secondaryCollectionRank(name: string): number {
+  if (
+    name === "Automation and tests" ||
+    name === uiText("Automation and tests", undefined, "zh-CN")
+  )
+    return 1;
+  if (name === "Other projects" || name === uiText("Other projects", undefined, "zh-CN")) return 2;
+  return 0;
 }

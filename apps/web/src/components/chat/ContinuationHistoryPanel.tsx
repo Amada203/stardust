@@ -1,3 +1,4 @@
+import { uiText } from "../../i18n";
 import type { ThreadStructure } from "@t3tools/client-runtime/state/shell";
 import { readUiLocale } from "~/i18n";
 import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
@@ -71,30 +72,36 @@ export function ContinuationHistoryPanel(props: {
     ) : null;
   return (
     <>
-      <section aria-label="续聊段序" className="min-w-0 px-3 pt-3 pb-2" data-continuation-history>
-        <h3 className="mb-2 text-xs font-medium">续聊历史</h3>
+      <section
+        aria-label={uiText("Continuation sequence")}
+        className="min-w-0 px-3 pt-3 pb-2"
+        data-continuation-history
+      >
+        <h3 className="mb-2 text-xs font-medium">{uiText("Continuation history")}</h3>
         {disconnected ? (
           <p role="status" className="text-xs">
-            连接已断开，当前显示缓存记录；恢复连接后可继续读取。
+            {uiText("Connection lost. Cached records are shown. Reconnect to load more.")}
           </p>
         ) : null}
         {chain.issue === "cycle" ? (
           <p role="alert" className="text-xs">
-            续聊关系存在循环，已停止追溯。
+            {uiText("A loop in the continuation chain stopped the search.")}
           </p>
         ) : null}
         {chain.issue === "broken" ? (
           <div className="text-xs" role="status">
             {disconnected
-              ? "暂时无法核实更早的会话。"
+              ? uiText("Couldn’t verify earlier conversations.")
               : archived.isLoading
-                ? "正在查找更早的会话…"
+                ? uiText("Finding earlier conversations…")
                 : archived.error
-                  ? "续聊历史加载失败，请重试。"
-                  : "续聊链已断开：更早的会话不存在或不属于续聊。"}
+                  ? uiText("Couldn’t load continuation history. Try again.")
+                  : uiText(
+                      "The earlier conversation is missing or outside this continuation chain.",
+                    )}
             {!disconnected && archived.error ? (
               <Button size="xs" variant="ghost" onClick={archived.refresh}>
-                重试加载段序
+                {uiText("Retry loading the sequence")}
               </Button>
             ) : null}
           </div>
@@ -102,9 +109,11 @@ export function ContinuationHistoryPanel(props: {
         {chain.segments.map((segment, index) => (
           <div key={segment.id} className="my-2 border-l pl-2">
             <p className="text-xs font-medium">
-              {chain.issue === null ? `第 ${index + 1} 段` : "已找到的段落"}
-              {segment.id === props.thread.id ? " · 当前段" : ""}
-              {segment.archivedAt != null ? " · 已归档" : " · 未归档"}
+              {chain.issue === null
+                ? uiText("Part {count}", { count: index + 1 })
+                : uiText("Parts found")}
+              {segment.id === props.thread.id ? uiText(" · Current part") : ""}
+              {segment.archivedAt != null ? uiText(" · Archived") : uiText(" · Unarchived")}
             </p>
             {segment.id === props.thread.id ? (
               <>
@@ -127,12 +136,12 @@ export function ContinuationHistoryPanel(props: {
         ))}
       </section>
       {children.length > 0 ? (
-        <section aria-label="后续会话" className="min-w-0 px-3 pt-3 pb-2">
-          <h3 className="mb-2 text-xs font-medium">后续会话</h3>
+        <section aria-label={uiText("Next conversation")} className="min-w-0 px-3 pt-3 pb-2">
+          <h3 className="mb-2 text-xs font-medium">{uiText("Next conversation")}</h3>
           {children.map((child) =>
             child.archivedAt != null ? (
               <div key={child.id}>
-                <p className="text-2xs text-muted-foreground">已归档</p>
+                <p className="text-2xs text-muted-foreground">{uiText("Archived")}</p>
                 <OriginalThreadHistory
                   {...props}
                   parent={child}
@@ -250,10 +259,15 @@ function OriginalThreadHistory({
     });
   };
   return (
-    <section aria-label="原会话" className="min-w-0 px-3 pt-3 pb-2" data-continuation-history>
+    <section
+      aria-label={uiText("Original conversation")}
+      className="min-w-0 px-3 pt-3 pb-2"
+      data-continuation-history
+    >
       <p className="break-words text-xs">{parent.title}</p>
       <p className="mt-1 text-2xs text-muted-foreground">
-        {new Date(parent.createdAt).toLocaleString(readUiLocale())} · {parent.itemCount} 条
+        {new Date(parent.createdAt).toLocaleString(readUiLocale())} · {parent.itemCount}{" "}
+        {uiText(" records")}
       </p>
       <div className="my-2 flex flex-wrap gap-1">
         <Button
@@ -266,7 +280,7 @@ function OriginalThreadHistory({
           }}
         >
           {" "}
-          {expanded ? "收起记录" : "查看记录"}{" "}
+          {expanded ? uiText("Hide records") : uiText("View records")}{" "}
         </Button>
         {parent.archivedAt == null ? (
           <ArchiveOriginalThreadButton
@@ -277,7 +291,7 @@ function OriginalThreadHistory({
         ) : null}
         {path ? (
           <Button size="xs" variant="ghost" onClick={() => setFileOpen(!fileOpen)}>
-            {fileOpen ? "收起交接文件" : "打开交接文件"}
+            {fileOpen ? uiText("Hide handoff file") : uiText("Open handoff file")}
           </Button>
         ) : null}
       </div>
@@ -285,14 +299,14 @@ function OriginalThreadHistory({
         <div className="mb-2 rounded-lg border p-2" data-continuation-file>
           <p className="mb-1 break-all text-2xs text-muted-foreground">{path}</p>
           {file.isPending ? (
-            <p className="text-xs">正在读取交接文件…</p>
+            <p className="text-xs">{uiText("Loading handoff file…")}</p>
           ) : file.error ? (
             <>
               <p role="alert" className="text-xs">
                 {file.error}
               </p>
               <Button size="xs" variant="ghost" onClick={file.refresh}>
-                重试
+                {uiText("Retry loading earlier records")}
               </Button>
             </>
           ) : (
@@ -300,27 +314,33 @@ function OriginalThreadHistory({
               {file.data?.contents}
             </pre>
           )}
-          {file.data?.truncated ? <p className="text-xs">文件内容已截断</p> : null}
+          {file.data?.truncated ? (
+            <p className="text-xs">{uiText("File content truncated")}</p>
+          ) : null}
         </div>
       ) : null}
       {expanded ? (
         <>
           <p className="mb-2 text-2xs text-muted-foreground">
-            只读记录；引用仅加入当前输入框，由你确认发送。
+            {uiText("Records are read-only. Quotes go into your draft for you to send.")}
           </p>
           <Input
-            aria-label="搜索原会话记录"
-            placeholder="搜索已加载记录"
+            aria-label={uiText("Search original conversation")}
+            placeholder={uiText("Search loaded records")}
             value={query}
             onChange={(event) => setQuery(event.target.value)}
           />
           <p className="my-1 text-2xs text-muted-foreground">
-            {messages.length} 条匹配 · 搜索已加载记录
-            {state.history.hasMoreHistory ? "，可继续加载更早记录" : "，全部已加载"}
+            {messages.length} {uiText(" matches · Search loaded records")}
+            {state.history.hasMoreHistory
+              ? uiText(". More records are available")
+              : uiText(". All records loaded")}
           </p>
           {quoteError ? (
             <p role="alert" className="text-xs">
-              当前输入框暂不可引用，请关闭面板检查连接或待处理请求后重试。
+              {uiText(
+                "The composer can’t add quotes right now. Close this panel and check the connection or pending requests.",
+              )}
             </p>
           ) : null}
           <div
@@ -340,26 +360,28 @@ function OriginalThreadHistory({
                   void earlier();
                 }}
               >
-                {state.history.loading ? "正在加载…" : "继续加载更早记录"}
+                {state.history.loading ? uiText("Loading…") : uiText("Load earlier records")}
               </Button>
             ) : null}
             {state.history.error ? (
               <p role="alert" className="text-xs">
-                更早记录加载失败，请重试。
+                {uiText("Couldn’t load earlier records. Try again.")}
               </p>
             ) : null}
             {!original ? (
               <p className="text-xs">
                 {disconnected
-                  ? "连接已断开，等待重新连接。"
+                  ? uiText("Connection lost. Waiting to reconnect.")
                   : state.status === "deleted"
-                    ? "原会话已删除，无法读取正文。"
+                    ? uiText("The original conversation was deleted. Its messages are unavailable.")
                     : Option.isSome(state.error)
-                      ? "原会话读取失败，请收起后重新展开重试。"
-                      : "正在读取原会话…"}
+                      ? uiText(
+                          "Couldn’t read the original conversation. Collapse and reopen it to retry.",
+                        )
+                      : uiText("Loading original conversation…")}
               </p>
             ) : messages.length === 0 ? (
-              <p className="py-2 text-xs">没有匹配消息</p>
+              <p className="py-2 text-xs">{uiText("No matching messages")}</p>
             ) : null}
             {messages.map(({ item }) =>
               item.type === "user_message" || item.type === "assistant_message" ? (
@@ -370,7 +392,7 @@ function OriginalThreadHistory({
                 >
                   <div className="flex items-center justify-between gap-1">
                     <span className="text-2xs text-muted-foreground">
-                      {item.type === "user_message" ? "用户" : "助手"}
+                      {item.type === "user_message" ? uiText("User") : uiText("Assistant")}
                     </span>
                     <div className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:opacity-100 max-md:opacity-100">
                       <Button
@@ -388,7 +410,7 @@ function OriginalThreadHistory({
                           )
                         }
                       >
-                        引用
+                        {uiText("Quote")}
                       </Button>
                     </div>
                   </div>
@@ -401,7 +423,11 @@ function OriginalThreadHistory({
       ) : null}
       {parent.archivedAt == null ? (
         <div className="mt-2">
-          <ThreadLink environmentId={environmentId} threadId={parent.id} title="在主区打开" />
+          <ThreadLink
+            environmentId={environmentId}
+            threadId={parent.id}
+            title={uiText("Open in main pane")}
+          />
         </div>
       ) : null}
     </section>

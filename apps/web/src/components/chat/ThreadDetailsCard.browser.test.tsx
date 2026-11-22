@@ -18,7 +18,6 @@ const threadB: ScopedThreadRef = {
   threadId: ThreadId.make("thread-b"),
 };
 const container = { width: 1200, height: 800 };
-await page.viewport(container.width, container.height);
 const placement = { x: 908, y: 0, right: 12, width: 280, height: 400 } as const;
 
 function setup() {
@@ -45,6 +44,7 @@ function Card({
   fixture,
   rows = 1,
   automationRows = 0,
+  serverOverflowRows = 0,
 }: {
   threadRef: ScopedThreadRef;
   inline: boolean;
@@ -53,6 +53,8 @@ function Card({
   rows?: number;
   /** Rows of 100px in an automations list shown at full density. */
   automationRows?: number;
+  /** Rows of 100px that expanded server lists add, which density ignores. */
+  serverOverflowRows?: number;
 }) {
   return (
     // The web root renders in StrictMode, which re-runs ref callbacks on every mount.
@@ -83,6 +85,12 @@ function Card({
               </p>
               {density === "full" && automationRows > 0 ? (
                 <section data-thread-automations-panel style={{ height: automationRows * 100 }} />
+              ) : null}
+              {density === "full" && serverOverflowRows > 0 ? (
+                <div
+                  data-thread-details-server-overflow
+                  style={{ height: serverOverflowRows * 100 }}
+                />
               ) : null}
             </>
           )}
@@ -174,6 +182,16 @@ it("keeps full density when many automations make the content tall", async () =>
     <Card threadRef={threadB} inline fixture={fixture} rows={2} automationRows={6} />,
   );
   await expect.element(page.getByText("Details for thread-b")).toBeVisible();
+  await expect
+    .element(page.getByRole("region", { name: "Thread details" }))
+    .toHaveAttribute("data-density", "full");
+});
+
+it("stays full while expanded server rows overflow", async () => {
+  using fixture = setup();
+  await using _screen = await render(
+    <Card threadRef={threadB} inline fixture={fixture} rows={2} serverOverflowRows={4} />,
+  );
   await expect
     .element(page.getByRole("region", { name: "Thread details" }))
     .toHaveAttribute("data-density", "full");

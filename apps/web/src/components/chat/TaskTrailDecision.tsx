@@ -1,3 +1,4 @@
+import { uiText } from "../../i18n";
 import { useEffect, useLayoutEffect, useRef } from "react";
 import type { UserInputQuestion } from "@t3tools/contracts";
 import { useStableCallback } from "../../hooks/useStableCallback";
@@ -84,7 +85,7 @@ export function TaskTrailDecision({
           disabled={input.disabled || !input.canAdvance}
           onClick={input.onAdvance}
         >
-          确认选择
+          {uiText("Confirm choice")}
         </button>
       ) : null}
       <button
@@ -96,7 +97,7 @@ export function TaskTrailDecision({
           input.onFocus();
         }}
       >
-        都不合适，补充要求
+        {uiText("None of these · Add instructions")}
       </button>
     </div>
   );

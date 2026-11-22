@@ -44,6 +44,7 @@ function summary(
     hostId: string;
     homePath: string;
     volumeId?: string;
+    physicalSourceId?: string;
     distinctSessions?: number;
   }[],
   contractVersion: number = USAGE_CONTRACT_VERSION,
@@ -61,6 +62,9 @@ function summary(
         provider: source.provider,
         resolvedHomePath: source.homePath,
         volumeId: source.volumeId ?? `vol-${source.hostId}`,
+        ...(source.physicalSourceId === undefined
+          ? {}
+          : { physicalSourceId: source.physicalSourceId }),
       },
       status: "ok" as const,
       scannedFiles: 1,
@@ -352,12 +356,10 @@ describe("mergeUsage", () => {
       expect(merged.costUsd).toBe(13);
       expect(merged.records).toBe(6);
       expect(merged.sessions).toBe(2);
-      expect(merged.projects.map(({ kind, costUsd }) => [kind, costUsd])).toEqual([
-        ["unreported", 13],
-      ]);
-      expect(merged.projects.reduce((sum, project) => sum + project.totalTokens, 0)).toBe(
-        merged.totalTokens,
+      expect(merged.projects.reduce((total, project) => total + project.costUsd, 0)).toBe(
+        merged.costUsd,
       );
+      expect(merged.projects.every((project) => project.kind === "unreported")).toBe(true);
       expect(merged.daily.map(({ day, costUsd }) => [day, costUsd])).toEqual([
         ["2026-08-07", 10],
         ["2026-08-08", 3],
@@ -640,6 +642,140 @@ describe("mergeUsage", () => {
     expect(merged.duplicateSources).toHaveLength(0);
   });
 
+  describe("one directory seen from both sides of a Windows and WSL boundary", () => {
+    // Fingerprints the reporter captured for one NTFS directory, read natively by
+    // Windows and through the drvfs mount by WSL. Path and dev:ino both differ.
+    const physicalSourceId = "physical-claude-projects";
+    const windows = {
+      provider: "claude" as const,
+      hostId: "MainPC",
+      homePath: "C:\\Users\\user\\.claude\\projects",
+      volumeId: "1280555009:3659174697951285",
+      physicalSourceId,
+      distinctSessions: 142,
+    };
+    const wsl = {
+      provider: "claude" as const,
+      hostId: "MainPC",
+      homePath: "/mnt/c/Users/user/.claude/projects",
+      volumeId: "112:3659174697951287",
+      physicalSourceId,
+      distinctSessions: 142,
+    };
+
+    it("counts it once, whichever scan is newer", () => {
+      const environments = [
+        environment(
+          "windows",
+          summary([bucket({ sourcePath: windows.homePath, records: 22433 })], [windows]),
+        ),
+        environment("wsl", {
+          ...summary([bucket({ sourcePath: wsl.homePath, records: 22432 })], [wsl]),
+          readAt: "2026-08-07T00:05:00.000Z",
+        }),
+      ];
+
+      for (const ordered of [environments, environments.toReversed()]) {
+        const merged = mergeUsage(ordered, USAGE_CONTRACT_VERSION);
+        expect(merged.sessions).toBe(142);
+        expect(merged.records).toBe(22432);
+        expect(merged.costUsd).toBe(10);
+        expect(merged.contributingEnvironments).toEqual(["wsl"]);
+        expect(merged.duplicateSources).toEqual([`windows: ${windows.homePath}`]);
+      }
+    });
+
+    it("keeps only new cells from a later partial scan through the other side", () => {
+      const complete = environment(
+        "windows",
+        summary([bucket({ sourcePath: windows.homePath })], [windows]),
+      );
+      const partialSummary = summary(
+        [
+          bucket({ sourcePath: wsl.homePath, costUsd: 4, records: 2 }),
+          bucket({ day: "2026-08-08" as UsageDay, sourcePath: wsl.homePath, costUsd: 3 }),
+        ],
+        [{ ...wsl, distinctSessions: 143 }],
+      );
+      const partial = environment("wsl", {
+        ...partialSummary,
+        readAt: "2026-08-08T01:00:00.000Z",
+        sources: partialSummary.sources.map((entry) => ({ ...entry, status: "partial" as const })),
+      });
+
+      const merged = mergeUsage([complete, partial], USAGE_CONTRACT_VERSION);
+      expect(merged.costUsd).toBe(13);
+      expect(merged.sessions).toBe(143);
+      expect(merged.daily.map(({ day, costUsd }) => [day, costUsd])).toEqual([
+        ["2026-08-07", 10],
+        ["2026-08-08", 3],
+      ]);
+    });
+
+    it("counts it once when one server reaches it through two mounts", () => {
+      const secondMount = { ...wsl, homePath: "/mnt/win/Users/user/.claude/projects" };
+      const merged = mergeUsage(
+        [
+          environment(
+            "wsl",
+            summary(
+              [
+                bucket({ sourcePath: wsl.homePath }),
+                bucket({
+                  day: "2026-08-08" as UsageDay,
+                  sourcePath: secondMount.homePath,
+                  costUsd: 3,
+                }),
+              ],
+              [wsl, secondMount],
+            ),
+          ),
+        ],
+        USAGE_CONTRACT_VERSION,
+      );
+
+      expect(merged.costUsd).toBe(10);
+      expect(merged.sessions).toBe(142);
+      expect(merged.daily.map(({ day }) => day)).toEqual(["2026-08-07"]);
+      expect(merged.duplicateSources).toEqual([`wsl: ${secondMount.homePath}`]);
+    });
+
+    it("still counts a shared directory once when only one server reports physical identity", () => {
+      const { physicalSourceId: _omitted, ...legacy } = windows;
+      const merged = mergeUsage(
+        [
+          environment("desktop", summary([bucket({ sourcePath: windows.homePath })], [windows])),
+          environment("standalone", summary([bucket({ sourcePath: legacy.homePath })], [legacy])),
+        ],
+        USAGE_CONTRACT_VERSION,
+      );
+
+      expect(merged.costUsd).toBe(10);
+      expect(merged.sessions).toBe(142);
+      expect(merged.duplicateSources).toHaveLength(1);
+    });
+
+    it("counts it once when two desktop installs with different scopes read it", () => {
+      const merged = mergeUsage(
+        [
+          environment("packaged", summary([bucket({ sourcePath: windows.homePath })], [windows])),
+          environment(
+            "dev-build",
+            summary(
+              [bucket({ sourcePath: windows.homePath })],
+              [{ ...windows, physicalSourceId: "physical-other-scope" }],
+            ),
+          ),
+        ],
+        USAGE_CONTRACT_VERSION,
+      );
+
+      expect(merged.costUsd).toBe(10);
+      expect(merged.sessions).toBe(142);
+      expect(merged.duplicateSources).toHaveLength(1);
+    });
+  });
+
   it("totals sessions from per-directory distinct counts, not per-bucket sums", () => {
     const merged = mergeUsage(
       [
@@ -663,5 +799,89 @@ describe("mergeUsage", () => {
 
     expect(merged.sessions).toBe(1);
     expect(merged.providers[0]?.sessions).toBe(1);
+  });
+
+  it("accumulates throughput outputTokens and modelMs across environments before dividing", () => {
+    const envA: UsageSummary = {
+      ...summary(
+        [bucket({ provider: "codex", model: "gpt-5.4", sourcePath: "/a/codex" })],
+        [{ provider: "codex", hostId: "host-a", homePath: "/a/codex" }],
+      ),
+      readAt: "2026-08-07T01:00:00.000Z",
+      pricing: {
+        status: "fresh",
+        source: "litellm",
+        fetchedAt: null,
+        knownModels: 2,
+        modelUnitPrices: { "gpt-5.4": 0.000015, "gpt-5.4-mini": 0.000002 },
+      },
+      throughput: [
+        // 100 tok/s over 1s (1 turn)
+        { provider: "codex", model: "gpt-5.4", outputTokens: 100, modelMs: 1_000, turns: 1 },
+      ],
+    };
+    const envB: UsageSummary = {
+      ...summary(
+        [bucket({ provider: "codex", model: "gpt-5.4", sourcePath: "/b/codex" })],
+        [{ provider: "codex", hostId: "host-b", homePath: "/b/codex" }],
+      ),
+      readAt: "2026-08-07T02:00:00.000Z",
+      pricing: {
+        status: "fresh",
+        source: "litellm",
+        fetchedAt: null,
+        knownModels: 2,
+        modelUnitPrices: { "gpt-5.4": 0.000014 },
+      },
+      throughput: [
+        // ~47.37 tok/s over 19s (4 turns)
+        { provider: "codex", model: "gpt-5.4", outputTokens: 900, modelMs: 19_000, turns: 4 },
+        { provider: "claude", model: "claude-opus-4-6", outputTokens: 500, modelMs: 10_000, turns: 2 },
+      ],
+    };
+
+    const merged = mergeUsage(
+      [environment("env-a", envA), environment("env-b", envB)],
+      USAGE_CONTRACT_VERSION,
+    );
+
+    // Weighted total: (100 + 900 + 500) / ((1000 + 19000 + 10000) / 1000) = 1500 / 30 = 50 tok/s
+    expect(merged.throughput.total).toEqual({
+      outputTokens: 1500,
+      modelMs: 30_000,
+      turns: 7,
+      tokensPerSecond: 50,
+    });
+    // Weighted codex rate: 1000 / 20s = 50 tok/s (NOT mean of 100 and 47.37)
+    expect(merged.throughput.byModel.find((entry) => entry.model === "gpt-5.4")).toEqual({
+      provider: "codex",
+      model: "gpt-5.4",
+      outputTokens: 1000,
+      modelMs: 20_000,
+      turns: 5,
+      tokensPerSecond: 50,
+    });
+    expect(merged.throughput.byProvider).toHaveLength(2);
+    // Newer readAt (env-b) overrides shared pricing key while keeping env-a-only keys.
+    expect(merged.modelUnitPrices).toEqual({
+      "gpt-5.4": 0.000014,
+      "gpt-5.4-mini": 0.000002,
+    });
+  });
+
+  it("handles older servers that omit throughput and modelUnitPrices cleanly", () => {
+    const decoded = decodeSummary(
+      summary([bucket()], [{ provider: "claude", hostId: "mac", homePath: "/a/.claude" }]),
+    );
+    expect(decoded.throughput).toBeUndefined();
+    expect(decoded.pricing.modelUnitPrices).toBeUndefined();
+
+    const merged = mergeUsage([environment("legacy", decoded)], USAGE_CONTRACT_VERSION);
+    expect(merged.throughput).toEqual({
+      total: { outputTokens: 0, modelMs: 0, turns: 0, tokensPerSecond: null },
+      byProvider: [],
+      byModel: [],
+    });
+    expect(merged.modelUnitPrices).toEqual({});
   });
 });

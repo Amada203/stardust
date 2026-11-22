@@ -15,12 +15,17 @@ export type CleanupRoots = {
   activeSource: string;
   systemCaches: string;
 };
+// Optional directory of old build generations and cold backups to inventory. Unset (the default
+// for everyone but the maintainer's build machine) means no staging area: that part of the
+// inventory is simply empty and the archive worker offers no staging-based cleanup.
+export const cleanupStagingDir = (env: NodeJS.ProcessEnv = process.env): string => {
+  const configured = env.T3_CLEANUP_STAGING_DIR?.trim();
+  return configured && NodePath.isAbsolute(configured) ? NodePath.resolve(configured) : "";
+};
 export const cleanupRoots = (): CleanupRoots => ({
   home: NodeOS.homedir(),
   applications: "/Applications",
-  staging: NodePath.resolve(
-    process.env.T3CODE_BUILD_STAGING_DIR || NodePath.join(NodeOS.homedir(), ".t3", "build-staging"),
-  ),
+  staging: cleanupStagingDir(),
   activeSource: NodePath.resolve(import.meta.dirname, "../../.."),
   systemCaches: "/Library/Caches",
 });
@@ -296,7 +301,7 @@ async function targetsFor(roots: CleanupRoots, deadline: number): Promise<Target
     true,
     "当前安装版本",
   );
-  const stagingNames = await namesAt(roots.staging);
+  const stagingNames = roots.staging ? await namesAt(roots.staging) : [];
   const staged = await Promise.all(
     stagingNames.map(async (n) => ({
       n,

@@ -1,3 +1,4 @@
+import { testUiLocale } from "../../../test/uiLocale";
 import { act, render } from "../../../test/render";
 import { expect, it, vi } from "vite-plus/test";
 import { AsyncResult } from "effect/reactivity";
@@ -76,6 +77,7 @@ it("archives exactly one original with server safety enabled, and reuses Undo wi
   expect(test.navigate).not.toHaveBeenCalled();
 });
 it("preserves the rejected thread and provides schedule management without changing schedules", async () => {
+  using _locale = testUiLocale("zh-CN");
   setup();
   test.archive.mockResolvedValue(
     AsyncResult.failure(Cause.fail(new Error("原会话绑定了已启用的定时任务"))),

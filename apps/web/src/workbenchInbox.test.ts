@@ -39,6 +39,12 @@ describe("workbench attention and resume", () => {
     });
     expect(inboxReason(completed)).toBeNull();
     expect(
+      inboxReason({
+        ...completed,
+        pendingBackgroundTasks: [{ taskId: "delegate", kind: "subagent" }],
+      }),
+    ).toBeNull();
+    expect(
       inboxReason({ ...completed, pendingBackgroundTasks: [{ taskId: "dev", kind: "command" }] }),
     ).toBe("有新结果");
   });

@@ -1,3 +1,4 @@
+import { testUiLocale } from "../../../test/uiLocale";
 import "~/index.css";
 import type { EnvironmentId, ThreadId, WallArtifact } from "@t3tools/contracts";
 import { describe, expect, it, vi } from "vite-plus/test";
@@ -31,10 +32,14 @@ vi.mock("../../lib/artifactWallClient", () => ({
   fileFromArtifact: vi.fn(),
   loadWallArtifacts: vi.fn(async () => ARTIFACTS),
 }));
-vi.mock("../../state/session", () => ({ usePreparedConnection: () => null }));
+vi.mock("../../state/session", async (original) => ({
+  ...(await original<typeof import("../../state/session")>()),
+  usePreparedConnection: () => null,
+}));
 vi.mock("../../state/use-atom-command", () => ({ useAtomCommand: () => vi.fn() }));
 // The thread's latest run began when the fixtures were written, so they count as new.
-vi.mock("../../state/entities", () => ({
+vi.mock("../../state/entities", async (original) => ({
+  ...(await original<typeof import("../../state/entities")>()),
   useQuietThreadShell: () => ({
     latestRun: { startedAt: "2026-10-25T08:00:00.000Z", requestedAt: null },
   }),
@@ -42,6 +47,7 @@ vi.mock("../../state/entities", () => ({
 
 describe("ArtifactWall video filter", () => {
   it("lists video after images and filters to video artifacts", async () => {
+    using _locale = testUiLocale("zh-CN");
     await using screen = await render(
       <ArtifactWall
         environmentId={"environment-local" as EnvironmentId}
@@ -77,6 +83,7 @@ describe("ArtifactWall video filter", () => {
   });
 
   it("lists every artifact as a row with a thumbnail or type and marks this run's output", async () => {
+    using _locale = testUiLocale("zh-CN");
     const older = {
       ...ARTIFACTS[3]!,
       id: "a0",
@@ -130,6 +137,7 @@ describe("ArtifactWall video filter", () => {
 
 describe("ArtifactWall revision drafts", () => {
   it("hides feedback by default and preserves the draft when its visibility is toggled", async () => {
+    using _locale = testUiLocale("zh-CN");
     const props = {
       environmentId: "environment-local" as EnvironmentId,
       threadId: "thread-1" as ThreadId,
@@ -152,6 +160,7 @@ describe("ArtifactWall revision drafts", () => {
   });
 
   it("keeps the comparison divider keyboard-adjustable when feedback is off", async () => {
+    using _locale = testUiLocale("zh-CN");
     const previous = {
       ...ARTIFACTS[0]!,
       id: "a6",
@@ -209,6 +218,7 @@ describe("ArtifactWall revision drafts", () => {
   });
 
   it("pages images with arrow keys and compares two picked thumbnails", async () => {
+    using _locale = testUiLocale("zh-CN");
     const previous = {
       ...ARTIFACTS[0]!,
       id: "a6",
@@ -238,6 +248,7 @@ describe("ArtifactWall revision drafts", () => {
   });
 
   it("keeps feedback when the composer is unavailable and permits retry", async () => {
+    using _locale = testUiLocale("zh-CN");
     const onRevise = vi.fn().mockReturnValue(false);
     await using screen = await render(
       <ArtifactWall
@@ -267,6 +278,7 @@ describe("ArtifactWall revision drafts", () => {
     expect(onRevise.mock.calls.at(-1)?.[0]).toContain('"path": "/work/cover.png"');
   });
   it("retains an unsent note on closing and reopening the same image", async () => {
+    using _locale = testUiLocale("zh-CN");
     await using screen = await render(
       <ArtifactWall
         environmentId={"environment-local" as EnvironmentId}
@@ -286,6 +298,7 @@ describe("ArtifactWall revision drafts", () => {
 });
 
 it("animates only arrivals after the first successful load, not filters or thread changes", async () => {
+  using _locale = testUiLocale("zh-CN");
   const environmentId = "environment-local" as EnvironmentId;
   const threadId = "motion-thread" as ThreadId;
   using animate = vi.spyOn(Element.prototype, "animate");

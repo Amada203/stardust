@@ -1,5 +1,6 @@
+import { uiText } from "../../i18n";
 import { useArchivedThreadSnapshots } from "../../lib/archivedThreadsState";
-import { presentThreadShell, type ThreadStructure } from "@t3tools/client-runtime/state/shell";
+import { type ThreadStructure } from "@t3tools/client-runtime/state/shell";
 import { RunInspector } from "./RunInspector";
 import { useQuietThreadProjection, useThreadShells } from "../../state/entities";
 import { deriveThreadTurnSubagents } from "@t3tools/client-runtime/state/thread-subagents";
@@ -16,7 +17,10 @@ import type {
   ThreadId,
 } from "@t3tools/contracts";
 
-import type { DraftId } from "../../composerDraftStore";
+import { scopeProjectRef } from "@t3tools/client-runtime/environment";
+import { isScratchProject } from "@t3tools/client-runtime/state/projects";
+
+import type { ComposerThreadTarget, DraftId } from "../../composerDraftStore";
 import { useT3ProjectFileScripts } from "../../hooks/useT3ProjectFileScripts";
 import { type EnvMode, type EnvironmentOption } from "../BranchToolbar.logic";
 import { BranchToolbar } from "../BranchToolbar";
@@ -26,6 +30,7 @@ import ProjectScriptsControl, {
   type ProjectScriptActionResult,
 } from "../ProjectScriptsControl";
 import { memo, useState, type ComponentProps } from "react";
+import { useStableCallback } from "../../hooks/useStableCallback";
 import { InspectorTabBar } from "./InspectorTabBar";
 import { resolveInspectorTab, useInspectorTab, type InspectorTab } from "../../inspectorTabs";
 import { nextArtifactCount, type ArtifactCountState } from "../../artifactWall";
@@ -43,6 +48,8 @@ import {
 import { ThreadDetailsItemsMenuItems } from "./ThreadDetailsItemsMenu";
 import { resolveThreadDetailsVisibility, THREAD_DETAILS_ITEMS } from "./threadDetailsItems";
 import { useClientSettings } from "../../hooks/useSettings";
+import { useProject, useServerConfigs } from "../../state/entities";
+import { ThreadDetailsThreadPrRows } from "./ThreadDetailsPrRows";
 import { cn } from "../../lib/utils";
 import { SlidersHorizontalIcon } from "lucide-react";
 import { ThreadDetailsControl } from "./ThreadDetailsControl";
@@ -71,6 +78,8 @@ interface ThreadDetailsPanelProps extends Pick<
     onQuote: (text: string) => boolean;
   };
   onAttachArtifactFiles?: (files: File[]) => void;
+
+  composerDraftTarget: ComposerThreadTarget;
   activeProjectName: string | undefined;
   activeProjectScripts: ReadonlyArray<ProjectScript> | undefined;
   preferredScriptId: string | null;
@@ -79,6 +88,7 @@ interface ThreadDetailsPanelProps extends Pick<
   showOpenInPicker: boolean;
   openInShortcutEnabled: boolean;
   gitCwd: string | null;
+  workspaceMutationId: string | null;
   isGitRepo: boolean;
   envLocked: boolean;
   availableEnvironments: readonly EnvironmentOption[];
@@ -122,12 +132,14 @@ export function ThreadDetailsPanel(props: ThreadDetailsPanelProps) {
   const hasHistory =
     !props.draftId &&
     !!props.continuation &&
-    hasContinuationRecords(props.continuation.thread, [
-      ...shells.filter((thread) => thread.environmentId === props.environmentId),
-      ...archived.snapshots.flatMap((entry) =>
-        entry.snapshot.threads.map((thread) => presentThreadShell(entry.environmentId, thread)),
-      ),
-    ]);
+    // Continuation detection only needs lineage/IDs, not formatted times or full shell presentation.
+    (hasContinuationRecords(
+      props.continuation.thread,
+      shells.filter((thread) => thread.environmentId === props.environmentId),
+    ) ||
+      archived.snapshots.some((entry) =>
+        hasContinuationRecords(props.continuation!.thread, entry.snapshot.threads),
+      ));
   const hasSubtasks =
     !props.draftId &&
     !!structure &&
@@ -149,11 +161,36 @@ export function ThreadDetailsPanel(props: ThreadDetailsPanelProps) {
   const countKey = `${props.environmentId}:${props.threadId}`;
   const [artifactCount, setArtifactCount] = useState<ArtifactCountState | null>(null);
   const tabLabels: Record<InspectorTab, string> = {
-    artifacts: artifactCount?.key === countKey ? `产物 ${artifactCount.count}` : "产物",
-    history: "续聊",
-    subtasks: "子任务",
-    project: "项目",
+    artifacts:
+      artifactCount?.key === countKey
+        ? uiText("Artifact {count}", { count: artifactCount.count })
+        : uiText("Artifacts"),
+    history: uiText("Continuations"),
+    subtasks: uiText("Subtask"),
+    project: uiText("Project"),
   };
+  const onArtifactCount = useStableCallback((count: number) =>
+    setArtifactCount((previous) => nextArtifactCount(previous, countKey, count)),
+  );
+  const attachArtifactToThread = useStableCallback((targetKey: string, files: File[]) => {
+    // A file read can finish after navigation. Keep the originating thread bound to that read.
+    if (targetKey !== countKey)
+      throw new Error(uiText("Return to the original conversation to reattach the file."));
+    props.onAttachArtifactFiles?.(files);
+  });
+  const onAttachArtifact = (files: File[]) => attachArtifactToThread(countKey, files);
+  const onReviseArtifact = useStableCallback(
+    (prompt: string) => props.continuation?.onQuote(prompt) ?? false,
+  );
+  const project = useProject(scopeProjectRef(props.environmentId, props.projectId));
+  const serverConfig = useServerConfigs().get(props.environmentId);
+  // A No project thread's folder sits inside the shared scratch root, so it must never get git.
+  // Until the config and project load, a No project thread looks like any other folder.
+  const offersGit =
+    props.gitCwd !== null &&
+    serverConfig !== undefined &&
+    project !== null &&
+    !isScratchProject(project, serverConfig.scratchWorkspaceRoot);
   const branchToolbarProps = {
     showGitControls: props.isGitRepo,
     environmentId: props.environmentId,
@@ -213,9 +250,11 @@ export function ThreadDetailsPanel(props: ThreadDetailsPanelProps) {
           environment: density === "full" && visible.environment,
           openIn: density !== "essential" && visible.openIn && props.showOpenInPicker,
           scripts: visible.scripts && props.activeProjectScripts !== undefined,
-          branch: props.gitCwd !== null && props.isGitRepo && visible.branch,
+          branch: offersGit && props.isGitRepo && visible.branch,
+          // Without a branch selector, linked pull requests still need somewhere to show.
+          pullRequests: !(offersGit && props.isGitRepo) && visible.branch,
           git:
-            props.gitCwd !== null &&
+            offersGit &&
             props.activeProjectName !== undefined &&
             (visible.gitActions || (visible.changes && props.isGitRepo)),
         };
@@ -232,7 +271,7 @@ export function ThreadDetailsPanel(props: ThreadDetailsPanelProps) {
             {tab === "history" && hasHistory && props.continuation ? (
               <ContinuationHistoryPanel
                 environmentId={props.environmentId}
-                emptyLabel={"这个会话没有续聊记录"}
+                emptyLabel={uiText("No continuation history for this conversation")}
                 {...props.continuation}
               />
             ) : null}
@@ -240,13 +279,11 @@ export function ThreadDetailsPanel(props: ThreadDetailsPanelProps) {
               <ArtifactWall
                 environmentId={props.environmentId}
                 threadId={props.threadId}
-                onAttach={props.onAttachArtifactFiles}
+                onAttach={onAttachArtifact}
                 revisionEnabled={artifactRevisionEnabled}
-                {...(props.continuation ? { onRevise: props.continuation.onQuote } : {})}
+                {...(props.continuation ? { onRevise: onReviseArtifact } : {})}
                 active={tab === "artifacts"}
-                onCount={(count) =>
-                  setArtifactCount((previous) => nextArtifactCount(previous, countKey, count))
-                }
+                onCount={onArtifactCount}
               />
             ) : null}
             {tab === "subtasks" ? (
@@ -304,7 +341,7 @@ export function ThreadDetailsPanel(props: ThreadDetailsPanelProps) {
                   </ThreadDetailsSection>
                 ) : null}
 
-                {props.gitCwd && (show.branch || show.git) ? (
+                {show.branch || show.pullRequests || show.git ? (
                   <ThreadDetailsSection
                     headingId="thread-details-version-control-heading"
                     title="Version Control"
@@ -319,12 +356,21 @@ export function ThreadDetailsPanel(props: ThreadDetailsPanelProps) {
                           {...branchToolbarProps}
                         />
                       ) : null}
-                      {show.git ? (
+                      {show.pullRequests ? (
+                        <ThreadDetailsThreadPrRows
+                          threadRef={activeThreadRef}
+                          project={project}
+                          composerTarget={props.composerDraftTarget}
+                        />
+                      ) : null}
+                      {show.git && props.gitCwd ? (
                         <GitActionsControl
                           compact={density !== "full"}
                           showActions={visible.gitActions}
                           showChanges={visible.changes}
                           gitCwd={props.gitCwd}
+                          name={props.activeProjectName ?? ""}
+                          workspaceMutationId={props.workspaceMutationId}
                           activeThreadRef={activeThreadRef}
                           {...(props.draftId ? { draftId: props.draftId } : {})}
                           {...(props.onOpenChanges ? { onOpenChanges: props.onOpenChanges } : {})}

@@ -1,7 +1,13 @@
-import { uiText } from "~/i18n";
+import { Branch, T } from "gt-react";
+
 import { RefreshIcon } from "~/components/ui/refresh-icon";
+
 import { cn } from "~/lib/utils";
+
 import { Button } from "../ui/button";
+
+import type { ChangeRequestTermKind } from "./changeRequestTerm";
+
 export function PullRequestActivityUnavailableState({
   error,
   term,
@@ -9,8 +15,7 @@ export function PullRequestActivityUnavailableState({
   compact = false,
 }: {
   error: string;
-  /** The host's word for a change request, as in "pull request". */
-  term: string;
+  term: ChangeRequestTermKind;
   onRetry: () => void;
   compact?: boolean;
 }) {
@@ -22,14 +27,18 @@ export function PullRequestActivityUnavailableState({
       )}
     >
       <p className="text-sm font-medium text-foreground">
-        {"Could not load "}
-        {term}
-        {" activity"}
+        <T>
+          Could not load{" "}
+          <Branch branch={term} mr="merge request" cr="change request">
+            pull request
+          </Branch>{" "}
+          activity
+        </T>
       </p>
       <p className="max-w-md text-xs text-muted-foreground">{error}</p>
       <Button size="sm" variant="outline" onClick={onRetry}>
         <RefreshIcon aria-hidden size="sm" />
-        {uiText("Retry")}
+        <T>Retry</T>
       </Button>
     </div>
   );

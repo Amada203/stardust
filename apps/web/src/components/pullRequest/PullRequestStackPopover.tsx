@@ -1,6 +1,6 @@
-import { uiText } from "~/i18n";
 import { Tooltip, TooltipTrigger, TooltipPopup } from "../ui/tooltip";
 import type { EnvironmentId, PullRequestRef, PullRequestStackMembership } from "@t3tools/contracts";
+import { T, useGT, Var } from "gt-react";
 import { useState } from "react";
 import { usePullRequestStack } from "~/state/usePullRequestStack";
 import { Menu, MenuTrigger, MenuPopup, MenuGroup, MenuGroupLabel, MenuItem } from "../ui/menu";
@@ -20,6 +20,7 @@ function StackBody({
   onSelect: (reference: PullRequestRef) => void;
   stackNumber: number;
 }) {
+  const gt = useGT();
   const query = usePullRequestStack(environmentId, reference);
   if (query.data !== null) {
     return (
@@ -30,7 +31,9 @@ function StackBody({
           stale={!!query.error}
         />
         {query.error ? (
-          <MenuItem onClick={query.refresh}>{uiText("Retry stack refresh")}</MenuItem>
+          <MenuItem onClick={query.refresh}>
+            <T>Retry stack refresh</T>
+          </MenuItem>
         ) : null}
         <PullRequestStackLayers stack={query.data} reference={reference} onSelect={onSelect} />
       </>
@@ -42,8 +45,8 @@ function StackBody({
       <MenuGroupLabel>
         {query.error ??
           (query.isPending
-            ? uiText("Loading stack…")
-            : uiText("This pull request is no longer in a stack."))}
+            ? gt("Loading stack…")
+            : gt("This pull request is no longer in a stack."))}
       </MenuGroupLabel>
     </>
   );
@@ -60,6 +63,7 @@ export function PullRequestStackPopover({
   membership: PullRequestStackMembership;
   onSelect: (reference: PullRequestRef) => void;
 }) {
+  const gt = useGT();
   const [open, setOpen] = useState(false);
   return (
     <Menu open={open} onOpenChange={setOpen}>
@@ -75,10 +79,10 @@ export function PullRequestStackPopover({
                   className="inline-flex shrink-0 cursor-pointer items-center gap-1 text-xs font-normal text-muted-foreground"
                 />
               }
-              aria-label={uiText("Stack {0}, layer {1} of {2}", {
-                "0": membership.number,
-                "1": membership.position,
-                "2": membership.size,
+              aria-label={gt("Stack {number}, layer {position} of {size}", {
+                number: membership.number,
+                position: membership.position,
+                size: membership.size,
               })}
               onClick={(event) => event.stopPropagation()}
               onKeyDown={(event) => event.stopPropagation()}
@@ -89,11 +93,10 @@ export function PullRequestStackPopover({
           }
         />
         <TooltipPopup>
-          {uiText("View stack #")}
-          {membership.number}
-          {uiText(", layer") + " "}
-          {membership.position} {uiText("of") + " "}
-          {membership.size}
+          <T>
+            View stack #<Var>{membership.number}</Var>, layer <Var>{membership.position}</Var> of{" "}
+            <Var>{membership.size}</Var>
+          </T>
         </TooltipPopup>
       </Tooltip>
       <MenuPopup

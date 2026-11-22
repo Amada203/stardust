@@ -1,3 +1,4 @@
+import { uiText } from "../../i18n";
 import { useEffect } from "react";
 import { isElectron } from "../../env";
 import { useCommunityUpdates } from "../../state/communityUpdates";
@@ -41,20 +42,20 @@ export function CommunityUpdateCoordinator() {
     state.markNotified(release.tag);
     toastManager.add({
       type: "info",
-      title: `小新社区版 C${release.number} 已发布`,
+      title: uiText("Stardust Community C{number} is available", { number: release.number }),
       description: (
         <>
           <span>
             {state.mode === "custom"
-              ? "自行改造模式：请先查看差异，按需合并；不会替换应用。"
-              : "可查看更新内容，确认后自行下载；不会自动安装。"}
+              ? uiText("Source mode lets you review and merge changes in your fork.")
+              : uiText("Review the update and download it when you’re ready.")}
           </span>
           <button
             type="button"
             className="ml-2 underline"
             onClick={() => openPage(state.mode === "custom" ? release.compareUrl : release.url)}
           >
-            查看更新
+            {uiText("View update")}
           </button>
         </>
       ),
@@ -68,41 +69,51 @@ export function CommunityUpdateSettings() {
   return (
     <>
       <SettingsRow
-        title="社区更新模式"
-        description="标准模式提供发行下载入口；自行改造模式提供源码差异。两种模式都不会自动下载、安装或重启。"
+        title={uiText("Community update mode")}
+        description={uiText(
+          "Standard mode links to release downloads. Source mode links to source changes. Updating and restarting are manual in both modes.",
+        )}
         control={
           <select
-            aria-label="社区更新模式"
+            aria-label={uiText("Community update mode")}
             className="rounded-md border bg-background px-2 py-1 text-sm"
             value={state.mode}
             onChange={(e) => state.setMode(e.target.value === "standard" ? "standard" : "custom")}
           >
-            <option value="custom">自行改造 · 仅提醒</option>
-            <option value="standard">标准版 · 手动确认更新</option>
+            <option value="standard">{uiText("Standard · Confirm updates manually")}</option>
+            <option value="custom">{uiText("Source mode · Notify only")}</option>
           </select>
         }
       />
       <SettingsRow
-        title="自动检查社区更新"
-        description="启动后及每 6 小时检查一次 GitHub 公开发行；不发送聊天、账号或项目数据。"
+        title={uiText("Check for community updates automatically")}
+        description={uiText(
+          "Checks public GitHub releases at startup and every 6 hours. Conversation, account, and project data stay on your device.",
+        )}
         control={
           <Switch
-            aria-label="自动检查社区更新"
+            aria-label={uiText("Check for community updates automatically")}
             checked={state.automatic}
             onCheckedChange={state.setAutomatic}
           />
         }
       />
       <SettingsRow
-        title="小新社区版 · Mac Apple Silicon"
+        title={uiText("Stardust Community · Mac Apple Silicon")}
         description={
           state.status === "checking"
-            ? "正在检查…"
+            ? uiText("Checking…")
             : state.status === "available"
-              ? `发现 C${state.release?.number}；${state.mode === "custom" ? "先查看差异，按需合并源码" : "查看说明后手动下载"}`
+              ? uiText("C{version} available · {action}", {
+                  version: state.release?.number,
+                  action:
+                    state.mode === "custom"
+                      ? uiText("Review and merge source changes as needed")
+                      : uiText("Review the notes, then download manually"),
+                })
               : state.status === "current"
-                ? "未发现比当前社区基线更新的正式版"
-                : "仅检查小新社区发行，不使用上游官方自动更新源。"
+                ? uiText("You have the latest community release.")
+                : uiText("Checks the Stardust Community release feed only.")
         }
         control={
           <Button
@@ -113,12 +124,16 @@ export function CommunityUpdateSettings() {
               void state.check(true);
             }}
           >
-            检查更新
+            {uiText("Check for Updates")}
           </Button>
         }
       />
       <div className="space-y-2 px-1 text-sm text-muted-foreground">
-        <p>社区基线：{COMMUNITY_BASE_TAG}。此编号不代表本地源码未改动。</p>
+        <p>
+          {uiText("Community baseline:")}
+          {COMMUNITY_BASE_TAG}
+          {uiText(". Your local source may contain additional changes.")}
+        </p>
         {state.error && <p role="status">{state.error}</p>}
         <div className="flex flex-wrap gap-2">
           <Button
@@ -126,21 +141,25 @@ export function CommunityUpdateSettings() {
             variant="outline"
             onClick={() => openPage(state.release?.url ?? COMMUNITY_RELEASES_URL)}
           >
-            查看发行说明
+            {uiText("View release notes")}
           </Button>
           {state.status === "available" && state.release && actions.canOpenDownloadPage && (
             <Button size="sm" onClick={() => openPage(state.release!.url)}>
-              前往下载页
+              {uiText("Open download page")}
             </Button>
           )}
           {state.status === "available" && state.release && actions.canViewSourceDiff && (
             <Button size="sm" variant="outline" onClick={() => openPage(state.release!.compareUrl)}>
-              查看源码差异
+              {uiText("View source changes")}
             </Button>
           )}
         </div>
         {state.mode === "custom" && (
-          <p>请在自己的 fork 中审阅并合并所需修改，再构建；整包覆盖可能替换你的代码改造。</p>
+          <p>
+            {uiText(
+              "Review and merge the changes in your fork before building. Replacing the app can overwrite your customizations.",
+            )}
+          </p>
         )}
       </div>
     </>

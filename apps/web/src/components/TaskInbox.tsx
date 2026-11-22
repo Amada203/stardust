@@ -1,3 +1,5 @@
+import { inboxLabel } from "~/i18n/inboxLabel";
+import { uiText } from "../i18n";
 import { useState } from "react";
 import { useNowMinute } from "../hooks/useNowMinute";
 import { useNavigate } from "@tanstack/react-router";
@@ -39,11 +41,13 @@ export function inboxRequestText(task: BoardTask): string {
   if (ask) return ask;
   const kind = boardTaskKind(task);
   if (kind === "unlock" || kind === "blocked")
-    return task.blocked?.trim() ? `需要你处理：${task.blocked.trim()}` : "需要你处理一件卡住的事";
-  if (!step) return "看一下这个项目";
-  if (kind === "review") return `看看「${step.name}」可不可以`;
-  if (kind === "decide") return `「${step.name}」需要你决定`;
-  return `「${step.name}」需要你来做`;
+    return task.blocked?.trim()
+      ? uiText("Needs your attention: {count}", { count: task.blocked.trim() })
+      : uiText("A blocked task needs your attention");
+  if (!step) return uiText("Review this project");
+  if (kind === "review") return uiText("Review “{name}”", { name: step.name });
+  if (kind === "decide") return uiText("Decide on “{name}”", { name: step.name });
+  return uiText("Take action on “{name}”", { name: step.name });
 }
 export function inboxNeedsUser(task: BoardTask) {
   return task.state === "user" || task.state === "blocked";
@@ -89,7 +93,7 @@ function EvidencePreview({
     <div className="mt-3">
       <button
         type="button"
-        aria-label={`全屏查看 ${name}`}
+        aria-label={uiText("View {name} full screen", { name })}
         onClick={expand}
         disabled={!src}
         className="relative block aspect-video w-full overflow-hidden rounded-lg border bg-muted outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring disabled:cursor-wait"
@@ -102,7 +106,9 @@ function EvidencePreview({
           )
         ) : (
           <span className="grid size-full place-items-center text-xs text-muted-foreground">
-            {asset._tag === "Failure" ? "预览打不开，可在项目文件夹里查看" : "正在载入预览…"}
+            {asset._tag === "Failure"
+              ? uiText("Preview unavailable. Open the file in the project folder.")
+              : uiText("Loading preview…")}
           </span>
         )}
       </button>
@@ -114,7 +120,7 @@ function EvidencePreview({
         onClick={expand}
       >
         <Maximize2 />
-        {video ? "全屏看视频" : "全屏看图"}
+        {video ? uiText("View video full screen") : uiText("View image full screen")}
       </Button>
       <p className="mt-1 truncate text-3xs text-muted-foreground">{name}</p>
     </div>
@@ -141,20 +147,23 @@ export function TaskInbox({ threadRef }: { threadRef: ScopedThreadRef }) {
   const selected = focus ? (tasks.find((task) => task.folder === focus.folder) ?? null) : null;
   const routeThreadKey = scopedThreadKey(threadRef);
 
-  const linkedThreads = (task: BoardTask): Shell[] =>
-    threads
+  const projectsByKey = new Map(projects.map((p) => [`${p.environmentId}:${p.id}`, p] as const));
+  const linkedThreadsByFolder = new Map<string, Shell[]>();
+  for (const task of tasks) {
+    const matched = threads
       .filter(
         (thread) =>
           task.sessions.includes(thread.id) ||
           matchBoardTask(
             [task],
             thread.worktreePath ??
-              projects.find(
-                (p) => p.id === thread.projectId && p.environmentId === thread.environmentId,
-              )?.workspaceRoot,
+              projectsByKey.get(`${thread.environmentId}:${thread.projectId}`)?.workspaceRoot,
           ) !== null,
       )
-      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+      .toSorted((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    linkedThreadsByFolder.set(task.folder, matched);
+  }
+  const linkedThreads = (task: BoardTask): Shell[] => linkedThreadsByFolder.get(task.folder) ?? [];
   const goTo = (ref: ScopedThreadRef) => {
     useRightPanelStore.getState().open(ref, "tasks");
     void navigate({ to: "/$environmentId/$threadId", params: ref });
@@ -180,7 +189,8 @@ export function TaskInbox({ threadRef }: { threadRef: ScopedThreadRef }) {
       environmentId: threadRef.environmentId,
       input: { cwd: task.folder, editor: "file-manager" },
     });
-    if (result._tag === "Failure") setError(`无法打开项目文件夹：${task.folder}`);
+    if (result._tag === "Failure")
+      setError(uiText("Couldn’t open project folder: {folder}", { folder: task.folder }));
   };
   const send = async (thread: Shell, message: string) => {
     const result = await startTurn({
@@ -207,67 +217,93 @@ export function TaskInbox({ threadRef }: { threadRef: ScopedThreadRef }) {
     const thread = linkedThreads(task)[0] ?? null;
     if (pending) return;
     if (action === "reject" && !reply.trim()) {
-      setError("写一句哪里要改，Agent 才知道怎么改。");
+      setError(uiText("Describe what you want the agent to change."));
+      return;
+    }
+    if (action !== "note" && !step) {
+      setError(uiText("There’s no pending step. Refresh and try again."));
       return;
     }
     setPending(true);
     setError(null);
     try {
-      if (action === "approve" || action === "reject") {
-        if (!step) throw new Error("这个任务没有待确认的步骤，请刷新后再试");
+      if ((action === "approve" || action === "reject") && step) {
         await mutateTaskBoard("review", {
           folder: task.folder,
           step: step.id,
           decision: action,
           ...(action === "reject" ? { reason: reply.trim() } : {}),
         });
-      } else if (action === "toggle") {
-        if (!step) throw new Error("这个任务没有待完成的步骤，请刷新后再试");
+      } else if (action === "toggle" && step) {
         await mutateTaskBoard("toggle", { folder: task.folder, step: step.id });
       }
-      const label = `【${task.title}${step ? ` · ${step.name}` : ""}】`;
+      const label = uiText("[{title}{step}]", {
+        title: task.title,
+        step: step ? ` · ${step.name}` : "",
+      });
       const message =
         action === "approve"
-          ? `${label}这版可以，继续。${reply.trim() ? `\n补充：${reply.trim()}` : ""}`
+          ? uiText("{label}This version works. Please continue.{note}", {
+              label,
+              note: reply.trim()
+                ? uiText("\nAdditional notes: {count}", { count: reply.trim() })
+                : "",
+            })
           : action === "reject"
-            ? `${label}需要修改：\n${reply.trim()}`
+            ? uiText("{label}Please make these changes:\n{total}", { label, total: reply.trim() })
             : action === "toggle"
-              ? `${label}我这边做完了。${reply.trim() ? `\n补充：${reply.trim()}` : ""}`
-              : `${label}${reply.trim() || "我已经处理好了，请继续。"}`;
+              ? uiText("{label}I’m done on my end.{note}", {
+                  label,
+                  note: reply.trim()
+                    ? uiText("\nAdditional notes: {count}", { count: reply.trim() })
+                    : "",
+                })
+              : `${label}${reply.trim() || uiText("I’ve taken care of it. Please continue.")}`;
       if (thread) {
         const delivered = await send(thread, message);
         toastManager.add(
           delivered
             ? {
                 type: "success",
-                title: `已发给「${thread.title}」`,
-                description: "Agent 会接着做。",
+                title: uiText("Sent to “{title}”", { title: thread.title }),
+                description: uiText("The agent will continue."),
               }
             : {
                 type: "warning",
-                title: action === "note" ? "没有发出去" : "已记下，但消息没有发出去",
-                description: "请打开会话手动告诉 Agent。",
+                title:
+                  action === "note"
+                    ? uiText("Message wasn’t sent")
+                    : uiText("Saved to the task. The message wasn’t sent."),
+                description: uiText("Open the conversation to tell the agent directly."),
               },
         );
-        if (!delivered && action === "note") return;
+        if (!delivered && action === "note") {
+          setPending(false);
+          return;
+        }
       } else {
         toastManager.add({
           type: action === "note" ? "warning" : "success",
-          title: action === "note" ? "这个项目还没关联会话" : "已记在任务里",
+          title:
+            action === "note"
+              ? uiText("This project has no linked conversation.")
+              : uiText("Saved to the task"),
           description:
-            action === "note" ? "先打开项目文件夹处理；处理完再标记。" : "这个项目还没关联会话。",
+            action === "note"
+              ? uiText("Open the project folder first, then mark the task complete.")
+              : uiText("This project has no linked conversation"),
         });
         if (action === "note") {
           void openProjectFolder(task);
+          setPending(false);
           return;
         }
       }
       back();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
-    } finally {
-      setPending(false);
     }
+    setPending(false);
   };
 
   if (selected) {
@@ -297,7 +333,7 @@ export function TaskInbox({ threadRef }: { threadRef: ScopedThreadRef }) {
             className="inline-flex items-center gap-0.5 rounded-md py-1 text-xs text-muted-foreground hover:text-foreground"
           >
             <ChevronLeft className="size-3.5" />
-            返回待办
+            {uiText("Back to to-do list")}
           </button>
           {returnThread && returnThread.id !== threadRef.threadId ? (
             <button
@@ -308,7 +344,8 @@ export function TaskInbox({ threadRef }: { threadRef: ScopedThreadRef }) {
               }}
               className="min-w-0 truncate rounded-md py-1 text-xs text-primary hover:underline"
             >
-              回到「{returnThread.title}」
+              {uiText("Back to “")}
+              {returnThread.title}」
             </button>
           ) : null}
         </div>
@@ -317,7 +354,11 @@ export function TaskInbox({ threadRef }: { threadRef: ScopedThreadRef }) {
         </h2>
         <p className="mt-1 text-xs text-muted-foreground">
           {selected.title}
-          {days ? ` · 等了 ${days} 天` : ""}
+          {days
+            ? days === 1
+              ? uiText(" · Waiting {days} day", { days })
+              : uiText(" · Waiting {days} days", { days })
+            : ""}
         </p>
         {evidence.map(({ item, target }) =>
           target?.kind === "file" && (IMAGE.test(item) || VIDEO.test(item)) ? (
@@ -348,7 +389,8 @@ export function TaskInbox({ threadRef }: { threadRef: ScopedThreadRef }) {
         )}
         {selected.next ? (
           <p className="mt-3 rounded-md bg-muted px-2.5 py-2 text-xs leading-relaxed text-muted-foreground">
-            现在的情况：{selected.next}
+            {uiText("Current situation:")}
+            {selected.next}
           </p>
         ) : null}
         {error ? (
@@ -359,13 +401,13 @@ export function TaskInbox({ threadRef }: { threadRef: ScopedThreadRef }) {
         <div className="mt-3 space-y-2">
           {writing || kind === "decide" ? (
             <textarea
-              aria-label={kind === "review" ? "修改意见" : "给 Agent 的话"}
+              aria-label={kind === "review" ? uiText("Feedback") : uiText("Message to the agent")}
               placeholder={
                 kind === "review"
-                  ? "例如：开头太慢，前 10 秒缩短一点。"
+                  ? uiText("Example: The opening is slow. Shorten the first 10 seconds.")
                   : kind === "decide"
-                    ? "写下你的决定（会发给 Agent，可不填）"
-                    : "补充一句（会发给 Agent，可不填）"
+                    ? uiText("Add your decision for the agent (optional)")
+                    : uiText("Add a note for the agent (optional)")
               }
               value={text}
               onChange={(event) => setText(event.target.value)}
@@ -384,7 +426,7 @@ export function TaskInbox({ threadRef }: { threadRef: ScopedThreadRef }) {
                 }
               >
                 <ExternalLink />
-                {source ? "去会话处理" : "打开项目文件夹"}
+                {source ? uiText("Open conversation") : uiText("Open project folder")}
               </Button>
               <Button
                 variant="outline"
@@ -392,7 +434,7 @@ export function TaskInbox({ threadRef }: { threadRef: ScopedThreadRef }) {
                 disabled={pending}
                 onClick={() => void answer(selected, "note", text)}
               >
-                我处理好了，告诉 Agent
+                {uiText("Tell the agent I’m done")}
               </Button>
             </>
           ) : kind === "review" ? (
@@ -403,10 +445,10 @@ export function TaskInbox({ threadRef }: { threadRef: ScopedThreadRef }) {
                   disabled={pending || !text.trim()}
                   onClick={() => void answer(selected, "reject", text)}
                 >
-                  发送修改意见
+                  {uiText("Send feedback")}
                 </Button>
                 <Button variant="outline" disabled={pending} onClick={() => setWriting(false)}>
-                  取消
+                  {uiText("Cancel")}
                 </Button>
               </div>
             ) : (
@@ -417,7 +459,7 @@ export function TaskInbox({ threadRef }: { threadRef: ScopedThreadRef }) {
                   onClick={() => void answer(selected, "approve", "")}
                 >
                   <Check />
-                  这版可以，继续
+                  {uiText("Approve and continue")}
                 </Button>
                 <Button
                   variant="outline"
@@ -425,7 +467,7 @@ export function TaskInbox({ threadRef }: { threadRef: ScopedThreadRef }) {
                   disabled={pending}
                   onClick={() => setWriting(true)}
                 >
-                  说说哪里要改
+                  {uiText("Describe what needs to change.")}
                 </Button>
               </>
             )
@@ -436,7 +478,7 @@ export function TaskInbox({ threadRef }: { threadRef: ScopedThreadRef }) {
               onClick={() => void answer(selected, "approve", text)}
             >
               <Check />
-              我决定了
+              {uiText("I’ve decided")}
             </Button>
           ) : (
             <>
@@ -446,7 +488,7 @@ export function TaskInbox({ threadRef }: { threadRef: ScopedThreadRef }) {
                 onClick={() => void answer(selected, "toggle", text)}
               >
                 <Check />
-                我做完了
+                {uiText("I’m done")}
               </Button>
               {!writing ? (
                 <Button
@@ -455,7 +497,7 @@ export function TaskInbox({ threadRef }: { threadRef: ScopedThreadRef }) {
                   disabled={pending}
                   onClick={() => setWriting(true)}
                 >
-                  补充一句
+                  {uiText("Add a note")}
                 </Button>
               ) : null}
             </>
@@ -466,8 +508,13 @@ export function TaskInbox({ threadRef }: { threadRef: ScopedThreadRef }) {
         </div>
         <p className="mt-3 text-3xs leading-relaxed text-muted-foreground">
           {source
-            ? `回复会作为一条消息发进「${source.title}」，只回答这一件事，不代表整个项目完成。`
-            : "这个项目还没关联会话：回复只记在任务里。可在「全部项目」里关联会话。"}
+            ? uiText(
+                "Your reply will be sent to “{title}” for this item only. The project will stay open.",
+                { title: source.title },
+              )
+            : uiText(
+                "This project has no linked conversation. Replies are saved on the task. Link a conversation in All projects.",
+              )}
         </p>
       </div>
     );
@@ -482,8 +529,8 @@ export function TaskInbox({ threadRef }: { threadRef: ScopedThreadRef }) {
       <div className="flex items-center gap-4 border-b px-3.5 pt-2 text-xs">
         {(
           [
-            ["reply", `待回复 ${replyCount}`],
-            ["later", `稍后 ${laterTasks.length}`],
+            ["reply", uiText("Awaiting reply ({replyCount})", { replyCount })],
+            ["later", uiText("Later ({count})", { count: laterTasks.length })],
           ] as const
         ).map(([id, label]) => (
           <button
@@ -503,12 +550,12 @@ export function TaskInbox({ threadRef }: { threadRef: ScopedThreadRef }) {
             <Check className="size-5" />
           </div>
           <p className="text-sm font-medium text-foreground">
-            {tab === "reply" ? "都处理完了" : "没有推迟的事"}
+            {tab === "reply" ? uiText("You’re all caught up") : uiText("Nothing deferred")}
           </p>
           <p className="mt-1">
             {tab === "reply"
-              ? "有新的事需要你时，会出现在这里。"
-              : "点「稍后提醒」的事会放在这里。"}
+              ? uiText("New items that need your attention will appear here.")
+              : uiText("Items you defer with Remind me later appear here.")}
           </p>
         </div>
       ) : null}
@@ -529,8 +576,12 @@ export function TaskInbox({ threadRef }: { threadRef: ScopedThreadRef }) {
                   </span>
                   <span className="mt-1 block truncate text-xs text-muted-foreground">
                     {task.title}
-                    {task.state === "blocked" ? " · 卡住了" : ""}
-                    {days ? ` · 等了 ${days} 天` : ""}
+                    {task.state === "blocked" ? uiText(" · Blocked") : ""}
+                    {days
+                      ? days === 1
+                        ? uiText(" · Waiting {days} day", { days })
+                        : uiText(" · Waiting {days} days", { days })
+                      : ""}
                   </span>
                 </span>
                 <ChevronRight className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
@@ -546,7 +597,10 @@ export function TaskInbox({ threadRef }: { threadRef: ScopedThreadRef }) {
               className="min-w-0 flex-1 px-3.5 py-3 text-left outline-none hover:bg-accent focus-visible:bg-accent"
             >
               <span className="block break-words text-sm leading-snug font-medium">
-                {request.reason}：{request.title}
+                {uiText("Task request: {reason} · {title}", {
+                  reason: inboxLabel(request.reason),
+                  title: request.title,
+                })}
               </span>
               <span className="mt-1 block truncate text-xs text-muted-foreground">
                 {request.place}

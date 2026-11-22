@@ -1,3 +1,4 @@
+import { testUiLocale } from "../test/uiLocale";
 import { describe, expect, it } from "vite-plus/test";
 import { EnvironmentId, ProjectId } from "@t3tools/contracts";
 import {
@@ -28,11 +29,13 @@ const usage = (m: typeof a, at: string) => ({
 });
 describe("one-click category member", () => {
   it("uses valid saved choice ahead of newer messages, ignoring stale preferences", () => {
+    using _locale = testUiLocale("zh-CN");
     const messages = [usage(b, "2026-10-06")];
     expect(defaultProjectMember([a, b, old], messages, a.physicalProjectKey)).toBe(a);
     expect(defaultProjectMember([a, b, old], messages, "gone")).toBe(b);
   });
   it("falls back to most recent user message, then first non-date, then first member", () => {
+    using _locale = testUiLocale("zh-CN");
     expect(
       defaultProjectMember([a, b, old], [usage(a, "2026-10-01"), usage(old, "2026-10-06")], null),
     ).toBe(old);
@@ -41,12 +44,14 @@ describe("one-click category member", () => {
     expect(defaultProjectMember([], [], null)).toBeUndefined();
   });
   it("does not mix same project IDs on different environments or use thread update time", () => {
+    using _locale = testUiLocale("zh-CN");
     const other = member("a", "/home/fiction/Projects/a", remote);
     expect(defaultProjectMember([a, other, b], [usage(other, "2026-10-06")], null)).toBe(other);
     const updatedOnly = { ...usage(a, "invalid"), updatedAt: "2027-01-01" };
     expect(recentProjectMembers([a, b], [updatedOnly, usage(b, "2026-10-06")])).toEqual([b, a]);
   });
   it("compacts only home roots and classifies the exact dated Codex directory", () => {
+    using _locale = testUiLocale("zh-CN");
     expect(compactWorkspacePath(a.workspaceRoot)).toBe("~/Projects/a");
     expect(compactWorkspacePath("/Volumes/Users/fiction/a")).toBe("/Volumes/Users/fiction/a");
     expect(isDatedCodexWorkspace(old.workspaceRoot)).toBe(true);
@@ -54,12 +59,14 @@ describe("one-click category member", () => {
     expect(isDatedCodexWorkspace("/Users/fiction/Documents/Codex/notes/2026-10-06")).toBe(false);
   });
   it("shows only the last folder name of a workspace path", () => {
+    using _locale = testUiLocale("zh-CN");
     expect(workspaceFolderName("/Users/fiction/Projects/批量设计工具")).toBe("批量设计工具");
     expect(workspaceFolderName("/Users/fiction/Projects/a/")).toBe("a");
     expect(workspaceFolderName("C:\\work\\app")).toBe("app");
     expect(workspaceFolderName("/")).toBe("/");
   });
   it("orders by actual use, moves historical entries to submenu and hides single-environment names", () => {
+    using _locale = testUiLocale("zh-CN");
     const items = projectMemberMenu(
       [a, old, b],
       [usage(b, "2026-10-05"), usage(old, "2026-10-06")],
@@ -69,9 +76,9 @@ describe("one-click category member", () => {
       a.physicalProjectKey,
       "historical-members",
     ]);
-    expect(items[0]?.label).toBe("b · ~/Projects/b");
+    expect(items[0]?.label).toBe("b");
     expect(items[2]).toMatchObject({
-      label: "更早的历史目录（1）",
+      label: "更早的临时目录（1）",
       children: [{ id: old.physicalProjectKey }],
       separatorBefore: true,
     });

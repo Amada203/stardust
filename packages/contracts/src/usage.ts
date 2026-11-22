@@ -71,6 +71,8 @@ export const UsageBucket = Schema.Struct({
   costSource: UsageCostSource,
   records: NonNegativeInt,
   unpricedRecords: NonNegativeInt,
+  /** Absent from older servers; merges then estimate it from the unpriced record share. */
+  unpricedTokens: Schema.optional(NonNegativeInt),
   sessions: NonNegativeInt,
 });
 export type UsageBucket = typeof UsageBucket.Type;
@@ -101,6 +103,13 @@ export const UsageSourceFingerprint = Schema.Struct({
   resolvedHomePath: TrimmedNonEmptyString,
   /** Transcript directory device:inode distinguishes machines sharing a hostname and home path. */
   volumeId: Schema.String,
+  /**
+   * Opaque identity of a directory that the Windows server of a desktop install
+   * reads natively and its managed WSL server reads through a drvfs mount. Path
+   * and `volumeId` differ between the two sides, so clients treat sources with
+   * an equal value as one directory in addition to the fields above.
+   */
+  physicalSourceId: Schema.optionalKey(TrimmedNonEmptyString),
 });
 export type UsageSourceFingerprint = typeof UsageSourceFingerprint.Type;
 
@@ -116,7 +125,6 @@ export const UsageSource = Schema.Struct({
   /** Total this count; bucket counts double-count sessions spanning days or models. */
   distinctSessions: NonNegativeInt,
   message: Schema.NullOr(TrimmedNonEmptyString),
-  action: Schema.optionalKey(Schema.Literal("enableCursorKeychain")),
   /** Cached response during refresh; repeat with awaitRefresh for fresh data. */
   refreshing: Schema.optionalKey(Schema.Literal(true)),
 });
@@ -130,8 +138,20 @@ export const UsagePricing = Schema.Struct({
   source: TrimmedNonEmptyString,
   fetchedAt: Schema.NullOr(Schema.String),
   knownModels: NonNegativeInt,
+  /** Combined input + output cost per token (USD) for known and overridden models. */
+  modelUnitPrices: Schema.optional(Schema.Record(Schema.String, Schema.Number)),
 });
 export type UsagePricing = typeof UsagePricing.Type;
+
+/** Real output-token throughput measured from completed T3 provider turns. */
+export const UsageThroughput = Schema.Struct({
+  provider: UsageProviderKind,
+  model: TrimmedNonEmptyString,
+  outputTokens: NonNegativeInt,
+  modelMs: NonNegativeInt,
+  turns: NonNegativeInt,
+});
+export type UsageThroughput = typeof UsageThroughput.Type;
 
 /**
  * Matches a provider's original model ID, before usage model aliases apply. Omit provider to
@@ -159,6 +179,8 @@ export const UsageSummaryInput = Schema.Struct({
   sinceTime: Schema.optional(TrimmedNonEmptyString),
   untilTime: Schema.optional(TrimmedNonEmptyString),
   awaitRefresh: Schema.optional(Schema.Boolean),
+  /** Accept an immediate answer from the last scan; its sources are marked refreshing. */
+  provisional: Schema.optional(Schema.Boolean),
   modelFilter: Schema.optional(UsageModelFilter),
 });
 export type UsageSummaryInput = typeof UsageSummaryInput.Type;
@@ -178,6 +200,8 @@ export const UsageSummary = Schema.Struct({
   /** Absent when the server predates projects or could not read them; totals are unaffected. */
   projectTotals: Schema.optional(ForwardCompatibleArray(UsageProjectTotals)),
   projects: Schema.optional(ForwardCompatibleArray(UsageProject)),
+  /** Absent when the server predates throughput tracking or could not read it. */
+  throughput: Schema.optional(ForwardCompatibleArray(UsageThroughput)),
 });
 export type UsageSummary = typeof UsageSummary.Type;
 

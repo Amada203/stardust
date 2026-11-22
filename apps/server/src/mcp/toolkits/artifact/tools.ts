@@ -1,6 +1,6 @@
 import { OrchestratorMcpFailure, WallArtifact, WallArtifactVerification } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
-import { Tool, Toolkit } from "effect/ai";
+import { Tool, Toolkit, McpSchema } from "effect/ai";
 import * as ArtifactWall from "../../../artifacts/ArtifactWall.ts";
 import * as ThreadManagementService from "../../../orchestration-v2/ThreadManagementService.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
@@ -28,7 +28,8 @@ const ArtifactList = Tool.make("artifact_list", {
   }),
 })
   .annotate(Tool.Readonly, true)
-  .annotate(Tool.Destructive, false);
+  .annotate(Tool.Destructive, false)
+  .annotate(McpSchema.EnabledWhen, McpInvocationContext.hiddenFromOutsideClients);
 
 const ArtifactRecordCheck = Tool.make("artifact_record_check", {
   ...common,
@@ -44,6 +45,7 @@ const ArtifactRecordCheck = Tool.make("artifact_record_check", {
 })
   .annotate(Tool.Readonly, false)
   .annotate(Tool.Destructive, false)
-  .annotate(Tool.Idempotent, true);
+  .annotate(Tool.Idempotent, true)
+  .annotate(McpSchema.EnabledWhen, McpInvocationContext.hiddenFromOutsideClients);
 
 export const ArtifactToolkit = Toolkit.make(ArtifactList, ArtifactRecordCheck);

@@ -15,6 +15,8 @@ import * as NodeStringDecoder from "node:string_decoder";
 
 import type {
   CanUseTool,
+  HookCallback,
+  StopHookInput,
   Options as ClaudeQueryOptions,
   PermissionMode,
   PermissionResult,
@@ -28,9 +30,13 @@ import * as PtyAdapter from "@t3tools/shared/PtyAdapter";
 import type { PtyProcess, PtySpawnInput } from "@t3tools/shared/PtyAdapter";
 import * as Effect from "effect/Effect";
 
+import { T3_CODE_COMPACT_INSTRUCTIONS } from "@t3tools/provider-core/server/orchestrationInstructions";
 import { isolateClaudeTerminalOptions } from "./ClaudeTerminalIsolation.ts";
 
-type ClaudeTerminalOptions = ClaudeQueryOptions & { readonly terminalSubagentContext?: string };
+type ClaudeTerminalOptions = ClaudeQueryOptions & {
+  readonly terminalSubagentContext?: string;
+  readonly terminalOnStop?: HookCallback;
+};
 
 import {
   DEFAULT_ANTHROPIC_BASE_URL,
@@ -69,6 +75,7 @@ const TERMINAL_COLS = 160;
 const TERMINAL_ROWS = 48;
 const POLL_INTERVAL_MS = 100;
 const STARTUP_TIMEOUT_MS = 90_000;
+const RESUME_TRANSCRIPT_TAIL_BYTES = 64 * 1024;
 const SUBMIT_TIMEOUT_MS = 10_000;
 /** How long a busy terminal may take to report a prompt before T3 gives up on it. */
 const SUBMIT_GIVE_UP_MS = 120_000;
@@ -277,6 +284,36 @@ class TranscriptReader {
     if (startAtEnd) this.#offset = NodeFS.statSync(path, { throwIfNoEntry: false })?.size ?? 0;
   }
 
+  endsWithCompletedTurn(): boolean {
+    if (!this.#offset) return false;
+    const tail = Buffer.alloc(Math.min(this.#offset, RESUME_TRANSCRIPT_TAIL_BYTES));
+    const start = this.#offset - tail.length;
+    const fd = NodeFS.openSync(this.path, "r");
+    try {
+      if (NodeFS.readSync(fd, tail, 0, tail.length, start) !== tail.length) return false;
+    } finally {
+      NodeFS.closeSync(fd);
+    }
+    const lines = tail.toString("utf8").split("\n");
+    if (start > 0) lines.shift();
+    let sawTurnEnd = false;
+    for (const line of lines.reverse()) {
+      if (!line.trim()) continue;
+      let entry: ClaudeTranscriptEntry;
+      try {
+        entry = JSON.parse(line) as ClaudeTranscriptEntry;
+      } catch {
+        return false;
+      }
+      if (entry.isSidechain) continue;
+      if (entry.type === "system" && entry.subtype === "turn_duration") sawTurnEnd = true;
+      if (entry.type === "user") return false;
+      if (entry.type === "assistant")
+        return sawTurnEnd && entry.message?.stop_reason === "end_turn";
+    }
+    return false;
+  }
+
   read(): ClaudeTranscriptEntry[] {
     if (!this.path) return [];
     // Claude Code creates the file with the first row; until then there is nothing to read.
@@ -346,6 +383,7 @@ class ClaudeTerminalQuery implements ClaudeTerminalQueryRuntime {
   #restartPending = false;
 
   #sessionId = "";
+  #nativeResumePending = false;
   #model: string | undefined;
   #permissionMode: PermissionMode;
   #transcript: TranscriptReader | undefined;
@@ -392,6 +430,7 @@ class ClaudeTerminalQuery implements ClaudeTerminalQueryRuntime {
   readonly #backgroundTasks = new Map<string, BackgroundTask>();
   readonly #notifiedTaskIds = new Set<string>();
   #lastRateLimits = "";
+  #lastRateLimitsAtMs = 0;
   /**
    * Set when an interrupt cancelled a turn: the rows of the cut reply reach the
    * transcript afterwards and must not become the next prompt's reply.
@@ -423,6 +462,9 @@ class ClaudeTerminalQuery implements ClaudeTerminalQueryRuntime {
     spawn: (input: PtySpawnInput) => Promise<PtyProcess>,
   ) {
     this.#options = { ...input.options };
+    this.#nativeResumePending =
+      input.options.resume !== undefined &&
+      input.options.env?.CLAUDE_CODE_RESUME_INTERRUPTED_TURN === "1";
     this.#sandbox = input.sandbox;
     this.#spawn = spawn;
     this.#permissionMode = input.options.permissionMode ?? "default";
@@ -620,6 +662,11 @@ class ClaudeTerminalQuery implements ClaudeTerminalQueryRuntime {
       }
       return this.#sessionStart;
     });
+    if (this.#nativeResumePending) {
+      throw new Error(
+        "Claude already finished the last recorded turn. Send a follow-up message to continue.",
+      );
+    }
     this.#sessionId = started.session_id ?? this.#sessionId;
     this.#model = started.model ?? this.#model;
     const transcriptPath = started.transcript_path ?? "";
@@ -636,6 +683,14 @@ class ClaudeTerminalQuery implements ClaudeTerminalQueryRuntime {
 
   /** Starts the process again on the same session, so changed flags take effect. */
   async #restart() {
+    this.#options = {
+      ...this.#options,
+      env: {
+        ...this.#options.env,
+        CLAUDE_CODE_RESUME_INTERRUPTED_TURN: undefined,
+        CLAUDE_CODE_RESUME_REASON: undefined,
+      },
+    };
     this.#restartPending = false;
     this.#discardingCutReply = false;
     this.#lateEnd = { stops: 0, durations: 0, until: 0 };
@@ -755,17 +810,23 @@ class ClaudeTerminalQuery implements ClaudeTerminalQueryRuntime {
         this.#onPromptSubmitted(input.prompt ?? "");
         return "";
       case "stop": {
+        const stopDecision = await this.#options.terminalOnStop?.(
+          input as StopHookInput,
+          undefined,
+          { signal: dropped },
+        );
+        const stopOutput = stopDecision === undefined ? "" : JSON.stringify(stopDecision);
         this.#stoppedAt = Date.now();
         if (this.#lateEnd.stops > 0 && Date.now() < this.#lateEnd.until) {
           this.#lateEnd.stops--;
-          return "";
+          return stopOutput;
         }
         const turn = this.#turn;
-        if (!turn) return "";
+        if (!turn) return stopOutput;
         turn.stopSeenAt = Date.now();
         // The turn's closing row can land before a StopFailure reports it.
         if (turn.durationRowSeen > 0 && !turn.command) this.#finishTurn(turn, "completed");
-        return "";
+        return stopOutput;
       }
       case "pre-tool-use":
         // Main-thread work after a Stop, such as a user Stop hook that asked Claude to go on.
@@ -775,7 +836,7 @@ class ClaudeTerminalQuery implements ClaudeTerminalQueryRuntime {
         return "";
       case "pre-compact":
         this.#onCompactStarted();
-        return "";
+        return T3_CODE_COMPACT_INSTRUCTIONS;
       case "post-compact":
         this.#compacting = false;
         // /compact normally ends on its output line; if none comes, #checkTurnEnd closes the turn.
@@ -875,6 +936,22 @@ class ClaudeTerminalQuery implements ClaudeTerminalQueryRuntime {
   #onSessionStarted(input: HookInput) {
     if (!this.#sessionStart) {
       this.#sessionStart = input;
+      if (this.#nativeResumePending) {
+        this.#sessionId = input.session_id ?? this.#options.resume ?? "";
+        this.#model = input.model ?? this.#model;
+        // Capture the existing history boundary before the CLI's unprompted reply can arrive.
+        if (input.transcript_path) {
+          const transcript = new TranscriptReader(
+            input.transcript_path,
+            true,
+            this.#options.env!.CLAUDE_CONFIG_DIR!,
+          );
+          if (transcript.endsWithCompletedTurn()) return;
+          this.#transcript = transcript;
+        }
+        this.#nativeResumePending = false;
+        this.#startTurn({ echo: [], origin: undefined, command: false });
+      }
       return;
     }
     if (!input.session_id || input.session_id === this.#sessionId) return;
@@ -981,7 +1058,11 @@ class ClaudeTerminalQuery implements ClaudeTerminalQueryRuntime {
       const mention = path.replaceAll("\\", "/");
       return mention.includes(" ") ? `@"${mention}"` : `@${mention}`;
     });
-    return [text, mentions.join(" ")].filter(Boolean).join("\n\n");
+    // Keep generated mentions away from a trailing standalone paste during steering.
+    const files = mentions.join(" ");
+    if (!text.trim()) return files;
+    if (slashCommandName(text)) return `${text} ${files}`;
+    return `${files} ${text}`;
   }
 
   async #deliver(pending: PendingPrompt) {
@@ -2112,8 +2193,11 @@ class ClaudeTerminalQuery implements ClaudeTerminalQueryRuntime {
 
   #onRateLimits(infos: ReadonlyArray<SDKRateLimitInfo>) {
     const key = JSON.stringify(infos);
-    if (key === this.#lastRateLimits) return;
+    // Unchanged readings are still re-sent once a minute so the quota does not look expired.
+    const nowMs = Date.now();
+    if (key === this.#lastRateLimits && nowMs - this.#lastRateLimitsAtMs < 60_000) return;
     this.#lastRateLimits = key;
+    this.#lastRateLimitsAtMs = nowMs;
     for (const info of infos) {
       this.#emit({
         type: "rate_limit_event",

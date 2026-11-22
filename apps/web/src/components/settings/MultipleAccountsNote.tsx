@@ -1,7 +1,6 @@
-import { uiTextNodes } from "~/i18n/rich";
-import { uiText } from "~/i18n";
 import { useAtomValue } from "@effect/atom-react";
 import type { EnvironmentId, ProviderDriverKind } from "@t3tools/contracts";
+import { T, Var } from "gt-react";
 import { InfoIcon } from "lucide-react";
 
 import { serverEnvironment } from "../../state/server";
@@ -36,19 +35,17 @@ export function MultipleAccountsNote({
       <InfoIcon aria-hidden />
       <AlertDescription>
         <p>
-          {uiTextNodes("We do not recommend managing multiple {0} accounts in T3 Code. {1}", {
-            "0": providerName,
-            "1": (
-              <a
-                href={MULTIPLE_ACCOUNTS_FAQ_URL}
-                target="_blank"
-                rel="noreferrer"
-                className="underline underline-offset-2 hover:text-foreground"
-              >
-                {uiText("More info")}
-              </a>
-            ),
-          })}
+          <T>
+            We do not recommend managing multiple <Var>{providerName}</Var> accounts in T3 Code.{" "}
+            <a
+              href={MULTIPLE_ACCOUNTS_FAQ_URL}
+              target="_blank"
+              rel="noreferrer"
+              className="underline underline-offset-2 hover:text-foreground"
+            >
+              More info
+            </a>
+          </T>
         </p>
       </AlertDescription>
     </Alert>

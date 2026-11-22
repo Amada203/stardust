@@ -1,3 +1,4 @@
+import * as FileSystem from "effect/FileSystem";
 import { ProjectId, type UsageProject } from "@t3tools/contracts";
 import * as NodeSqliteClient from "@t3tools/shared/nodeSqliteClient";
 import * as Context from "effect/Context";
@@ -39,6 +40,7 @@ export class UsageProjectAttribution extends Context.Service<
 
 const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
+  const fs = yield* FileSystem.FileSystem;
 
   // Worktree threads keep their project's id, so their sessions land on the project.
   const selectSessionProjects = SqlSchema.findAll({
@@ -64,6 +66,19 @@ const make = Effect.gen(function* () {
   const read = selectSessionProjects(undefined).pipe(
     NodeSqliteClient.readOnly,
     Effect.mapError((cause) => new UsageProjectAttributionReadError({ cause })),
+    Effect.flatMap((rows) =>
+      Effect.forEach(
+        rows,
+        (row) =>
+          row.driver === "pi"
+            ? fs.realPath(row.nativeId).pipe(
+                Effect.orElseSucceed(() => row.nativeId),
+                Effect.map((nativeId) => ({ ...row, nativeId })),
+              )
+            : Effect.succeed(row),
+        { concurrency: 4 },
+      ),
+    ),
     Effect.map((rows) => {
       const projects = new Map<string, UsageProject | null>();
       for (const row of rows) {

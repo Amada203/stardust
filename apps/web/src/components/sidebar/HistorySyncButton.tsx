@@ -1,3 +1,4 @@
+import { uiText } from "../../i18n";
 import { useState } from "react";
 import { CommandId } from "@t3tools/contracts";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
@@ -20,7 +21,7 @@ export function HistorySyncButton() {
 
   const sync = async () => {
     if (!environmentId || progress !== null) return;
-    setProgress("扫描中…");
+    setProgress(uiText("Scanning…."));
     await (async () => {
       let totalReconciled = 0;
       let totalSkipped = 0;
@@ -30,7 +31,9 @@ export function HistorySyncButton() {
       try {
         const result = await scan({ environmentId, input: {} });
         if (result._tag !== "Success") {
-          return await Promise.reject(new Error("历史会话扫描未完成，请重试。"));
+          return await Promise.reject(
+            new Error(uiText("Conversation scan didn’t finish. Try again.")),
+          );
         }
 
         const candidates = result.value.candidates;
@@ -56,7 +59,10 @@ export function HistorySyncButton() {
             });
             if (created._tag !== "Success") {
               const err = squashAtomCommandFailure(created);
-              const msg = err instanceof Error ? err.message : String(err ?? "项目创建失败");
+              const msg =
+                err instanceof Error
+                  ? err.message
+                  : String(err ?? uiText("Couldn’t create project"));
               failureReasons.push(`${candidate.title}: ${msg}`);
               totalFailed += candidate.threadCount;
               continue;
@@ -72,7 +78,10 @@ export function HistorySyncButton() {
 
           if (imported._tag !== "Success") {
             const err = squashAtomCommandFailure(imported);
-            const msg = err instanceof Error ? err.message : String(err ?? "会话导入失败");
+            const msg =
+              err instanceof Error
+                ? err.message
+                : String(err ?? uiText("Couldn’t import conversation"));
             failureReasons.push(`${candidate.title}: ${msg}`);
             totalFailed += candidate.threadCount;
             continue;
@@ -86,33 +95,44 @@ export function HistorySyncButton() {
         const hasFailures = failureReasons.length > 0;
         const isTruncated = Boolean(result.value.truncated);
 
-        let desc = `已扫描 ${candidates.length} 个项目目录${newProjectsCount > 0 ? `（其中新建 ${newProjectsCount} 个）` : ""}，核对处理 ${totalReconciled} 个已有/导入会话。`;
-        if (totalSkipped > 0) desc += ` 已跳过 ${totalSkipped} 个。`;
-        if (totalFailed > 0) desc += ` 导入失败 ${totalFailed} 个。`;
+        let desc = uiText(
+          "Scanned {count} project folders{created} and checked {total} conversations.",
+          {
+            count: candidates.length,
+            created:
+              newProjectsCount > 0 ? uiText(" ({newProjectsCount} new)", { newProjectsCount }) : "",
+            total: totalReconciled,
+          },
+        );
+        if (totalSkipped > 0) desc += uiText(" Skipped {totalSkipped}.", { totalSkipped });
+        if (totalFailed > 0) desc += uiText(" Couldn’t import {totalFailed}.", { totalFailed });
         if (isTruncated) {
-          desc += " 扫描达到上限，结果尚不完整。";
+          desc += uiText(" Scan limit reached. Results are incomplete.");
         }
         if (failureReasons.length > 0) {
-          desc += ` 失败原因: ${failureReasons.slice(0, 3).join("; ")}${failureReasons.length > 3 ? " 等" : ""}。`;
+          desc += uiText(" Reason: {reason}{more}.", {
+            reason: failureReasons.slice(0, 3).join("; "),
+            more: failureReasons.length > 3 ? uiText(" and more") : "",
+          });
         }
 
         toastManager.add({
           type: hasFailures || isTruncated ? "warning" : "success",
           title:
             hasFailures && totalReconciled === 0
-              ? "历史同步未成功"
+              ? uiText("History sync failed")
               : isTruncated
-                ? "历史同步部分完成（扫描达到上限）"
+                ? uiText("History partially synced (scan limit reached)")
                 : hasFailures
-                  ? "历史同步部分完成（存在失败）"
-                  : "历史同步完成",
+                  ? uiText("History partially synced (some failures)")
+                  : uiText("History synced"),
           description: desc,
         });
       } catch (error) {
         toastManager.add({
           type: "error",
-          title: "历史同步未完成",
-          description: error instanceof Error ? error.message : "请重试。",
+          title: uiText("History sync incomplete"),
+          description: error instanceof Error ? error.message : uiText("Try again."),
         });
       }
     })().finally(() => {
@@ -126,9 +146,9 @@ export function HistorySyncButton() {
       variant="ghost-muted"
       disabled={!environmentId || progress !== null}
       onClick={() => void sync()}
-      title="手动扫描导入外部历史会话"
+      title={uiText("Scan and import external conversations")}
     >
-      {progress ?? "同步历史"}
+      {progress ?? uiText("Sync history")}
     </Button>
   );
 }

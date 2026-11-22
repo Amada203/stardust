@@ -6,7 +6,6 @@ import { page, userEvent } from "vite-plus/test/browser";
 import "~/index.css";
 
 import { render } from "../../../test/render";
-import { artifactShelfBannerItem } from "./ComposerArtifactShelf";
 import { ComposerBanner } from "./ComposerBanner";
 import {
   ComposerBannerStack,
@@ -149,19 +148,4 @@ it("opens the details of a long notice right above its button", async () => {
     expect(gap).toBeGreaterThanOrEqual(0);
     expect(gap).toBeLessThan(8);
   });
-});
-
-it("enters the artifact shelf once and preserves its node when the count changes", async () => {
-  const item = () =>
-    artifactShelfBannerItem({ artifacts: [], onView: vi.fn(), onDismiss: vi.fn() });
-  await using screen = await render(<ComposerBannerStack items={[]} />);
-  await screen.rerender(<ComposerBannerStack items={[item()]} />);
-  const shelf = screen.container.querySelector<HTMLElement>(".composer-artifact-enter")!;
-  expect(getComputedStyle(shelf).animationName).toBe("composer-artifact-enter");
-  expect(getComputedStyle(shelf).animationDuration).toBe("0.35s");
-  const animation = shelf.getAnimations()[0]!;
-  animation.finish();
-  await screen.rerender(<ComposerBannerStack items={[{ ...item(), title: "Two artifacts" }]} />);
-  expect(screen.container.querySelector(".composer-artifact-enter")).toBe(shelf);
-  expect(shelf.getAnimations().some((motion) => motion.playState === "running")).toBe(false);
 });

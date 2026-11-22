@@ -1,3 +1,7 @@
+import { secondaryCollectionRank } from "./workspaceCollections";
+import { uiText } from "./i18n";
+import type { SidebarCategorySettings } from "@t3tools/contracts/settings";
+import { matchLocalCategoryRule } from "./threadCategories";
 import {
   DEFAULT_MODEL_BY_PROVIDER,
   ProviderDriverKind,
@@ -12,12 +16,17 @@ import type { ThreadPlacements } from "./sidebarThreadPlacement";
 
 export const providerExpansionKey = (provider: string) => `provider-group:${provider}`;
 
-function isAutomationThread(thread: { modelSelection: ModelSelection; title?: string }): boolean {
+function isAutomationThread(
+  thread: { modelSelection: ModelSelection; title?: string },
+  legacy?: SidebarCategorySettings["legacyRules"],
+): boolean {
   return (
     thread.modelSelection.model === "codex-auto-review" ||
-    /^(自动审批|自动化测试|生图执行记录|Call your built-in image generation tool|核心股错杀提醒|长桥账户重大异常监控|(?:港股|美股|长桥)监控｜|每周回顾$|每周复盘｜自动化|Codex 项目收尾试运行|公众号发布前检查试运行)/.test(
-      thread.title ?? "",
-    )
+    (legacy?.automation
+      ? matchLocalCategoryRule(legacy.automation, thread.title ?? "")
+      : /^(自动审批|自动化测试|生图执行记录|Call your built-in image generation tool|自动化任务|Automated task)/i.test(
+          thread.title ?? "",
+        ))
   );
 }
 
@@ -39,6 +48,7 @@ export function groupSidebarByProvider(
     Partial<Pick<SidebarThreadSummary, "title">>)[],
   configs: ReadonlyMap<EnvironmentId, Pick<ServerConfig, "settings">>,
   placements: ThreadPlacements = {},
+  legacy?: SidebarCategorySettings["legacyRules"],
 ): SidebarProjectSnapshot[] {
   const projectByKey = new Map(projects.map((project) => [project.projectKey, project]));
   const placementFor = (thread: (typeof threads)[number]) => {
@@ -91,8 +101,8 @@ export function groupSidebarByProvider(
       automation.set(key, {
         project: {
           ...project,
-          title: "自动化与测试",
-          displayName: "自动化与测试",
+          title: uiText("Automation and tests"),
+          displayName: uiText("Automation and tests"),
           projectKey: key,
         },
         threads: [thread],
@@ -111,15 +121,15 @@ export function groupSidebarByProvider(
     });
     const projectThreads = allProjectThreads.filter((thread) => {
       if (
-        project.displayName === "自动化与测试" ||
-        (!placementFor(thread) && isAutomationThread(thread))
+        secondaryCollectionRank(project.displayName) === 1 ||
+        (!placementFor(thread) && isAutomationThread(thread, legacy))
       ) {
         collectAutomation(project, thread);
         return false;
       }
       return true;
     });
-    if (project.displayName === "自动化与测试") continue;
+    if (secondaryCollectionRank(project.displayName) === 1) continue;
     const byProvider = new Map<string, Array<(typeof threads)[number]>>();
     for (const thread of projectThreads) {
       const label = resolveLabel(thread.environmentId, thread.modelSelection);
@@ -173,10 +183,10 @@ export function groupSidebarByProvider(
     });
     groups.set(label, list);
   }
-  const secondaryRank = (name: string) =>
-    name === "自动化与测试" ? 1 : name === "其他项目" ? 2 : 0;
   return [...groups.values()].flatMap((list) =>
-    list.toSorted((a, b) => secondaryRank(a.displayName) - secondaryRank(b.displayName)),
+    list.toSorted(
+      (a, b) => secondaryCollectionRank(a.displayName) - secondaryCollectionRank(b.displayName),
+    ),
   );
 }
 

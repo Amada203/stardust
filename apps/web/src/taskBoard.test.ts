@@ -1,3 +1,4 @@
+import { testUiLocale } from "../test/uiLocale";
 import { describe, expect, it, vi } from "vite-plus/test";
 import {
   boardTaskMatchesFilter,
@@ -36,6 +37,7 @@ const task: BoardTask = {
 const counts = { active: 1, user: 1, blocked: 0, agent: 0, stale: 0, done_week: 0, badge: 1 };
 describe("task board attention", () => {
   it("keeps folder boundary matching and the service longest-folder rule", () => {
+    using _locale = testUiLocale("zh-CN");
     expect(matchBoardTask([task], "/work/ab")).toBeNull();
     expect(matchBoardTask([task], "/work/a/nested")).toBe(task);
     const deeper = { ...task, folder: "/work/a/deeper" };
@@ -51,6 +53,7 @@ describe("task board attention", () => {
     );
   });
   it("defers during quiet hours, focus or runs without consuming the key", () => {
+    using _locale = testUiLocale("zh-CN");
     for (const hour of [0, 8, 23])
       expect(canPresentBoardTask(task, new Date(2026, 10, 11, hour), {}, {}, false)).toBe(false);
     const now = new Date(2026, 10, 11, 9);
@@ -61,6 +64,7 @@ describe("task board attention", () => {
     expect(canPresentBoardTask({ ...task, state: "agent" }, now, {}, {}, false)).toBe(false);
   });
   it("deduplicates keys across transitions and respects four hours per task", () => {
+    using _locale = testUiLocale("zh-CN");
     const now = new Date(2026, 10, 11, 14);
     expect(canPresentBoardTask(task, now, { [task.notify_key]: 1 }, {}, false)).toBe(false);
     expect(
@@ -71,17 +75,20 @@ describe("task board attention", () => {
     ).toBe(true);
   });
   it("excludes snoozed attention and handles missing completion timestamps", () => {
+    using _locale = testUiLocale("zh-CN");
     expect(boardTaskMatchesFilter({ ...task, snoozed: true }, "user", 0)).toBe(false);
     expect(boardTaskMatchesFilter({ ...task, state: "done" }, "done_week", 0)).toBe(false);
   });
 });
 describe("daily summary persistence", () => {
   it("recovers corrupt or partial delivery records", () => {
+    using _locale = testUiLocale("zh-CN");
     for (const raw of ["{", "{}", "null", '{"seen":null,"last":{},"summary":""}'])
       expect(readBoardDelivery(raw)).toEqual({ seen: {}, last: {}, summary: "" });
     expect(readBoardDelivery('{"seen":{"key":123},"last":{},"summary":"day"}').seen.key).toBe(123);
   });
   it("delivers once after 09:30 and catches up on a later foreground session", () => {
+    using _locale = testUiLocale("zh-CN");
     const at = (hour: number, minute = 0) => new Date(2026, 10, 11, hour, minute);
     expect(shouldPresentBoardSummary(at(9, 29), "")).toBe(false);
     expect(shouldPresentBoardSummary(at(9, 30), "")).toBe(true);
@@ -95,6 +102,7 @@ describe("daily summary persistence", () => {
 });
 describe("task board HTTP snapshot", () => {
   it("preserves identity across generated timestamps and shares concurrent requests", async () => {
+    using _locale = testUiLocale("zh-CN");
     const { refreshTaskBoard, useTaskBoard } = await import("./taskBoard");
     useTaskBoard.setState({ data: null, error: null, cwd: null, dataCwd: null, loading: true });
     using request = vi
@@ -110,6 +118,7 @@ describe("task board HTTP snapshot", () => {
     expect(useTaskBoard.getState()).toBe(initial);
   });
   it("refreshes after writes and leaves a clear failure when readback is unavailable", async () => {
+    using _locale = testUiLocale("zh-CN");
     const { mutateTaskBoard, useTaskBoard } = await import("./taskBoard");
     using request = vi
       .spyOn(globalThis, "fetch")
@@ -125,6 +134,7 @@ describe("task board HTTP snapshot", () => {
 
 describe("schema 2 task inbox", () => {
   it("routes blocked reviews to unlock and uses judgment text before step names", () => {
+    using _locale = testUiLocale("zh-CN");
     const reviewing: BoardTask = {
       ...task,
       kind: "review",
@@ -139,6 +149,7 @@ describe("schema 2 task inbox", () => {
     expect(boardTaskHeading(task)).toBe("Review，你来做");
   });
   it("uses authoritative current id and preserves human gates after partial review", () => {
+    using _locale = testUiLocale("zh-CN");
     const reviewed: BoardTask = {
       ...task,
       current_id: "gate",
@@ -164,6 +175,7 @@ describe("schema 2 task inbox", () => {
     ).toEqual({ currentIndex: -1, nextGateDistance: null });
   });
   it("sorts wait duration by state transition rather than recent project edits", () => {
+    using _locale = testUiLocale("zh-CN");
     const now = Date.parse("2026-11-11T12:00:00Z");
     const older = { ...task, state_since: "2026-11-09T12:00:00Z", age_days: 0 };
     const newer = { ...task, state_since: "2026-11-10T12:00:00Z", age_days: 50 };
@@ -173,6 +185,7 @@ describe("schema 2 task inbox", () => {
     expect(boardWaitDays({ ...task, state_since: "2026-11-12T12:00:00Z" }, now)).toBe(0);
   });
   it("only counts actual human approvals today and omits an unavailable total", () => {
+    using _locale = testUiLocale("zh-CN");
     const now = new Date(2026, 10, 11, 13);
     expect(boardApprovalsToday([task], now)).toBeNull();
     const result = {
@@ -187,6 +200,7 @@ describe("schema 2 task inbox", () => {
     expect(boardApprovalsToday([result], now)).toBe(1);
   });
   it("routes local media to the file preview and rejects executable URL schemes", () => {
+    using _locale = testUiLocale("zh-CN");
     expect(boardEvidenceTarget("/work/a", "frames/cover.png")).toEqual({
       kind: "file",
       value: "/work/a/frames/cover.png",
@@ -203,6 +217,7 @@ describe("schema 2 task inbox", () => {
     expect(boardEvidenceTarget("/work/a", "data:text/html,test")).toBeNull();
   });
   it("requires a rejection reason before posting and reads back approve/reject results", async () => {
+    using _locale = testUiLocale("zh-CN");
     const { mutateTaskBoard, useTaskBoard } = await import("./taskBoard");
     useTaskBoard.setState({ data: null, error: null, cwd: null, dataCwd: null, loading: true });
     using request = vi

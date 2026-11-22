@@ -1,5 +1,10 @@
 // @effect-diagnostics nodeBuiltinImport:off - real synchronous worker index fixtures.
-import { expect, it } from "vite-plus/test";
+import { expect, it } from "@effect/vitest";
+import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
+import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as ServerConfig from "../config.ts";
+import * as SpotlightSearch from "./SpotlightSearch.ts";
 import * as NodeSqlite from "node:sqlite";
 import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
@@ -11,7 +16,7 @@ function fixture() {
   const db = new NodeSqlite.DatabaseSync(file);
   db.exec(`CREATE TABLE projection_projects(project_id TEXT PRIMARY KEY,title TEXT,deleted_at TEXT);
  CREATE TABLE orchestration_v2_projection_threads(thread_id TEXT PRIMARY KEY,project_id TEXT,title TEXT,updated_at TEXT,archived_at TEXT,deleted_at TEXT,payload_json TEXT);
- CREATE TABLE orchestration_v2_projection_messages(message_id TEXT PRIMARY KEY,thread_id TEXT,role TEXT,streaming INTEGER,created_at TEXT,updated_at TEXT,payload_json TEXT);
+ CREATE TABLE orchestration_v2_projection_messages(message_id TEXT PRIMARY KEY,thread_id TEXT,role TEXT,streaming INTEGER,created_at TEXT,updated_at TEXT,payload_json TEXT,search_text TEXT);
  INSERT INTO projection_projects VALUES('p','自媒体',NULL);`);
   const thread = (
     id: string,
@@ -36,7 +41,7 @@ function fixture() {
   let serial = 0;
   const message = (id: string, text: string, role = "user", streaming = 0) =>
     db
-      .prepare("INSERT INTO orchestration_v2_projection_messages VALUES(?,?,?,?,?,?,?)")
+      .prepare("INSERT INTO orchestration_v2_projection_messages VALUES(?,?,?,?,?,?,?,?)")
       .run(
         `m${++serial}`,
         id,
@@ -45,6 +50,7 @@ function fixture() {
         "2026-10-26T00:00:00Z",
         "2026-10-26T00:00:00Z",
         JSON.stringify({ text }),
+        text,
       );
   const index = new SpotlightIndex(file, NodePath.join(dir, "index.sqlite"));
   return {
@@ -108,8 +114,10 @@ it("refreshes edits and deletes without writing to the source", () => {
   expect(f.index.search("甲乙")).toHaveLength(1);
   expect(NodeFS.readFileSync(f.file)).toEqual(before);
   f.db
-    .prepare("UPDATE orchestration_v2_projection_messages SET payload_json=?,updated_at=?")
-    .run(JSON.stringify({ text: "丙丁版本" }), "2026-10-27T00:00:00Z");
+    .prepare(
+      "UPDATE orchestration_v2_projection_messages SET payload_json=?,updated_at=?,search_text=?",
+    )
+    .run(JSON.stringify({ text: "丙丁版本" }), "2026-10-27T00:00:00Z", "丙丁版本");
   expect(f.index.search("甲乙")).toHaveLength(0);
   expect(f.index.search("丙丁")).toHaveLength(1);
   f.db.exec("DELETE FROM orchestration_v2_projection_messages");
@@ -197,3 +205,71 @@ it("retains the main conversation when many child titles match", () => {
   expect(result.some((r) => r.threadId === "root")).toBe(true);
   expect(result.filter((r) => r.isSubagent).length).toBeLessThanOrEqual(3);
 });
+
+it("rebuilds a v1 cache from citation-aware search_text without changing the source", () => {
+  using f = fixture();
+  f.thread("citation", "验收记录");
+  f.message("citation", '<t3-citation path="/hidden/private-label">标签正文</t3-citation>');
+  f.db.prepare("UPDATE orchestration_v2_projection_messages SET search_text=?").run("标签正文");
+  expect(f.index.search("标签正文")[0]?.threadId).toBe("citation");
+  const before = NodeFS.readFileSync(f.file);
+  const cachePath = NodePath.join(NodePath.dirname(f.file), "index.sqlite");
+  const cache = new NodeSqlite.DatabaseSync(cachePath);
+  cache.exec("PRAGMA user_version=1; UPDATE documents SET text='旧缓存',terms='旧缓存';");
+  cache.close();
+  const rebuilt = new SpotlightIndex(f.file, cachePath);
+  try {
+    expect(rebuilt.search("标签正文")[0]?.threadId).toBe("citation");
+    expect(rebuilt.search("private-label")).toEqual([]);
+    expect(NodeFS.readFileSync(f.file)).toEqual(before);
+  } finally {
+    rebuilt.close();
+  }
+});
+
+it("indexes messages when search_text is NULL by falling back to payload_json text", () => {
+  using f = fixture();
+  f.thread("null-search", "正常会话标题");
+  f.db
+    .prepare("INSERT INTO orchestration_v2_projection_messages VALUES(?,?,?,?,?,?,?,?)")
+    .run(
+      "m-null-1",
+      "null-search",
+      "assistant",
+      0,
+      "2026-11-20T00:00:00Z",
+      "2026-11-20T00:00:00Z",
+      JSON.stringify({ text: "这段正文只有 payload_json 里有，search_text 是空的" }),
+      null,
+    );
+  const hits = f.index.search("只有 payload_json");
+  expect(hits[0]?.threadId).toBe("null-search");
+  expect(hits[0]?.messageId).toBe("m-null-1");
+});
+
+it.live("searches through the isolated stdio worker and closes it with its scope", () =>
+  Effect.gen(function* () {
+    using f = fixture();
+    f.thread("worker", "声音先行");
+    f.message("worker", "迁移以后依然能检索中文正文");
+    const root = NodePath.dirname(f.file);
+    const service = SpotlightSearch.layer.pipe(
+      Layer.provide(
+        Layer.mock(ServerConfig.ServerConfig)({
+          dbPath: f.file,
+          providerStatusCacheDir: root,
+          stateDir: root,
+        } as ServerConfig.ServerConfig["Service"]),
+      ),
+      Layer.provide(NodeServices.layer),
+    );
+    yield* Effect.gen(function* () {
+      const search = yield* SpotlightSearch.SpotlightSearch;
+      const results = yield* Effect.all(
+        [search.search("中文正文", 10), search.search("shengyinxianxing", 10)],
+        { concurrency: 2 },
+      );
+      for (const result of results) expect(result.matches[0]?.threadId).toBe("worker");
+    }).pipe(Effect.provide(service), Effect.scoped);
+  }),
+);

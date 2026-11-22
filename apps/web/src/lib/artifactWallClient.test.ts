@@ -1,3 +1,4 @@
+import { testUiLocale } from "../../test/uiLocale";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { EnvironmentId, type WallArtifact } from "@t3tools/contracts";
 import { artifactFileUrl, fileFromArtifact, loadWallArtifacts } from "./artifactWallClient";
@@ -45,6 +46,7 @@ describe("artifact wall environment authentication", () => {
   afterEach(() => vi.unstubAllGlobals());
 
   it("reads cross-origin desktop lists with a bearer and no ambient cookies", async () => {
+    using _locale = testUiLocale("zh-CN");
     await expect(load()).resolves.toEqual([artifact]);
     const [url, init] = mocks.fetch.mock.calls[0]!;
     expect(new URL(url).origin).toBe("http://127.0.0.1:5747");
@@ -54,6 +56,7 @@ describe("artifact wall environment authentication", () => {
     expect(mocks.desktopToken).not.toHaveBeenCalled();
   });
   it("reuses primary desktop auth when the prepared connection has no bearer", async () => {
+    using _locale = testUiLocale("zh-CN");
     mocks.connection.mockReturnValue(connection(null));
     window.desktopBridge = {} as NonNullable<typeof window.desktopBridge>;
     mocks.desktopToken.mockResolvedValue("fixture-desktop-token");
@@ -64,6 +67,7 @@ describe("artifact wall environment authentication", () => {
     });
   });
   it("reports missing desktop authorization before any list request", async () => {
+    using _locale = testUiLocale("zh-CN");
     mocks.connection.mockReturnValue(connection(null));
     window.desktopBridge = {} as NonNullable<typeof window.desktopBridge>;
     mocks.desktopToken.mockResolvedValue(null);
@@ -71,12 +75,14 @@ describe("artifact wall environment authentication", () => {
     expect(mocks.fetch).not.toHaveBeenCalled();
   });
   it("reports desktop bridge failures in Chinese", async () => {
+    using _locale = testUiLocale("zh-CN");
     mocks.connection.mockReturnValue(connection(null));
     window.desktopBridge = {} as NonNullable<typeof window.desktopBridge>;
     mocks.desktopToken.mockRejectedValue(new Error("IPC failure"));
     await expect(load()).rejects.toThrow("无法读取本机授权，请重新连接后重试");
   });
   it("does not send a primary desktop token to a secondary connection", async () => {
+    using _locale = testUiLocale("zh-CN");
     mocks.connection.mockReturnValue(connection(null, false));
     window.desktopBridge = {} as NonNullable<typeof window.desktopBridge>;
     await load();
@@ -84,6 +90,7 @@ describe("artifact wall environment authentication", () => {
     expect(mocks.fetch.mock.calls[0]?.[1]).toMatchObject({ credentials: "include" });
   });
   it("keeps browser cookie/session auth for same-origin connections", async () => {
+    using _locale = testUiLocale("zh-CN");
     mocks.connection.mockReturnValue(connection(null));
     vi.stubGlobal("window", {
       location: { href: "http://127.0.0.1:5747/", origin: "http://127.0.0.1:5747" },
@@ -93,6 +100,7 @@ describe("artifact wall environment authentication", () => {
     expect(mocks.fetch.mock.calls[0]?.[1].headers).toBeUndefined();
   });
   it("explains unsupported cross-origin cookie sessions without claiming an empty wall", async () => {
+    using _locale = testUiLocale("zh-CN");
     mocks.connection.mockReturnValue(connection(null));
     mocks.fetch.mockRejectedValue(new TypeError("Failed to fetch"));
     await expect(load()).rejects.toThrow("此连接的登录状态无法跨来源读取，请使用本机连接后重试");
@@ -102,18 +110,22 @@ describe("artifact wall environment authentication", () => {
     [403, "此连接无权读取产物"],
     [500, "暂时无法读取产物，请重试"],
   ])("reports list HTTP %s in Chinese", async (status, message) => {
+    using _locale = testUiLocale("zh-CN");
     mocks.fetch.mockResolvedValue(new Response(null, { status }));
     await expect(load()).rejects.toThrow(message);
   });
   it("translates transport failures", async () => {
+    using _locale = testUiLocale("zh-CN");
     mocks.fetch.mockRejectedValue(new TypeError("Failed to fetch"));
     await expect(load()).rejects.toThrow("暂时无法连接产物服务，请重试");
   });
   it("rejects malformed data instead of treating it as no artifacts", async () => {
+    using _locale = testUiLocale("zh-CN");
     mocks.fetch.mockResolvedValue(Response.json({ unexpected: [] }));
     await expect(load()).rejects.toThrow("产物数据读取失败，请重试");
   });
   it("preserves abort cancellation", async () => {
+    using _locale = testUiLocale("zh-CN");
     const controller = new AbortController();
     const error = new DOMException("aborted", "AbortError");
     controller.abort();
@@ -121,6 +133,7 @@ describe("artifact wall environment authentication", () => {
     await expect(load(controller.signal)).rejects.toBe(error);
   });
   it("supports an authenticated same-origin tailnet phone without widening cross-origin access", async () => {
+    using _locale = testUiLocale("zh-CN");
     mocks.connection.mockReturnValue({
       ...connection(null),
       httpBaseUrl: "http://fictional.tailnet.test:3773",
@@ -138,6 +151,7 @@ describe("artifact wall environment authentication", () => {
     expect(mocks.fetch.mock.calls[0]?.[1]).toMatchObject({ credentials: "include" });
   });
   it("blocks remote and DPoP origins without sending credentials", async () => {
+    using _locale = testUiLocale("zh-CN");
     mocks.connection.mockReturnValue({ ...connection(), httpBaseUrl: "https://remote.test" });
     await expect(load()).rejects.toThrow("产物墙仅在本机连接可用");
     mocks.connection.mockReturnValue(connection({ _tag: "Dpop" }));
@@ -145,6 +159,7 @@ describe("artifact wall environment authentication", () => {
     expect(mocks.fetch).not.toHaveBeenCalled();
   });
   it("downloads capability files without cookies or authorization, matching thumbnails", async () => {
+    using _locale = testUiLocale("zh-CN");
     mocks.fetch.mockResolvedValue(
       new Response("png", { headers: { "Content-Type": "image/png" } }),
     );
@@ -158,12 +173,14 @@ describe("artifact wall environment authentication", () => {
     ]);
   });
   it("reports expired file capabilities", async () => {
+    using _locale = testUiLocale("zh-CN");
     mocks.fetch.mockResolvedValue(new Response(null, { status: 403 }));
     await expect(fileFromArtifact(environment, artifact)).rejects.toThrow(
       "文件已失效，请刷新产物墙",
     );
   });
   it("translates file network and body failures", async () => {
+    using _locale = testUiLocale("zh-CN");
     mocks.fetch.mockRejectedValue(new TypeError("Failed to fetch"));
     await expect(fileFromArtifact(environment, artifact)).rejects.toThrow(
       "暂时无法连接产物服务，请重试",

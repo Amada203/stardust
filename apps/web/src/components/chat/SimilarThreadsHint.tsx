@@ -1,3 +1,4 @@
+import { uiText } from "../../i18n";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import type { ScopedProjectRef, ScopedThreadRef } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
@@ -55,7 +56,7 @@ export function SimilarThreadsHint({
     { spotlight: true },
   );
   const matches =
-    search.error || search.query !== query || !query || dismissed
+    search.failed || search.query !== query || !query || dismissed
       ? []
       : rankSimilarThreads(threads, search.matches, current, project);
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- listens for Escape while the non-modal hint is visible without taking focus from the composer
@@ -78,16 +79,16 @@ export function SimilarThreadsHint({
   };
   return (
     <section
-      aria-label="你之前做过类似的"
+      aria-label={uiText("Similar work from earlier")}
       data-similar-threads-hint=""
       className="mb-2 rounded-xl bg-muted/80 px-3 py-2 text-xs"
     >
       <div className="mb-1 flex items-center justify-between gap-2 text-muted-foreground">
-        <span>你之前做过类似的</span>
+        <span>{uiText("Similar work from earlier")}</span>
         <Button
           variant="ghost-muted"
           size="icon-xs"
-          aria-label="关闭相似会话提示"
+          aria-label={uiText("Dismiss similar conversations")}
           onClick={dismiss}
         >
           <XIcon />
@@ -97,7 +98,7 @@ export function SimilarThreadsHint({
         const title =
           projects.find(
             (p) => p.id === thread.projectId && p.environmentId === thread.environmentId,
-          )?.title ?? "项目";
+          )?.title ?? uiText("Project");
         const settled =
           thread.settledOverride === "settled" ||
           (thread.settledAt !== null && thread.settledOverride !== "active");
@@ -108,7 +109,7 @@ export function SimilarThreadsHint({
           >
             <span
               role="img"
-              aria-label={settled ? "已完成" : "活跃"}
+              aria-label={settled ? uiText("Completed") : uiText("Active.")}
               className={`size-1.5 shrink-0 rounded-full ${settled ? "bg-muted-foreground/50" : "bg-success"}`}
             />
             <div className="min-w-0 flex-1">
@@ -118,11 +119,11 @@ export function SimilarThreadsHint({
               </div>
             </div>
             <Button size="xs" variant="ghost-muted" onClick={() => void open(thread, false)}>
-              查看
+              {uiText("View")}
             </Button>
             {index === 0 ? (
               <Button size="xs" onClick={() => void open(thread, true)}>
-                接着做
+                {uiText("Continue working")}
               </Button>
             ) : null}
           </div>

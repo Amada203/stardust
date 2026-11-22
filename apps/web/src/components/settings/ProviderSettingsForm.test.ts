@@ -16,19 +16,6 @@ import {
 } from "./ProviderSettingsForm";
 
 describe("ProviderSettingsForm helpers", () => {
-  it("lets a Claude instance switch runtimes without changing its account or other config", () => {
-    const claude = providerClients.get(ProviderDriverKind.make("claudeAgent"));
-    const field = deriveProviderSettingsFields(claude!).find(
-      (field) => field.key === "interactiveCli",
-    );
-    expect(field).toMatchObject({ control: "switch", defaultBooleanValue: false });
-    const account = { homePath: "/isolated/account", autoCompactWindow: "200000", forkOwned: 1 };
-    const on = nextProviderConfigWithFieldValue(account, field!, true);
-    expect(on).toEqual({ ...account, interactiveCli: true });
-    const off = nextProviderConfigWithFieldValue(on, field!, false);
-    expect(off).toEqual(account);
-  });
-
   it("keeps every masked field as a stored secret and offers a reference only where typed so", () => {
     const settingsSchema = makeProviderSettingsSchema({
       token: TrimmedString.pipe(
@@ -63,6 +50,24 @@ describe("ProviderSettingsForm helpers", () => {
     );
 
     expect(next).toEqual({ forkOwned: 1 });
+  });
+
+  it("does not store a text value its field's schema rejects", () => {
+    const claude = providerClients.get(ProviderDriverKind.make("claudeAgent"));
+    expect(claude).toBeDefined();
+    const autoCompactWindow = deriveProviderSettingsFields(claude!).find(
+      (field) => field.key === "autoCompactWindow",
+    );
+    expect(autoCompactWindow).toBeDefined();
+
+    for (const invalid of ["300k", "50000"]) {
+      expect(
+        nextProviderConfigWithFieldValue({ launchArgs: "--x" }, autoCompactWindow!, invalid),
+      ).toEqual({ launchArgs: "--x" });
+    }
+    expect(
+      nextProviderConfigWithFieldValue({ launchArgs: "--x" }, autoCompactWindow!, "300000"),
+    ).toEqual({ launchArgs: "--x", autoCompactWindow: "300000" });
   });
 
   it("stores false boolean fields when true is the default", () => {

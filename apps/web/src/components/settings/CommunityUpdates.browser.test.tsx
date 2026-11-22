@@ -1,9 +1,11 @@
+import { testUiLocale } from "../../../test/uiLocale";
 import "~/index.css";
 import { expect, it, vi } from "vite-plus/test";
 import { render } from "../../../test/render";
 import { CommunityUpdateSettings } from "./CommunityUpdates";
 import { useCommunityUpdates } from "../../state/communityUpdates";
 it("keeps modified workbenches on source review and only offers downloads after opting into standard mode", async () => {
+  using _locale = testUiLocale("zh-CN");
   useCommunityUpdates.setState({
     mode: "custom",
     automatic: false,
@@ -18,12 +20,12 @@ it("keeps modified workbenches on source review and only offers downloads after 
       ? Promise.resolve(
           new Response(
             JSON.stringify({
-              tag_name: "xiaoxin-c48-macos-20261112",
+              tag_name: "v1.2.1",
               draft: false,
               prerelease: false,
               assets: [
                 {
-                  name: "Xiaoxin-T3-Code-C48-macOS-arm64.zip",
+                  name: "T3-Stardust-1.2.1-macOS-arm64.zip",
                   state: "uploaded",
                   size: 100,
                   digest: `sha256:${"a".repeat(64)}`,

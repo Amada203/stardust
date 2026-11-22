@@ -1,3 +1,4 @@
+import { uiText } from "./i18n";
 import { backgroundWorkHoldsCompletion } from "@t3tools/shared/orchestrationV2PendingBackgroundWork";
 import type { SidebarThreadSummary } from "./types";
 import { buildSubtaskTree, subtaskThreadKey } from "./sidebarSubtasks";
@@ -7,11 +8,13 @@ export function activeWorkStatus(thread: SidebarThreadSummary): string | null {
   if (thread.hasPendingApprovals || thread.pendingSubagentRequest === "approval") return "待授权";
   if (thread.hasPendingUserInput || thread.pendingSubagentRequest === "user_input") return "待回答";
   const status = thread.runtime?.status;
-  if (status === "preparing" || status === "starting") return "启动中";
-  if (status === "queued") return "排队中";
-  if (status === "running") return thread.blockedOnThreadWait ? "等待任务" : "工作中";
-  if (status === "waiting") return "等待任务";
-  if (backgroundWorkHoldsCompletion(thread.pendingBackgroundTasks ?? [])) return "等待后台任务";
+  if (status === "preparing" || status === "starting") return uiText("Starting.");
+  if (status === "queued") return uiText("Queued.");
+  if (status === "running")
+    return thread.blockedOnThreadWait ? uiText("Waiting for task") : uiText("Working.");
+  if (status === "waiting") return uiText("Waiting for task");
+  if (backgroundWorkHoldsCompletion(thread.pendingBackgroundTasks ?? []))
+    return uiText("Waiting for background tasks");
   return null;
 }
 
@@ -54,8 +57,11 @@ export function activeWorkPreview(groups: ReturnType<typeof collectActiveWork>) 
 export function activeWorkElapsed(startedAt: string, nowMs: number) {
   const minutes = Math.floor((nowMs - Date.parse(startedAt)) / 60_000);
   if (!Number.isFinite(minutes)) return null;
-  if (minutes < 1) return "刚开始";
-  if (minutes < 60) return `已运行 ${minutes} 分`;
+  if (minutes < 1) return uiText("Just started");
+  if (minutes < 60) return uiText("Running for {minutes}m", { minutes });
   const hours = Math.floor(minutes / 60);
-  return `已运行 ${hours} 时${minutes % 60 ? ` ${minutes % 60} 分` : ""}`;
+  return uiText("Running for {hours}h{minutes}", {
+    hours,
+    minutes: minutes % 60 ? uiText(" {count}m", { count: minutes % 60 }) : "",
+  });
 }

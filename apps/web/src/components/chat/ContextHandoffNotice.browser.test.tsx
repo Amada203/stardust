@@ -1,3 +1,5 @@
+import { GTProvider } from "gt-react";
+import zh from "../../i18n/translations/zh.json";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { render, stubGlobal } from "../../../test/render";
 import type { EnvironmentId, OrchestrationV2ThreadProjection } from "@t3tools/contracts";
@@ -121,15 +123,17 @@ function setup() {
   return { storage, [Symbol.dispose]: () => local[Symbol.dispose]() };
 }
 const probe = (projection = fixture(), canCompact = true, enabled = false) => (
-  <ContextHandoffNotice
-    environmentId={env}
-    thread={shell}
-    projection={projection}
-    cwd="/fictional"
-    enabled={enabled}
-    disabled={false}
-    onCompact={canCompact ? test.compact : undefined}
-  />
+  <GTProvider locale="zh" translations={{ zh, en: {} } as never}>
+    <ContextHandoffNotice
+      environmentId={env}
+      thread={shell}
+      projection={projection}
+      cwd="/fictional"
+      enabled={enabled}
+      disabled={false}
+      onCompact={canCompact ? test.compact : undefined}
+    />
+  </GTProvider>
 );
 describe("handoff budget recovery", () => {
   it("shows recovery even when long-conversation reminders are disabled, without ordinary retry", async () => {
@@ -276,10 +280,86 @@ it("keeps context management reachable after dismissing ordinary reminders", asy
     ],
   } as unknown as OrchestrationV2ThreadProjection;
   await using screen = await render(probe(projection, false, true));
+  await expect.element(screen.getByRole("heading", { name: "上下文", exact: true })).toBeVisible();
   await screen.getByRole("button", { name: "关闭普通提醒" }).click();
   await expect.element(screen.getByRole("button", { name: "恢复普通提醒" })).toBeVisible();
   expect(test.start).not.toHaveBeenCalled();
   expect(test.create).not.toHaveBeenCalled();
   await screen.getByRole("button", { name: "恢复普通提醒" }).click();
   expect(state.storage.get(`t3-context-handoff:${env}:${shell.id}:dismissed`)).toBe("false");
+});
+
+describe("V9 compact context ring capsule", () => {
+  it("renders ring + percentage without prefix or chevron on wide screens and keeps accessible name", async () => {
+    using _setup = setup();
+    const projection = {
+      ...fixture(),
+      runs: [],
+      turnItems: [],
+      providerTurns: [
+        { providerThreadId: "provider", tokenUsage: { usedTokens: 18_000, maxTokens: 100_000 } },
+      ],
+    } as unknown as OrchestrationV2ThreadProjection;
+    await using screen = await render(
+      <div data-slot="composer-host" style={{ width: 560 }}>
+        <div data-composer-leading="">{probe(projection, true, true)}</div>
+      </div>,
+    );
+    const trigger = screen.container.querySelector<HTMLButtonElement>("[data-context-handoff]");
+    expect(trigger).not.toBeNull();
+    expect(trigger!.textContent).toBe("18%");
+    expect(trigger!.getAttribute("aria-label")).toBe("上下文占用 18%");
+    expect(trigger!.querySelector("[data-v9-ctx-ring]")).not.toBeNull();
+    expect(trigger!.querySelector("svg")).toBeNull();
+    expect(trigger!.style.getPropertyValue("--apple-context-progress")).toBe("18%");
+    expect(trigger!.getAttribute("data-v9-ctx-tone")).toBe("normal");
+    const pct = trigger!.querySelector<HTMLElement>("[data-v9-ctx-pct]");
+    expect(pct).not.toBeNull();
+    expect(getComputedStyle(pct!).display).not.toBe("none");
+  });
+
+  it("collapses to ring-only (30x30) at <=460px composer width while keeping ring visible", async () => {
+    using _setup = setup();
+    const projection = {
+      ...fixture(),
+      runs: [],
+      turnItems: [],
+      providerTurns: [
+        { providerThreadId: "provider", tokenUsage: { usedTokens: 18_000, maxTokens: 100_000 } },
+      ],
+    } as unknown as OrchestrationV2ThreadProjection;
+    await using screen = await render(
+      <div data-slot="composer-host" style={{ width: 360 }}>
+        <div data-composer-leading="">{probe(projection, true, true)}</div>
+      </div>,
+    );
+    const trigger = screen.container.querySelector<HTMLButtonElement>("[data-context-handoff]");
+    expect(trigger).not.toBeNull();
+    const ring = trigger!.querySelector<HTMLElement>("[data-v9-ctx-ring]");
+    const pct = trigger!.querySelector<HTMLElement>("[data-v9-ctx-pct]");
+    expect(ring).not.toBeNull();
+    expect(pct).not.toBeNull();
+    expect(getComputedStyle(pct!).display).toBe("none");
+    expect(getComputedStyle(ring!).display).toBe("block");
+    expect(Math.round(trigger!.getBoundingClientRect().width)).toBe(30);
+    expect(Math.round(trigger!.getBoundingClientRect().height)).toBe(30);
+  });
+
+  it("preserves high-usage warning tone and strong reminder state", async () => {
+    using _setup = setup();
+    const projection = {
+      ...fixture(),
+      runs: [],
+      turnItems: [],
+      providerTurns: [
+        { providerThreadId: "provider", tokenUsage: { usedTokens: 86_000, maxTokens: 100_000 } },
+      ],
+    } as unknown as OrchestrationV2ThreadProjection;
+    await using screen = await render(probe(projection, true, true));
+    const trigger = screen.container.querySelector<HTMLButtonElement>("[data-context-handoff]");
+    expect(trigger).not.toBeNull();
+    expect(trigger!.textContent).toBe("86%");
+    expect(trigger!.getAttribute("data-v9-ctx-tone")).toBe("warn");
+    expect(trigger!.getAttribute("data-context-handoff")).toBe("strong");
+  });
 });

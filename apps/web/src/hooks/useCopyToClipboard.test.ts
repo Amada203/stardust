@@ -29,7 +29,7 @@ describe("writeTextToClipboard", () => {
       },
     );
     await expect(
-      writeTextToClipboard("original", "message", {
+      writeTextToClipboard("original", undefined, {
         "text/plain": "replacement",
         "text/html": "<b>original</b>",
       }),
@@ -38,6 +38,30 @@ describe("writeTextToClipboard", () => {
       data: Record<string, Blob>;
     }>;
     expect(await items[0]!.data["text/plain"]!.text()).toBe("original");
+  });
+  it("reports a rejected HTML copy without silently copying only plain text", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal("window", {});
+    vi.stubGlobal("navigator", {
+      clipboard: { write: vi.fn().mockRejectedValue(new Error("denied")), writeText },
+    });
+    vi.stubGlobal(
+      "ClipboardItem",
+      class {
+        constructor(readonly data: Record<string, Blob>) {}
+      },
+    );
+    await expect(
+      writeTextToClipboard(
+        "<table></table>",
+        undefined,
+        { "text/html": "<table></table>" },
+        { requireHtml: true },
+      ),
+    ).rejects.toMatchObject({ _tag: "ClipboardWriteError" });
+    expect(writeText).not.toHaveBeenCalled();
+    await expect(writeTextToClipboard("plain")).resolves.toBe(true);
+    expect(writeText).toHaveBeenCalledWith("plain");
   });
   afterEach(() => {
     vi.unstubAllGlobals();
@@ -57,7 +81,7 @@ describe("writeTextToClipboard", () => {
     const rich = "<p><strong>Message</strong></p>";
 
     await expect(
-      writeTextToClipboard("Message", "message", {
+      writeTextToClipboard("Message", undefined, {
         [COMPOSER_CONTEXT_CLIPBOARD_MIME]: fragment,
         "text/html": rich,
       }),

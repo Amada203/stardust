@@ -1,6 +1,8 @@
+import { testUiLocale } from "../../../test/uiLocale";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { page } from "vite-plus/test/browser";
 import { ProviderInstanceId, ThreadId } from "@t3tools/contracts";
+import "~/index.css";
 import { render } from "../../../test/render";
 import { makeThreadFixture } from "../../test-fixtures";
 import { subtaskThreadKey } from "../../sidebarSubtasks";
@@ -34,6 +36,7 @@ const children = Array.from({ length: 7 }, (_, index) =>
 
 describe("active work navigation", () => {
   it("opens a child directly, collapses active children, and exposes overflow without growing the fixed header", async () => {
+    using _locale = testUiLocale("zh-CN");
     const navigate = vi.fn();
     await using screen = await render(
       <ActiveWorkOverview
@@ -109,11 +112,12 @@ describe("active work navigation", () => {
         navigate={navigate}
       />,
     );
-    await expect.element(screen.getByText("暂无运行任务")).toBeVisible();
+    await expect.element(screen.getByText("No active tasks")).toBeVisible();
   });
   it.each([390, 1440])(
     "fits a 280px sidebar at viewport %i and exposes disconnected state",
     async (width) => {
+      using _locale = testUiLocale("zh-CN");
       await page.viewport(width, 900);
       const container = document.createElement("div");
       container.style.width = "280px";

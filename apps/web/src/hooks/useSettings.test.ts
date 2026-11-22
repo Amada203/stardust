@@ -167,45 +167,6 @@ describe("client settings hydration", () => {
 });
 
 describe("persistClientSettingsPatch", () => {
-  it("switches both interface styles and restores the choice without changing other preferences", async () => {
-    const saved = {
-      ...DEFAULT_CLIENT_SETTINGS,
-      fontSizePrompt: 18,
-      glassOpacity: 100,
-      environmentIdentificationMode: "none" as const,
-      sidebarProjectGroupingMode: "repository_path" as const,
-      onboardingCompletedAt: "2026-11-03T12:00:00.000Z",
-    };
-    persistenceMocks.getClientSettings.mockResolvedValueOnce(saved);
-    await ensureClientSettingsHydrated();
-    for (const interfaceStyle of ["macos", "standard"] as const) {
-      await persistClientSettingsPatch({ interfaceStyle });
-      const written = persistenceMocks.setClientSettings.mock.calls.at(-1)![0];
-      expect(written).toEqual({ ...saved, interfaceStyle });
-      __resetClientSettingsPersistenceForTests();
-      persistenceMocks.getClientSettings.mockResolvedValueOnce(written);
-      await ensureClientSettingsHydrated();
-      expect(getClientSettings()).toEqual({ ...saved, interfaceStyle });
-    }
-  });
-  it("restores the image revision choice after rehydration without changing other preferences", async () => {
-    const saved = {
-      ...DEFAULT_CLIENT_SETTINGS,
-      artifactRevisionEnabled: true,
-      fontSizePrompt: 18,
-      onboardingCompletedAt: "2026-10-29T12:00:00.000Z",
-    };
-    persistenceMocks.getClientSettings.mockResolvedValueOnce(saved);
-    await ensureClientSettingsHydrated();
-    await persistClientSettingsPatch({ artifactRevisionEnabled: false });
-    const written = persistenceMocks.setClientSettings.mock.calls.at(-1)![0];
-    __resetClientSettingsPersistenceForTests();
-    persistenceMocks.getClientSettings.mockResolvedValueOnce(written);
-    await ensureClientSettingsHydrated();
-    expect(getClientSettings().artifactRevisionEnabled).toBe(false);
-    expect(getClientSettings().fontSizePrompt).toBe(18);
-  });
-
   it("waits for settings writes in request order", async () => {
     __setClientSettingsForTests(DEFAULT_CLIENT_SETTINGS);
     let finishFirst!: () => void;
@@ -233,6 +194,28 @@ describe("persistClientSettingsPatch", () => {
 
     expect(persistenceMocks.setClientSettings).toHaveBeenNthCalledWith(1, firstSettings);
     expect(persistenceMocks.setClientSettings).toHaveBeenNthCalledWith(2, secondSettings);
+  });
+
+  // regression: #35010 a save in one tab reverted settings another tab saved after it loaded
+  it("keeps a setting another tab saved after this tab loaded", async () => {
+    vi.stubGlobal("window", new EventTarget());
+    try {
+      await ensureClientSettingsHydrated();
+      const otherTabSettings = { ...DEFAULT_CLIENT_SETTINGS, timestampFormat: "12-hour" as const };
+      persistenceMocks.getClientSettings.mockResolvedValue(otherTabSettings);
+      window.dispatchEvent(
+        Object.assign(new Event("storage"), { key: "t3code:client-settings:v1" }),
+      );
+
+      await persistClientSettingsPatch({ wordWrap: false });
+
+      expect(persistenceMocks.setClientSettings).toHaveBeenLastCalledWith({
+        ...otherTabSettings,
+        wordWrap: false,
+      });
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });
 

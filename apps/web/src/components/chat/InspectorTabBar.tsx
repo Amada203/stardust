@@ -1,3 +1,4 @@
+import { uiText } from "../../i18n";
 import type { CSSProperties } from "react";
 import { Toggle, ToggleGroup } from "../ui/toggle-group";
 import type { InspectorTab } from "../../inspectorTabs";
@@ -27,7 +28,7 @@ export function InspectorTabBar({
     >
       <span aria-hidden data-inspector-tab-slider="" />
       <ToggleGroup
-        aria-label={"检查器"}
+        aria-label={uiText("Inspector")}
         className={"relative w-full *:flex-1"}
         variant={"segmented"}
         value={[value]}

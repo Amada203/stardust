@@ -15,14 +15,6 @@ const validPreload = `
 `;
 
 describe("desktop preload bundle verifier", () => {
-  it("accepts DOM listener registration during preload startup", () => {
-    assert.doesNotThrow(() =>
-      verifyPreloadBundle(
-        `${validPreload}\nwindow.addEventListener("DOMContentLoaded", () => {});`,
-      ),
-    );
-  });
-
   it("rejects required API names that only appear in strings", () => {
     assert.throws(
       () =>
@@ -84,6 +76,18 @@ describe("desktop preload bundle verifier", () => {
         require("node:events");
         require("node:timers");
         require("node:url");
+      `),
+    );
+  });
+
+  it("runs a preload that reads the page's DOM while loading", () => {
+    assert.doesNotThrow(() =>
+      verifyPreloadBundle(`
+        ${validPreload}
+        const report = () => document.fullscreenElement;
+        report();
+        document.addEventListener("fullscreenchange", report);
+        window.addEventListener("resize", report);
       `),
     );
   });

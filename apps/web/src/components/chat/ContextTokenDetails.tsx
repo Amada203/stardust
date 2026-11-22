@@ -1,4 +1,5 @@
-import { uiText } from "~/i18n";
+import { useUiText } from "~/i18n/useUiText";
+
 import { formatContextWindowTokens } from "~/lib/contextWindow";
 
 export function ContextTokenDetails({
@@ -11,6 +12,7 @@ export function ContextTokenDetails({
     readonly cacheCreationTokens?: number | null | undefined;
   };
 }) {
+  const uiText = useUiText();
   const details = [
     [uiText("Input"), usage.inputTokens],
     [uiText("Output"), usage.outputTokens],

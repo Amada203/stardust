@@ -1,3 +1,4 @@
+import { uiText } from "../../i18n";
 import type { ScopedProjectRef } from "@t3tools/contracts";
 import type { SidebarProjectSnapshot } from "../../sidebarProjectGrouping";
 import type { SidebarThreadSummary } from "../../types";
@@ -132,7 +133,7 @@ export function resolveStickyProjects(input: {
           identity,
           key,
           isAvailable: false,
-          title: "不可用项目",
+          title: uiText("Unavailable projects"),
           recentThreads: [],
           totalThreadCount: 0,
           isDefaultExpanded: false,

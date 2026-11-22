@@ -10,6 +10,16 @@ import {
   type UsageTokenTotals,
 } from "@t3tools/contracts";
 
+export {
+  MIN_THROUGHPUT_MODEL_MS,
+  TURN_TOOL_ITEM_TYPES,
+  computeTurnModelDuration,
+  evaluateThroughputTurn,
+  unionIntervalLength,
+  type ThroughputTurnCandidate,
+  type TurnModelDuration,
+} from "./turnModelDuration.ts";
+
 export interface EnvironmentUsage {
   readonly environmentId: EnvironmentId;
   readonly label: string;
@@ -59,10 +69,6 @@ export interface HourlyTotals {
   readonly byProvider: ReadonlyMap<UsageProviderKind, { costUsd: number; totalTokens: number }>;
 }
 
-/**
- * `unlinked` is usage no T3 thread claims; `unreported` comes from servers that predate
- * projects or could not read them. Project ids are environment-local.
- */
 export type ProjectIdentity =
   | {
       readonly kind: "project";
@@ -111,6 +117,34 @@ export interface UsageContractMismatch {
   readonly contractVersion: number;
 }
 
+export interface ThroughputTotals {
+  readonly outputTokens: number;
+  readonly modelMs: number;
+  readonly turns: number;
+  /** Output tokens per second (`outputTokens / (modelMs / 1000)`), or null when `modelMs <= 0`. */
+  readonly tokensPerSecond: number | null;
+}
+
+export interface ProviderThroughputTotals extends ThroughputTotals {
+  readonly provider: UsageProviderKind;
+}
+
+export interface ModelThroughputTotals extends ThroughputTotals {
+  readonly provider: UsageProviderKind;
+  readonly model: string;
+}
+
+export interface MergedThroughput {
+  readonly total: ThroughputTotals;
+  readonly byProvider: readonly ProviderThroughputTotals[];
+  readonly byModel: readonly ModelThroughputTotals[];
+}
+
+export function computeTokensPerSecond(outputTokens: number, modelMs: number): number | null {
+  if (!Number.isFinite(outputTokens) || !Number.isFinite(modelMs) || modelMs <= 0) return null;
+  return outputTokens / (modelMs / 1000);
+}
+
 export interface MergedUsage {
   readonly costUsd: number;
   readonly uncachedInputTokens: number;
@@ -123,12 +157,14 @@ export interface MergedUsage {
   readonly sessions: number;
   readonly providers: readonly ProviderTotals[];
   readonly models: readonly ModelTotals[];
-  readonly projects: readonly ProjectTotals[];
   readonly daily: readonly DailyTotals[];
   readonly hourly: readonly HourlyTotals[];
+  readonly projects: readonly ProjectTotals[];
   readonly costQuality: CostQuality;
   readonly categoryCost: CategoryCost;
   readonly speedCost: SpeedCost;
+  readonly throughput: MergedThroughput;
+  readonly modelUnitPrices: Readonly<Record<string, number>>;
   readonly duplicateSources: readonly string[];
   readonly contributingEnvironments: readonly EnvironmentId[];
   readonly contractMismatches: readonly UsageContractMismatch[];
@@ -142,6 +178,31 @@ function fingerprintKey(fingerprint: UsageSourceFingerprint): string {
     fingerprint.resolvedHomePath,
     fingerprint.volumeId,
   ].join(" ");
+}
+
+// Sources are one directory when either their legacy key or their physicalSourceId matches.
+// physicalSourceId joins a directory read natively by Windows and through a WSL mount (path
+// and dev:ino both differ); the legacy key still joins installs whose host scopes differ.
+function sourceIdentity(
+  environments: readonly EnvironmentUsage[],
+): (fingerprint: UsageSourceFingerprint) => string {
+  const parent = new Map<string, string>();
+  const find = (key: string): string => {
+    const next = parent.get(key);
+    if (next === undefined || next === key) return key;
+    const root = find(next);
+    parent.set(key, root);
+    return root;
+  };
+  for (const environment of environments) {
+    for (const { fingerprint } of environment.summary.sources) {
+      if (fingerprint.physicalSourceId === undefined) continue;
+      const legacy = find(fingerprintKey(fingerprint));
+      const physical = find(`\u0000${fingerprint.provider}\u0000${fingerprint.physicalSourceId}`);
+      if (legacy !== physical) parent.set(legacy, physical);
+    }
+  }
+  return (fingerprint) => find(fingerprintKey(fingerprint));
 }
 
 function bucketsForSource(summary: UsageSummary, source: UsageSource): readonly UsageBucket[] {
@@ -160,13 +221,15 @@ function bucketKey(bucket: UsageBucket): string {
   return JSON.stringify([bucket.day, bucket.hourStart ?? null, bucket.provider, bucket.model]);
 }
 
-function claimSources(environments: readonly EnvironmentUsage[]): {
-  readonly ownerByFingerprint: ReadonlyMap<string, EnvironmentId>;
+function claimSources(
+  environments: readonly EnvironmentUsage[],
+  sourceKey: (fingerprint: UsageSourceFingerprint) => string,
+): {
+  readonly ownerScanByFingerprint: ReadonlyMap<string, { readonly source: UsageSource }>;
   readonly supplementalBucketsByEnvironment: ReadonlyMap<EnvironmentId, ReadonlySet<UsageBucket>>;
   readonly sessionsByFingerprint: ReadonlyMap<string, number>;
   readonly duplicates: readonly string[];
 } {
-  const ownerByFingerprint = new Map<string, EnvironmentId>();
   const ownerScanByFingerprint = new Map<
     string,
     { environment: EnvironmentUsage; source: UsageSource }
@@ -186,12 +249,11 @@ function claimSources(environments: readonly EnvironmentUsage[]): {
     for (const environment of ordered) {
       for (const source of environment.summary.sources) {
         if (source.status !== status) continue;
-        const key = fingerprintKey(source.fingerprint);
-        if (ownerByFingerprint.has(key)) {
+        const key = sourceKey(source.fingerprint);
+        if (ownerScanByFingerprint.has(key)) {
           duplicates.push(`${environment.label}: ${source.fingerprint.resolvedHomePath}`);
           continue;
         }
-        ownerByFingerprint.set(key, environment.environmentId);
         ownerScanByFingerprint.set(key, { environment, source });
         sessionsByFingerprint.set(key, source.distinctSessions);
       }
@@ -202,7 +264,7 @@ function claimSources(environments: readonly EnvironmentUsage[]): {
   for (const environment of ordered) {
     for (const source of environment.summary.sources) {
       if (source.status !== "partial") continue;
-      const key = fingerprintKey(source.fingerprint);
+      const key = sourceKey(source.fingerprint);
       const owner = ownerScanByFingerprint.get(key);
       // A scan under another model filter counts different records, so its cells are not missing ones.
       if (
@@ -238,7 +300,7 @@ function claimSources(environments: readonly EnvironmentUsage[]): {
   }
 
   return {
-    ownerByFingerprint,
+    ownerScanByFingerprint,
     supplementalBucketsByEnvironment,
     sessionsByFingerprint,
     duplicates,
@@ -247,12 +309,13 @@ function claimSources(environments: readonly EnvironmentUsage[]): {
 
 function ownedContribution(
   environment: EnvironmentUsage,
-  ownerByFingerprint: ReadonlyMap<string, EnvironmentId>,
+  ownerScanByFingerprint: ReadonlyMap<string, { readonly source: UsageSource }>,
   supplementalBuckets: ReadonlySet<UsageBucket>,
   sessionsByFingerprint: ReadonlyMap<string, number>,
+  sourceKey: (fingerprint: UsageSourceFingerprint) => string,
 ): {
   readonly buckets: readonly UsageBucket[];
-  readonly owns: (cell: Pick<UsageBucket, "provider" | "sourcePath">) => boolean;
+  readonly owns: (bucket: Pick<UsageBucket, "sourcePath" | "provider">) => boolean;
   readonly sessionsByProvider: ReadonlyMap<UsageProviderKind, number>;
 } {
   const ownedProviders = new Set<UsageProviderKind>();
@@ -260,8 +323,10 @@ function ownedContribution(
   const sessionsByProvider = new Map<UsageProviderKind, number>();
   for (const source of environment.summary.sources) {
     if (source.status === "missing") continue;
-    const key = fingerprintKey(source.fingerprint);
-    if (ownerByFingerprint.get(key) === environment.environmentId) {
+    const key = sourceKey(source.fingerprint);
+    // By source, not environment: one server can reach a directory through two
+    // mounts, and only the winning reading may count.
+    if (ownerScanByFingerprint.get(key)?.source === source) {
       const provider = source.fingerprint.provider;
       ownedProviders.add(provider);
       ownedSources.add(`${provider}\u0000${source.fingerprint.resolvedHomePath}`);
@@ -273,10 +338,10 @@ function ownedContribution(
       );
     }
   }
-  const owns = (cell: Pick<UsageBucket, "provider" | "sourcePath">) =>
-    cell.sourcePath === undefined
-      ? ownedProviders.has(cell.provider)
-      : ownedSources.has(`${cell.provider}\u0000${cell.sourcePath}`);
+  const owns = (bucket: Pick<UsageBucket, "sourcePath" | "provider">) =>
+    bucket.sourcePath === undefined
+      ? ownedProviders.has(bucket.provider)
+      : ownedSources.has(`${bucket.provider}\u0000${bucket.sourcePath}`);
   return {
     buckets: environment.summary.buckets.filter(
       (bucket) => supplementalBuckets.has(bucket) || owns(bucket),
@@ -312,9 +377,9 @@ const EMPTY_MERGED: MergedUsage = {
   sessions: 0,
   providers: [],
   models: [],
-  projects: [],
   daily: [],
   hourly: [],
+  projects: [],
   costQuality: {
     providerReportedShare: 0,
     modelPricedShare: 0,
@@ -323,6 +388,12 @@ const EMPTY_MERGED: MergedUsage = {
   },
   categoryCost: { input: 0, cacheRead: 0, cacheWrite: 0, output: 0, unsplit: 0 },
   speedCost: { standard: 0, fast: 0, ultrafast: 0, premium: 0 },
+  throughput: {
+    total: { outputTokens: 0, modelMs: 0, turns: 0, tokensPerSecond: null },
+    byProvider: [],
+    byModel: [],
+  },
+  modelUnitPrices: {},
   duplicateSources: [],
   contributingEnvironments: [],
   contractMismatches: [],
@@ -353,12 +424,13 @@ export function mergeUsage(
     }
   }
 
+  const sourceKey = sourceIdentity(current);
   const {
-    ownerByFingerprint,
+    ownerScanByFingerprint,
     supplementalBucketsByEnvironment,
     sessionsByFingerprint,
     duplicates,
-  } = claimSources(current);
+  } = claimSources(current, sourceKey);
 
   let costUsd = 0;
   let uncachedInputTokens = 0;
@@ -437,13 +509,71 @@ export function mergeUsage(
     projectAccumulator.set(key, project);
   };
   const contributingEnvironments: EnvironmentId[] = [];
+  let throughputOutputTokens = 0;
+  let throughputModelMs = 0;
+  let throughputTurns = 0;
+  const providerThroughputAccumulator = new Map<
+    UsageProviderKind,
+    { outputTokens: number; modelMs: number; turns: number }
+  >();
+  const modelThroughputAccumulator = new Map<
+    string,
+    { provider: UsageProviderKind; model: string; outputTokens: number; modelMs: number; turns: number }
+  >();
+  const modelUnitPrices: Record<string, number> = {};
+  const orderedByReadAt = [...current].sort(
+    (a, b) =>
+      (Date.parse(b.summary.readAt) || 0) - (Date.parse(a.summary.readAt) || 0) ||
+      a.environmentId.localeCompare(b.environmentId),
+  );
+  for (const environment of orderedByReadAt) {
+    const prices = environment.summary.pricing.modelUnitPrices;
+    if (prices === undefined) continue;
+    for (const [modelKey, price] of Object.entries(prices)) {
+      if (!Object.hasOwn(modelUnitPrices, modelKey) && Number.isFinite(price) && price >= 0) {
+        modelUnitPrices[modelKey] = price;
+      }
+    }
+  }
 
   for (const environment of current) {
+    if (environment.summary.throughput !== undefined) {
+      for (const row of environment.summary.throughput) {
+        if (row.modelMs <= 0 || row.turns <= 0) continue;
+        throughputOutputTokens += row.outputTokens;
+        throughputModelMs += row.modelMs;
+        throughputTurns += row.turns;
+
+        const providerRow = providerThroughputAccumulator.get(row.provider) ?? {
+          outputTokens: 0,
+          modelMs: 0,
+          turns: 0,
+        };
+        providerRow.outputTokens += row.outputTokens;
+        providerRow.modelMs += row.modelMs;
+        providerRow.turns += row.turns;
+        providerThroughputAccumulator.set(row.provider, providerRow);
+
+        const modelKey = `${row.provider}\u0000${row.model}`;
+        const modelRow = modelThroughputAccumulator.get(modelKey) ?? {
+          provider: row.provider,
+          model: row.model,
+          outputTokens: 0,
+          modelMs: 0,
+          turns: 0,
+        };
+        modelRow.outputTokens += row.outputTokens;
+        modelRow.modelMs += row.modelMs;
+        modelRow.turns += row.turns;
+        modelThroughputAccumulator.set(modelKey, modelRow);
+      }
+    }
     const { buckets, owns, sessionsByProvider } = ownedContribution(
       environment,
-      ownerByFingerprint,
+      ownerScanByFingerprint,
       supplementalBucketsByEnvironment.get(environment.environmentId) ?? new Set(),
       sessionsByFingerprint,
+      sourceKey,
     );
     if (buckets.length > 0) contributingEnvironments.push(environment.environmentId);
 
@@ -550,7 +680,9 @@ export function mergeUsage(
       };
       model.records += bucket.records;
       model.unpricedRecords += bucket.unpricedRecords;
-      if (bucket.records > 0) {
+      if (bucket.unpricedTokens !== undefined) {
+        model.unpricedTokens += bucket.unpricedTokens;
+      } else if (bucket.records > 0) {
         model.unpricedTokens += (tokens * bucket.unpricedRecords) / bucket.records;
       }
       modelAccumulator.set(modelKey, model);
@@ -679,6 +811,34 @@ export function mergeUsage(
       ...speedCost,
       standard: Math.max(0, costUsd - speedCost.fast - speedCost.ultrafast),
     },
+    throughput: {
+      total: {
+        outputTokens: throughputOutputTokens,
+        modelMs: throughputModelMs,
+        turns: throughputTurns,
+        tokensPerSecond: computeTokensPerSecond(throughputOutputTokens, throughputModelMs),
+      },
+      byProvider: [...providerThroughputAccumulator.entries()]
+        .map(([provider, totals]): ProviderThroughputTotals => ({
+          provider,
+          outputTokens: totals.outputTokens,
+          modelMs: totals.modelMs,
+          turns: totals.turns,
+          tokensPerSecond: computeTokensPerSecond(totals.outputTokens, totals.modelMs),
+        }))
+        .sort((a, b) => (b.tokensPerSecond ?? -1) - (a.tokensPerSecond ?? -1)),
+      byModel: [...modelThroughputAccumulator.values()]
+        .map((totals): ModelThroughputTotals => ({
+          provider: totals.provider,
+          model: totals.model,
+          outputTokens: totals.outputTokens,
+          modelMs: totals.modelMs,
+          turns: totals.turns,
+          tokensPerSecond: computeTokensPerSecond(totals.outputTokens, totals.modelMs),
+        }))
+        .sort((a, b) => (b.tokensPerSecond ?? -1) - (a.tokensPerSecond ?? -1)),
+    },
+    modelUnitPrices,
     duplicateSources: duplicates,
     contributingEnvironments,
     contractMismatches,

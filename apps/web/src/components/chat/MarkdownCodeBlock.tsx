@@ -1,11 +1,10 @@
-import { uiText } from "~/i18n";
-
-import { Check, Copy } from "lucide";
-import { PlayIcon, WrapTextIcon } from "lucide-react";
+import { T, useGT } from "gt-react";
+import { PlayIcon, WrapTextIcon, CheckIcon, CopyIcon } from "lucide-react";
 import { toHtml } from "hast-util-to-html";
 import React, { use, useEffect, useState, type ReactNode } from "react";
+
 import { useCopyToClipboard } from "../../hooks/useCopyToClipboard";
-import { getClientSettings } from "../../hooks/useSettings";
+import { useClientSettings } from "../../hooks/useSettings";
 import type { DiffThemeName } from "../../lib/diffRendering";
 import {
   createIncrementalHighlightedDocument,
@@ -18,7 +17,6 @@ import {
   hasSpecificPierreIconForFileName,
   syntheticFileNameForLanguageId,
 } from "../../pierre-icons";
-import { MorphIcon } from "../MorphIcon";
 import { Button } from "../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { HighlightedCodeLines } from "./HighlightedCodeLines";
@@ -29,15 +27,19 @@ import {
 } from "./MarkdownCodeBlock.logic";
 import { reportMarkdownActionFailure } from "./markdownActionFailure";
 import { PierreEntryIcon } from "./PierreEntryIcon";
+
 const MAX_HIGHLIGHT_CACHE_ENTRIES = 500;
 const MAX_HIGHLIGHT_CACHE_MEMORY_BYTES = 50 * 1024 * 1024;
+
 const highlightedCodeCache = new LRUCache<string>(
   MAX_HIGHLIGHT_CACHE_ENTRIES,
   MAX_HIGHLIGHT_CACHE_MEMORY_BYTES,
 );
+
 const THREAD_FIND_IGNORE_PROPS = {
   "data-thread-find-ignore": "",
 } as React.HTMLAttributes<HTMLDivElement>;
+
 export function MarkdownCodeBlockFrame({
   as: Wrapper = "div",
   language,
@@ -88,6 +90,7 @@ export function MarkdownCodeBlockFrame({
     </Wrapper>
   );
 }
+
 function MarkdownCodeBlockTitleContent({
   fenceTitle,
   language,
@@ -97,6 +100,7 @@ function MarkdownCodeBlockTitleContent({
   language: string;
   theme: "light" | "dark";
 }) {
+  const gt = useGT();
   if (fenceTitle) {
     return (
       <>
@@ -105,6 +109,7 @@ function MarkdownCodeBlockTitleContent({
       </>
     );
   }
+
   const fileName = syntheticFileNameForLanguageId(language);
   if (!hasSpecificPierreIconForFileName(fileName)) {
     return <span className="truncate">{language}</span>;
@@ -115,7 +120,7 @@ function MarkdownCodeBlockTitleContent({
         render={
           <span
             className="inline-flex shrink-0 rounded-sm"
-            aria-label={uiText("Language: {0}", { "0": language })}
+            aria-label={gt("Language: {language}", { language })}
           />
         }
       >
@@ -125,6 +130,7 @@ function MarkdownCodeBlockTitleContent({
     </Tooltip>
   );
 }
+
 export function MarkdownCodeBlock({
   code,
   language,
@@ -148,6 +154,7 @@ export function MarkdownCodeBlock({
   diagram?: boolean;
   children: ReactNode;
 }) {
+  const gt = useGT();
   const { copyToClipboard, isCopied: copied } = useCopyToClipboard({
     timeout: 1200,
     onError: (cause) =>
@@ -160,9 +167,11 @@ export function MarkdownCodeBlock({
         cause,
       ),
   });
-  const [wrapped, setWrapped] = useState(() => getClientSettings().wordWrap);
-  const wrapLabel = wrapped ? "Disable line wrap" : "Wrap lines";
-  const copyLabel = copied ? "Copied" : uiText("Copy code");
+  const defaultWrapped = useClientSettings((settings) => settings.wordWrap);
+  const [wrapOverride, setWrapOverride] = useState<boolean | null>(null);
+  const wrapped = wrapOverride ?? defaultWrapped;
+  const wrapLabel = wrapped ? gt("Disable line wrap") : gt("Wrap lines");
+  const copyLabel = copied ? gt("Copied") : gt("Copy code");
   const command = code.trim();
   const canRun =
     onRunShellCommand !== undefined &&
@@ -174,7 +183,9 @@ export function MarkdownCodeBlock({
     // Control and invisible format characters (bidi overrides, zero-width) can
     // make the rendered command differ from what the terminal would receive.
     !/[\p{Cc}\p{Cf}]/u.test(code.slice(0, -1));
-  const handleCopy = () => copyToClipboard(code);
+
+  const handleCopy = () => copyToClipboard(code.endsWith("\n") ? code.slice(0, -1) : code);
+
   const copyButton = (
     <Tooltip>
       <TooltipTrigger
@@ -188,11 +199,12 @@ export function MarkdownCodeBlock({
           />
         }
       >
-        <MorphIcon className="size-3" icon={copied ? Check : Copy} />
+        {copied ? <CheckIcon className="size-3" /> : <CopyIcon className="size-3" />}
       </TooltipTrigger>
       <TooltipPopup side="top">{copyLabel}</TooltipPopup>
     </Tooltip>
   );
+
   if (diagram) {
     return (
       <div className="my-[0.65rem] border border-transparent" data-language={language}>
@@ -204,6 +216,7 @@ export function MarkdownCodeBlock({
       </div>
     );
   }
+
   return (
     <MarkdownCodeBlockFrame
       language={language}
@@ -215,7 +228,7 @@ export function MarkdownCodeBlock({
         <span
           className="flex items-center gap-0.5"
           role="toolbar"
-          aria-label={uiText("Code block actions")}
+          aria-label={gt("Code block actions")}
         >
           {canWrap ? (
             <Tooltip>
@@ -226,7 +239,7 @@ export function MarkdownCodeBlock({
                     variant={wrapped ? "secondary" : "ghost-muted"}
                     size="icon-xs"
                     aria-pressed={wrapped}
-                    onClick={() => setWrapped((value) => !value)}
+                    onClick={() => setWrapOverride(!wrapped)}
                     aria-label={wrapLabel}
                   />
                 }
@@ -245,13 +258,15 @@ export function MarkdownCodeBlock({
                     variant="ghost-muted"
                     size="icon-xs"
                     onClick={() => onRunShellCommand(command)}
-                    aria-label={uiText("Run in terminal")}
+                    aria-label={gt("Run in terminal")}
                   />
                 }
               >
                 <PlayIcon className="size-3" />
               </TooltipTrigger>
-              <TooltipPopup side="top">{uiText("Run in terminal")}</TooltipPopup>
+              <TooltipPopup side="top">
+                <T>Run in terminal</T>
+              </TooltipPopup>
             </Tooltip>
           ) : null}
           {viewToggle}
@@ -263,12 +278,14 @@ export function MarkdownCodeBlock({
     </MarkdownCodeBlockFrame>
   );
 }
+
 interface SuspenseShikiCodeBlockProps {
   className: string | undefined;
   code: string;
   themeName: DiffThemeName;
   isStreaming: boolean;
 }
+
 export function SuspenseShikiCodeBlock({
   className,
   code,
@@ -283,6 +300,7 @@ export function SuspenseShikiCodeBlock({
   // finishes so switching to cached HTML cannot clear an existing selection.
   const cachedHighlightedHtml =
     !isStreaming && !hasStreamed ? highlightedCodeCache.get(cacheKey) : null;
+
   if (cachedHighlightedHtml != null) {
     return (
       <div
@@ -291,6 +309,7 @@ export function SuspenseShikiCodeBlock({
       />
     );
   }
+
   return (
     <UncachedShikiCodeBlock
       code={code}
@@ -302,6 +321,7 @@ export function SuspenseShikiCodeBlock({
     />
   );
 }
+
 interface UncachedShikiCodeBlockProps {
   code: string;
   language: string;
@@ -310,6 +330,7 @@ interface UncachedShikiCodeBlockProps {
   isStreaming: boolean;
   preserveLines: boolean;
 }
+
 function UncachedShikiCodeBlock({
   code,
   language,
@@ -347,11 +368,12 @@ function UncachedShikiCodeBlock({
       highlightedCodeCache.set(
         cacheKey,
         highlightedHtml,
-        estimateHighlightedSize(highlightedHtml, code),
+        estimateHighlightedSize(highlightedHtml, cacheKey),
       );
     }
     return result;
   })();
+
   return typeof highlighted === "string" ? (
     <div className="chat-markdown-shiki" dangerouslySetInnerHTML={{ __html: highlighted }} />
   ) : (

@@ -1,14 +1,12 @@
-import { uiTextNodes } from "~/i18n/rich";
-import { useState } from "react";
-import { Input } from "../ui/input";
-import { uiText } from "~/i18n";
+import { thrownErrorMessage } from "@t3tools/client-runtime/errors";
+import { m as resolveMessage } from "~/i18n/messages";
 import { settingsScopeEnvironmentLabels } from "./settingsScopeAxis";
 import { Spinner } from "~/components/ui/spinner";
-import { ArchiveIcon, ArchiveX } from "lucide-react";
-import { type ScopedThreadRef } from "@t3tools/contracts";
-import { scopeThreadRef } from "@t3tools/client-runtime/environment";
+import { ArchiveIcon, ArchiveX, Trash2Icon } from "lucide-react";
+import { scopeThreadRef, scopedThreadKey } from "@t3tools/client-runtime/environment";
 import { presentThreadShell } from "@t3tools/client-runtime/state/shell";
 import {
+  type AtomCommandResult,
   isAtomCommandInterrupted,
   settlePromise,
   squashAtomCommandFailure,
@@ -21,15 +19,39 @@ import { RelativeTime } from "../RelativeTime";
 import { Button } from "../ui/button";
 import { stackedThreadToast, toastManager } from "../ui/toast";
 import { SettingsPageContainer, SettingsRow, SettingsSection } from "./settingsLayout";
-import { searchableSetting } from "./settingsSearch";
+import { useSearchableSetting } from "./settingsSearch";
 import { ProjectFavicon } from "../ProjectFavicon";
 
-export function ArchivedThreadsPanel() {
-  const { scope, groups: projectGroups, environments } = useSettingsScope();
-  const [searchQuery, setSearchQuery] = useState("");
-  const [collapsedKeys, setCollapsedKeys] = useState<Set<string>>(new Set());
+import { msg, T, useGT, useMessages } from "gt-react";
+import { useRef, useState } from "react";
+import { Tooltip, TooltipTrigger, TooltipPopup } from "../ui/tooltip";
 
+const ARCHIVE_ACTIONS = [
+  {
+    action: "unarchive",
+    label: msg("Unarchive"),
+    threadLabel: msg("Unarchive {title}"),
+    failureTitle: msg("Failed to unarchive thread"),
+    Icon: ArchiveX,
+  },
+  {
+    action: "delete",
+    label: msg("Delete", { $context: "verb, deletes a thread" }),
+    threadLabel: msg("Delete {title}"),
+    failureTitle: msg("Failed to delete thread"),
+    Icon: Trash2Icon,
+  },
+] as const;
+type ArchiveAction = (typeof ARCHIVE_ACTIONS)[number]["action"];
+
+export function ArchivedThreadsPanel() {
+  const searchableSetting = useSearchableSetting();
+  const gt = useGT();
+  const m = useMessages();
+  const { scope, groups: projectGroups, environments } = useSettingsScope();
   const { unarchiveThread, confirmAndDeleteThread } = useThreadActions();
+  const pendingActionsRef = useRef(new Set<string>());
+  const [pendingKeys, setPendingKeys] = useState<ReadonlySet<string>>(() => new Set());
   const {
     snapshots: archivedSnapshots,
     error: archiveError,
@@ -129,112 +151,67 @@ export function ArchivedThreadsPanel() {
     return { groups: sortedGroups, hasMultipleEnvironments };
   })();
 
-  const handleArchivedThreadContextMenu = async (
-    threadRef: ScopedThreadRef,
-    position: { x: number; y: number },
-  ) => {
-    const api = readLocalApi();
-    if (!api) return;
-    const clicked = await api.contextMenu.show(
-      [
-        { id: "unarchive", label: uiText("Unarchive") },
-        { id: "delete", label: uiText("Delete"), destructive: true },
-      ],
-      position,
+  type ArchivedThread = (typeof archivedGroups)[number]["threads"][number];
+
+  const reportFailure = (result: AtomCommandResult<unknown, unknown> | null, title: string) => {
+    if (result?._tag !== "Failure" || isAtomCommandInterrupted(result)) return;
+    const error = squashAtomCommandFailure(result);
+    toastManager.add(
+      stackedThreadToast({
+        type: "error",
+        title,
+        description:
+          error instanceof Error
+            ? (thrownErrorMessage(error, resolveMessage) ?? error.message)
+            : gt("An error occurred."),
+      }),
     );
-
-    if (clicked === "unarchive") {
-      const result = await unarchiveThread(threadRef);
-      if (result._tag === "Success") {
-        refreshArchivedThreads();
-      } else if (!isAtomCommandInterrupted(result)) {
-        const error = squashAtomCommandFailure(result);
-        toastManager.add(
-          stackedThreadToast({
-            type: "error",
-            title: uiText("Failed to unarchive thread"),
-            description: error instanceof Error ? error.message : uiText("An error occurred."),
-          }),
-        );
-      }
-      return;
-    }
-
-    if (clicked === "delete") {
-      const result = await confirmAndDeleteThread(threadRef);
-      if (result._tag === "Success") {
-        refreshArchivedThreads();
-      } else if (!isAtomCommandInterrupted(result)) {
-        const error = squashAtomCommandFailure(result);
-        toastManager.add(
-          stackedThreadToast({
-            type: "error",
-            title: uiText("Failed to delete thread"),
-            description: error instanceof Error ? error.message : uiText("An error occurred."),
-          }),
-        );
-      }
-    }
   };
 
-  const query = searchQuery.trim().toLocaleLowerCase();
-  const filteredGroups = archivedGroups
-    .map((group) => ({
-      ...group,
-      threads: query
-        ? group.threads.filter((thread) => thread.title.toLocaleLowerCase().includes(query))
-        : group.threads,
-    }))
-    .filter((group) => group.threads.length > 0);
-  const toggleGroup = (key: string) =>
-    setCollapsedKeys((previous) => {
-      const next = new Set(previous);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
+  const handleThreadAction = async (action: ArchiveAction, thread: ArchivedThread) => {
+    const target = scopeThreadRef(thread.environmentId, thread.id);
+    const key = scopedThreadKey(target);
+    // Context menus can outlive their render, so checks and cleanup use the live set.
+    const pending = pendingActionsRef.current;
+    if (pending.has(key)) return;
+    pending.add(key);
+    setPendingKeys(new Set(pending));
+    const result = await settlePromise(async () => {
+      const result = await (action === "unarchive"
+        ? unarchiveThread(target)
+        : confirmAndDeleteThread(target, thread.title));
+      if (result._tag === "Success") refreshArchivedThreads();
+      return result;
+    }).finally(() => {
+      pending.delete(key);
+      setPendingKeys(new Set(pending));
     });
+    reportFailure(
+      result._tag === "Failure" ? result : result.value,
+      m(ARCHIVE_ACTIONS.find((entry) => entry.action === action)!.failureTitle),
+    );
+  };
+
+  const handleContextMenu = async (thread: ArchivedThread, position: { x: number; y: number }) => {
+    const pending = pendingActionsRef.current;
+    if (pending.has(scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)))) return;
+    const result = await settlePromise(async () => {
+      const clicked = await readLocalApi()?.contextMenu.show(
+        ARCHIVE_ACTIONS.map(({ action, label }) => ({
+          id: action,
+          label: m(label),
+          destructive: action === "delete",
+        })),
+        position,
+      );
+      if (clicked === "unarchive" || clicked === "delete")
+        await handleThreadAction(clicked, thread);
+    });
+    reportFailure(result, gt("Archived thread action failed"));
+  };
+
   return (
     <SettingsPageContainer>
-      <div className="mb-4 flex flex-col gap-2">
-        <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
-          <span>
-            筛选范围：
-            {scope.kind === "project" || scope.kind === "checkout"
-              ? "项目范围"
-              : scope.kind === "environment"
-                ? "环境范围"
-                : "全局范围"}{" "}
-            · 共 {archivedGroups.reduce((sum, group) => sum + group.threads.length, 0)} 个已归档会话
-          </span>
-          {archivedGroups.length > 1 ? (
-            <div className="flex gap-1">
-              <Button variant="ghost" size="xs" onClick={() => setCollapsedKeys(new Set())}>
-                全部展开
-              </Button>
-              <Button
-                variant="ghost"
-                size="xs"
-                onClick={() => setCollapsedKeys(new Set(archivedGroups.map((group) => group.key)))}
-              >
-                全部折叠
-              </Button>
-            </div>
-          ) : null}
-        </div>
-        {archivedGroups.length > 0 ? (
-          <Input
-            type="search"
-            placeholder="按会话标题搜索已归档会话…"
-            value={searchQuery}
-            onChange={(event) => setSearchQuery(event.target.value)}
-          />
-        ) : null}
-        {query && archivedGroups.length > 0 && filteredGroups.length === 0 ? (
-          <p role="status" className="text-xs text-muted-foreground">
-            未找到匹配的已归档会话，请尝试其他关键词。
-          </p>
-        ) : null}
-      </div>
       {archivedGroups.length === 0 ? (
         <SettingsSection
           id={isLoadingArchive ? undefined : searchableSetting("archive").id}
@@ -249,114 +226,73 @@ export function ArchivedThreadsPanel() {
                   <ArchiveIcon className="size-3.5 text-muted-foreground" />
                 )}
                 {isLoadingArchive
-                  ? uiText("Loading archived threads")
+                  ? gt("Loading archived threads")
                   : archiveError
-                    ? uiText("Could not load archived threads")
-                    : uiText("No archived threads")}
+                    ? gt("Could not load archived threads")
+                    : gt("No archived threads")}
               </span>
             }
             description={
               isLoadingArchive
-                ? uiText("Checking connected environments.")
-                : (archiveError ?? uiText("Archived threads will appear here."))
+                ? gt("Checking connected environments.")
+                : (archiveError ?? gt("Archived threads will appear here."))
             }
           />
         </SettingsSection>
       ) : (
-        filteredGroups.map(({ key, project, title, threads: projectThreads }, index) => (
+        archivedGroups.map(({ key, project, title, threads: projectThreads }, index) => (
           <SettingsSection
             key={key}
             id={index === 0 ? searchableSetting("archive").id : undefined}
             title={title}
             icon={<ProjectFavicon project={project} />}
-            headerAction={
-              <Button
-                variant="ghost"
-                size="xs"
-                onClick={() => toggleGroup(key)}
-                aria-expanded={!collapsedKeys.has(key)}
-                aria-label={`${collapsedKeys.has(key) ? "展开" : "折叠"} ${title}`}
-              >
-                {collapsedKeys.has(key) ? `展开 (${projectThreads.length})` : "折叠"}
-              </Button>
-            }
           >
-            {!collapsedKeys.has(key) &&
-              projectThreads.map((thread) => (
+            {projectThreads.map((thread) => {
+              const threadKey = scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id));
+              return (
                 <SettingsRow
                   key={`${thread.environmentId}:${thread.id}`}
                   onContextMenu={(event) => {
                     event.preventDefault();
-                    void (async () => {
-                      const result = await settlePromise(() =>
-                        handleArchivedThreadContextMenu(
-                          scopeThreadRef(thread.environmentId, thread.id),
-                          {
-                            x: event.clientX,
-                            y: event.clientY,
-                          },
-                        ),
-                      );
-                      if (result._tag === "Failure") {
-                        const error = squashAtomCommandFailure(result);
-                        toastManager.add(
-                          stackedThreadToast({
-                            type: "error",
-                            title: uiText("Archived thread action failed"),
-                            description:
-                              error instanceof Error ? error.message : uiText("An error occurred."),
-                          }),
-                        );
-                      }
-                    })();
+                    void handleContextMenu(thread, { x: event.clientX, y: event.clientY });
                   }}
                   title={thread.title}
                   description={
                     <span className={hasMultipleEnvironments ? "block truncate" : undefined}>
-                      {uiTextNodes("{0}Archived{1} · Created {2}", {
-                        "0": hasMultipleEnvironments ? `${thread.environmentLabel} · ` : null,
-                        "1": <RelativeTime timestamp={thread.archivedAt ?? thread.createdAt} />,
-                        "2": <RelativeTime timestamp={thread.createdAt} />,
-                      })}
+                      {hasMultipleEnvironments ? `${thread.environmentLabel} · ` : null}
+                      <T>
+                        Archived <RelativeTime timestamp={thread.archivedAt ?? thread.createdAt} />
+                        {" \u00b7 Created "}
+                        <RelativeTime timestamp={thread.createdAt} />
+                      </T>
                     </span>
                   }
                   control={
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="shrink-0"
-                      onClick={() => {
-                        void (async () => {
-                          const result = await unarchiveThread(
-                            scopeThreadRef(thread.environmentId, thread.id),
-                          );
-                          if (result._tag === "Success") {
-                            refreshArchivedThreads();
-                            return;
-                          }
-                          if (!isAtomCommandInterrupted(result)) {
-                            const error = squashAtomCommandFailure(result);
-                            toastManager.add(
-                              stackedThreadToast({
-                                type: "error",
-                                title: uiText("Failed to unarchive thread"),
-                                description:
-                                  error instanceof Error
-                                    ? error.message
-                                    : uiText("An error occurred."),
-                              }),
-                            );
-                          }
-                        })();
-                      }}
-                    >
-                      <ArchiveX className="size-3.5" />
-                      <span>{uiText("Unarchive")}</span>
-                    </Button>
+                    <div className="flex shrink-0 items-center gap-2">
+                      {ARCHIVE_ACTIONS.map(({ action, label, threadLabel, Icon }) => (
+                        <Tooltip key={action}>
+                          <TooltipTrigger
+                            render={
+                              <Button
+                                type="button"
+                                variant={action === "delete" ? "destructive-outline" : "outline"}
+                                size="icon-sm"
+                                aria-label={m(threadLabel, { title: thread.title })}
+                                disabled={pendingKeys.has(threadKey)}
+                                onClick={() => void handleThreadAction(action, thread)}
+                              />
+                            }
+                          >
+                            <Icon className="size-3.5" />
+                          </TooltipTrigger>
+                          <TooltipPopup>{m(label)}</TooltipPopup>
+                        </Tooltip>
+                      ))}
+                    </div>
                   }
                 />
-              ))}
+              );
+            })}
           </SettingsSection>
         ))
       )}

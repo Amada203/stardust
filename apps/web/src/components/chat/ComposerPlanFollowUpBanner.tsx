@@ -1,4 +1,5 @@
-import { uiText } from "~/i18n";
+import { useUiText } from "~/i18n/useUiText";
+
 import { memo } from "react";
 import { ComposerBanner } from "./ComposerBanner";
 
@@ -7,6 +8,7 @@ export const ComposerPlanFollowUpBanner = memo(function ComposerPlanFollowUpBann
 }: {
   planTitle: string | null;
 }) {
+  const uiText = useUiText();
   return (
     <ComposerBanner.Row>
       <ComposerBanner.Icon />

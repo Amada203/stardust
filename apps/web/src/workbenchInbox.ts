@@ -1,5 +1,5 @@
 import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
-import { backgroundWorkHoldsCompletion } from "@t3tools/shared/orchestrationV2PendingBackgroundWork";
+import { backgroundWorkDefersThreadCompletion } from "@t3tools/shared/orchestrationV2PendingBackgroundWork";
 import type { SidebarThreadSummary } from "./types";
 
 export type InboxThread = Pick<
@@ -19,6 +19,10 @@ export type InboxThread = Pick<
 >;
 export const inboxThreadKey = (thread: Pick<InboxThread, "environmentId" | "id">) =>
   scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id));
+// A result is not new while its background work runs; the inbox also keeps any live monitor out.
+export const inboxHoldsBackgroundWork = (thread: Pick<InboxThread, "pendingBackgroundTasks">) =>
+  backgroundWorkDefersThreadCompletion(thread) ||
+  thread.pendingBackgroundTasks.some((task) => task.kind === "monitor");
 export function inboxReason(
   thread: InboxThread,
   visited?: string,
@@ -31,12 +35,7 @@ export function inboxReason(
   const active = ["preparing", "queued", "starting", "running", "waiting"].includes(
     thread.runtime?.status ?? "",
   );
-  if (
-    active ||
-    backgroundWorkHoldsCompletion(thread.pendingBackgroundTasks) ||
-    thread.pendingBackgroundTasks.some((task) => task.kind === "monitor")
-  )
-    return null;
+  if (active || inboxHoldsBackgroundWork(thread)) return null;
   const completed = thread.latestRun?.completedAt;
   if (
     thread.latestRun?.status === "failed" &&

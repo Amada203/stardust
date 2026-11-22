@@ -1,14 +1,17 @@
+import { testUiLocale } from "../../../test/uiLocale";
 import { expect, it } from "vite-plus/test";
 import * as DateTime from "effect/DateTime";
 import {
+  MessageId,
   NodeId,
   PlanId,
   RunId,
   TurnItemId,
+  type OrchestrationV2Run,
   type OrchestrationV2TurnItem,
 } from "@t3tools/contracts";
 import { makeThreadProjectionFixture } from "../../test-fixtures";
-import { taskTrailDetails } from "./taskTrailModel";
+import { liveActivityTrailSnapshot, taskTrailDetails, trailActivity } from "./taskTrailModel";
 import type { TaskProgressSnapshot } from "../../taskProgress";
 
 function fixture() {
@@ -103,6 +106,7 @@ function fixture() {
   };
 }
 it("assigns activities only to proven running windows, exclusive at step boundaries and scoped to the run", () => {
+  using _locale = testUiLocale("zh-CN");
   const { progress, projection } = fixture();
   const details = taskTrailDetails(progress, projection);
   expect(details.activities.a?.map((entry) => entry.path)).toEqual(["brief.md"]);
@@ -110,6 +114,7 @@ it("assigns activities only to proven running windows, exclusive at step boundar
   expect(details.durationMs).toBeUndefined();
 });
 it("omits historical rows without a running window, pending anchors and absent projections", () => {
+  using _locale = testUiLocale("zh-CN");
   const { progress, projection } = fixture();
   const onlyLatest = {
     ...projection,
@@ -119,4 +124,171 @@ it("omits historical rows without a running window, pending anchors and absent p
   const { planId: _planId, ...withoutPlan } = progress;
   expect(taskTrailDetails(withoutPlan, projection).activities).toEqual({});
   expect(taskTrailDetails(progress, null)).toEqual({ activities: {}, choices: [] });
+});
+
+it.each(["Bash", "exec_command", "run_command", "run_terminal_command"])(
+  "renders normalized %s provider commands without rewriting records",
+  (toolName) => {
+    using _locale = testUiLocale("zh-CN");
+    const native = fixture().projection.turnItems[1]!;
+    if (native.type !== "dynamic_tool") throw new Error("Expected dynamic-tool fixture");
+    const item = {
+      ...native,
+      type: "dynamic_tool" as const,
+      toolName,
+      input: { command: "/bin/zsh -lc 'cat /tmp/brief.md'", description: "读取任务说明" },
+    };
+    const before = JSON.stringify(item);
+    expect(trailActivity(item)[0]).toMatchObject({
+      kind: "command",
+      label: "读取任务说明",
+      status: "completed",
+      command: "/bin/zsh -lc 'cat /tmp/brief.md'",
+    });
+    expect(JSON.stringify(item)).toBe(before);
+    expect(trailActivity({ ...item, input: { cmd: "cat /tmp/brief.md" } })[0]).toMatchObject({
+      label: "读取",
+      path: "/tmp/brief.md",
+    });
+  },
+);
+it("keeps failed normalized commands failed even if the provider marked the item completed", () => {
+  using _locale = testUiLocale("zh-CN");
+  const native = fixture().projection.turnItems[1]!;
+  if (native.type !== "dynamic_tool") throw new Error("Expected dynamic-tool fixture");
+  const item = {
+    ...native,
+    type: "command_execution" as const,
+    input: "vp test",
+    exitCode: 1,
+    output: "Tests 3 failed | 7 passed",
+  };
+  expect(trailActivity(item)[0]).toMatchObject({ label: "跑测试（失败 3）", status: "failed" });
+});
+
+it("uses the same failed-test result for Claude Bash with nested tool output", () => {
+  using _locale = testUiLocale("zh-CN");
+  const native = fixture().projection.turnItems[1]!;
+  if (native.type !== "dynamic_tool") throw new Error("Expected dynamic-tool fixture");
+  expect(
+    trailActivity({
+      ...native,
+      toolName: "Bash",
+      input: { command: "cd /work && vp test" },
+      output: { stdout: "Tests 4 failed | 8 passed", exit_code: 1 },
+    })[0],
+  ).toMatchObject({
+    label: "跑测试（失败 4）",
+    status: "failed",
+    command: "cd /work && vp test",
+    path: "/work",
+  });
+});
+
+it.each([
+  ["rg needle docs", "", 1, "no_matches"],
+  ["grep needle docs", "", 1, "no_matches"],
+  ["/bin/zsh -lc 'cd docs && rg needle'", "", 1, "no_matches"],
+  ["git grep needle", "", 1, "no_matches"],
+  ["/bin/zsh -lc 'fd needle docs'", undefined, 1, "no_matches"],
+  ["find . -name '*.csv'", "", 1, "no_matches"],
+  ["rg needle docs", "Permission denied", 1, "failed"],
+  ["rg needle docs", "", 2, "failed"],
+  ["cat docs/*.txt", "", 1, "failed"],
+  ["rg needle docs && false", "", 1, "failed"],
+  ["rg needle docs 2>/dev/null", "", 1, "failed"],
+] as const)("classifies %s with output %j and exit %d as %s", (input, output, exitCode, status) => {
+  using _locale = testUiLocale("zh-CN");
+  const item = fixture().projection.turnItems[1]!;
+  if (item.type !== "dynamic_tool") throw new Error("Expected dynamic-tool fixture");
+  expect(
+    trailActivity({
+      ...item,
+      type: "command_execution",
+      status: "failed",
+      input,
+      output,
+      exitCode,
+    })[0]?.status,
+  ).toBe(status);
+});
+
+it("checks explicit stderr separately from stdout for shell tool searches", () => {
+  using _locale = testUiLocale("zh-CN");
+  const item = fixture().projection.turnItems[1]!;
+  if (item.type !== "dynamic_tool") throw new Error("Expected dynamic-tool fixture");
+  const search = {
+    ...item,
+    toolName: "Bash",
+    input: { command: "rg --stats needle docs" },
+    output: { stdout: "0 matches", stderr: "", exit_code: 1 },
+    status: "failed" as const,
+  };
+  expect(trailActivity(search)[0]?.status).toBe("no_matches");
+  expect(
+    trailActivity({
+      ...search,
+      output: { ...search.output, stderr: "Permission denied" },
+    })[0]?.status,
+  ).toBe("failed");
+  expect(
+    trailActivity({
+      ...search,
+      input: { command: "find docs -name needle" },
+    })[0]?.status,
+  ).toBe("failed");
+});
+
+it("recognizes Antigravity dynamic tools and synthesizes live activity steps when no todo_list exists", () => {
+  using _locale = testUiLocale("zh-CN");
+  const { projection } = fixture();
+  const baseTool = projection.turnItems[1]!;
+  if (baseTool.type !== "dynamic_tool") throw new Error("Expected dynamic-tool fixture");
+  const agyRead = {
+    ...baseTool,
+    toolName: "read_file",
+    input: { Path: "/abs/src/spotlightSearchIndex.ts" },
+    status: "completed" as const,
+  };
+  const agySubagent = {
+    ...baseTool,
+    toolName: "invoke_subagent",
+    input: { Role: "Backend Bug Auditor" },
+    status: "running" as const,
+  };
+  expect(trailActivity(agyRead)[0]).toMatchObject({
+    kind: "read",
+    path: "/abs/src/spotlightSearchIndex.ts",
+  });
+  expect(trailActivity(agySubagent)[0]).toMatchObject({
+    kind: "delegate",
+  });
+  const run: OrchestrationV2Run = {
+    id: baseTool.runId!,
+    threadId: projection.thread.id,
+    ordinal: 1,
+    providerInstanceId: projection.thread.providerInstanceId,
+    modelSelection: projection.thread.modelSelection,
+    providerThreadId: null,
+    userMessageId: MessageId.make("user-1"),
+    rootNodeId: null,
+    activeAttemptId: null,
+    status: "running",
+    requestedAt: projection.updatedAt,
+    startedAt: projection.updatedAt,
+    completedAt: null,
+    checkpointId: null,
+    contextHandoffId: null,
+  };
+  const noPlanProjection = {
+    ...projection,
+    runs: [run],
+    plans: [],
+    turnItems: [agyRead, agySubagent],
+  };
+  const snapshot = liveActivityTrailSnapshot(noPlanProjection, null, true);
+  expect(snapshot).not.toBeNull();
+  expect(snapshot?.progress.total).toBe(2);
+  expect(snapshot?.progress.state).toBe("running");
+  expect(Object.keys(snapshot?.details.activities ?? {})).toHaveLength(2);
 });

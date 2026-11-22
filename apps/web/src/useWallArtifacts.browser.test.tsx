@@ -1,6 +1,6 @@
-import type { EnvironmentId } from "@t3tools/contracts";
+import type { EnvironmentId, WallArtifact } from "@t3tools/contracts";
 import { expect, it, vi } from "vite-plus/test";
-import { render } from "../test/render";
+import { act, fakeTimers, render } from "../test/render";
 import { loadWallArtifacts } from "./lib/artifactWallClient";
 import { useWallArtifacts } from "./useWallArtifacts";
 
@@ -45,4 +45,39 @@ it("shares the pending request and cancels only after the final consumer leaves"
   expect(signal.aborted).toBe(true);
   expect(load).toHaveBeenCalledTimes(2);
   expect(load.mock.calls[1]![1]).toBe("another-collection");
+});
+
+it("does not render subscribers for unchanged polls, but publishes metadata edits", async () => {
+  const artifact = {
+    id: "one",
+    name: "one.png",
+    path: "/outputs/one.png",
+    kind: "image",
+    extension: "png",
+    source: "path_reference",
+    createdAt: "2026-10-25T08:00:00.000Z",
+    sizeBytes: 12,
+  } as WallArtifact;
+  const load = vi.mocked(loadWallArtifacts).mockReset();
+  load.mockImplementation(async () => [structuredClone(artifact)]);
+  const rendered = vi.fn();
+  function Probe() {
+    const state = useWallArtifacts("environment-local" as EnvironmentId, "stable-poll");
+    rendered(state.artifacts);
+    return <output>{state.loading ? "loading" : state.artifacts[0]?.name}</output>;
+  }
+  // The first successful read arms the collection's poll timer during mounting.
+  using _timers = fakeTimers();
+  // The collection has no routing dependency.
+  await using screen = await render(<Probe />, { router: false });
+  await expect.element(screen.getByText("one.png")).toBeInTheDocument();
+  const calls = rendered.mock.calls.length;
+  const first = rendered.mock.calls.at(-1)![0];
+  await act(() => vi.advanceTimersByTimeAsync(15_000));
+  expect(load).toHaveBeenCalledTimes(2);
+  expect(rendered).toHaveBeenCalledTimes(calls);
+  load.mockResolvedValue([{ ...artifact, name: "renamed.png" }]);
+  await act(() => vi.advanceTimersByTimeAsync(15_000));
+  await expect.element(screen.getByText("renamed.png")).toBeInTheDocument();
+  expect(rendered.mock.calls.at(-1)![0]).not.toBe(first);
 });

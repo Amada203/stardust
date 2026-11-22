@@ -1,3 +1,4 @@
+import { uiText } from "./i18n";
 import type { AnyRouter } from "@tanstack/react-router";
 import type { AtomRegistry } from "effect/reactivity";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
@@ -77,7 +78,10 @@ export function startTaskBoardNotifications(
               }
               const id = toastManager.add({
                 type: "warning",
-                title: task.state === "blocked" ? "任务需要解除阻塞" : "轮到你了",
+                title:
+                  task.state === "blocked"
+                    ? uiText("Task needs unblocking")
+                    : uiText("It’s your turn"),
                 description: (
                   <span className="block space-y-2">
                     <span className="block">{task.title}</span>
@@ -88,7 +92,7 @@ export function startTaskBoardNotifications(
                 ...(ref
                   ? {
                       actionProps: {
-                        children: "查看任务",
+                        children: uiText("View task"),
                         onClick: () => {
                           requestTaskBoardCard(task.folder);
                           useRightPanelStore
@@ -112,8 +116,11 @@ export function startTaskBoardNotifications(
           Notification.permission === "granted"
         ) {
           try {
-            desktop = new Notification("今日任务汇总", {
-              body: `等你 ${data.counts.user} · 阻塞 ${data.counts.blocked} · 超 3 天没动 ${data.counts.stale}`,
+            desktop = new Notification(uiText("Today’s tasks"), {
+              body: uiText(
+                "{user} waiting for you · {blocked} blocked · {stale} idle over 3 days",
+                { user: data.counts.user, blocked: data.counts.blocked, stale: data.counts.stale },
+              ),
               tag: "t3-task-board-daily",
               silent: true,
             });

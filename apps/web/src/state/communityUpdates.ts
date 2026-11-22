@@ -1,3 +1,4 @@
+import { uiText } from "../i18n";
 import { create } from "zustand";
 import {
   COMMUNITY_BASE_TAG,
@@ -11,13 +12,16 @@ import {
 const KEY = "t3code:community-updates:v1";
 type Preferences = {
   mode: CommunityUpdateMode;
+  /** True once the user picks a mode; until then the default applies. */
+  modeChosen: boolean;
   automatic: boolean;
   lastAttempt: number;
   notifiedTag: string;
 };
 function readPreferences(): Preferences {
   const defaults: Preferences = {
-    mode: "custom",
+    mode: "standard",
+    modeChosen: false,
     automatic: true,
     lastAttempt: 0,
     notifiedTag: "",
@@ -27,7 +31,9 @@ function readPreferences(): Preferences {
     if (!value || typeof value !== "object") return defaults;
     const v = value as Record<string, unknown>;
     return {
-      mode: v.mode === "standard" ? "standard" : "custom",
+      // Earlier builds stored their "custom" default without a user choice; only honor explicit picks.
+      mode: v.modeChosen === true && v.mode === "custom" ? "custom" : "standard",
+      modeChosen: v.modeChosen === true,
       automatic: typeof v.automatic === "boolean" ? v.automatic : defaults.automatic,
       lastAttempt:
         typeof v.lastAttempt === "number" &&
@@ -55,11 +61,16 @@ let pending: Promise<void> | null = null;
 export const useCommunityUpdates = create<CommunityUpdatesState>((set, get) => {
   const save = (patch: Partial<Preferences>) => {
     set(patch);
-    const { mode, automatic, lastAttempt, notifiedTag } = get();
+    const { mode, modeChosen, automatic, lastAttempt, notifiedTag } = get();
     try {
-      localStorage.setItem(KEY, JSON.stringify({ mode, automatic, lastAttempt, notifiedTag }));
+      localStorage.setItem(
+        KEY,
+        JSON.stringify({ mode, modeChosen, automatic, lastAttempt, notifiedTag }),
+      );
     } catch {
-      set({ error: "更新偏好暂时无法保存，重启后可能恢复默认值" });
+      set({
+        error: uiText("Couldn’t save update preferences. Defaults may return after restart."),
+      });
     }
   };
   return {
@@ -67,7 +78,7 @@ export const useCommunityUpdates = create<CommunityUpdatesState>((set, get) => {
     status: "idle",
     release: null,
     error: null,
-    setMode: (mode) => save({ mode }),
+    setMode: (mode) => save({ mode, modeChosen: true }),
     setAutomatic: (automatic) => save({ automatic }),
     markNotified: (tag) => save({ notifiedTag: tag }),
     check: (manual = false) => {
@@ -93,17 +104,21 @@ export const useCommunityUpdates = create<CommunityUpdatesState>((set, get) => {
           if (!response.ok)
             throw new Error(
               response.status === 403 || response.status === 429
-                ? "检查过于频繁或 GitHub 暂时限制访问，请稍后再试"
-                : `检查失败（HTTP ${response.status}）`,
+                ? uiText("GitHub is rate-limiting update checks. Try again later.")
+                : uiText("Update check failed (HTTP {status})", { status: response.status }),
             );
           const release = parseCommunityRelease(await response.json());
           const baseline = communityReleaseNumber(COMMUNITY_BASE_TAG);
-          if (baseline === null) throw new Error("本地社区基线未知，请手动查看发行页");
+          if (baseline === null)
+            throw new Error(uiText("Local community baseline unknown. Check the releases page."));
           set({ status: release.number > baseline ? "available" : "current", release });
         } catch (error) {
           set({
             status: "error",
-            error: error instanceof Error ? error.message : "暂时无法连接 GitHub，请稍后重试",
+            error:
+              error instanceof Error
+                ? error.message
+                : uiText("Couldn’t reach GitHub. Try again later."),
           });
         }
       })().finally(() => {

@@ -52,7 +52,7 @@ it("shows only child task rows and navigates into the child conversation", async
   await using screen = await render(
     <SubtaskList tasks={[task]} environmentId={env} providers={[]} />,
   );
-  expect(screen.container.querySelector(".combo-trail")).toBeNull();
+  expect(screen.container.querySelector(".plan-capsule")).toBeNull();
   expect(screen.container.querySelector("details")).toBeNull();
   await screen.getByRole("button", { name: /复核配色/ }).click();
   expect(screen.router?.state.location.pathname).toBe("/c64-local/child-thread");

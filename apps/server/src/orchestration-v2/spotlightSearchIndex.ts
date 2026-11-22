@@ -127,8 +127,13 @@ export class SpotlightIndex {
     if (cachePath !== ":memory:")
       NodeFS.mkdirSync(NodePath.dirname(cachePath), { recursive: true, mode: 0o700 });
     this.cache = new NodeSqlite.DatabaseSync(cachePath);
+    if (this.cache.prepare("PRAGMA user_version").get()!.user_version !== 3) {
+      this.cache.exec(`DROP TRIGGER IF EXISTS docs_ai; DROP TRIGGER IF EXISTS docs_ad;
+        DROP TRIGGER IF EXISTS docs_au; DROP TABLE IF EXISTS document_fts;
+        DROP TABLE IF EXISTS documents; PRAGMA user_version=3;`);
+    }
     this.cache
-      .exec(`PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA journal_size_limit=33554432; PRAGMA max_page_count=49152;
+      .exec(`PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA journal_size_limit=33554432; PRAGMA max_page_count=131072;
       CREATE TABLE IF NOT EXISTS documents(rowid INTEGER PRIMARY KEY,id TEXT,threadId TEXT,role TEXT,text TEXT,terms TEXT,createdAt TEXT,updatedAt TEXT);
       CREATE VIRTUAL TABLE IF NOT EXISTS document_fts USING fts5(terms,content='documents',content_rowid='rowid',tokenize='unicode61');
       CREATE TRIGGER IF NOT EXISTS docs_ai AFTER INSERT ON documents BEGIN INSERT INTO document_fts(rowid,terms) VALUES(new.rowid,new.terms); END;
@@ -158,7 +163,7 @@ export class SpotlightIndex {
       )
       .all() as unknown as Omit<IndexedMessage, "text">[];
     const read = this.source.prepare(
-      "SELECT json_extract(payload_json,'$.text') AS text FROM orchestration_v2_projection_messages WHERE rowid=? AND streaming=0",
+      "SELECT COALESCE(search_text, json_extract(payload_json, '$.text')) AS text FROM orchestration_v2_projection_messages WHERE rowid=? AND streaming=0",
     );
     const insert = this.cache.prepare(
       "INSERT INTO documents VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(rowid) DO UPDATE SET id=excluded.id,threadId=excluded.threadId,role=excluded.role,text=excluded.text,terms=excluded.terms,createdAt=excluded.createdAt,updatedAt=excluded.updatedAt",
@@ -169,8 +174,10 @@ export class SpotlightIndex {
         const prev = old.get(row.rowid);
         old.delete(row.rowid);
         if (prev?.id === row.id && prev.updatedAt === row.updatedAt) continue;
-        const text = read.get(row.rowid)?.text;
-        if (typeof text !== "string") continue;
+        const rawText = read.get(row.rowid)?.text;
+        if (typeof rawText !== "string") continue;
+        // Cap huge pasted blobs per message so one log dump cannot exhaust the local FTS index budget.
+        const text = rawText.length > 16_384 ? rawText.slice(0, 16_384) : rawText;
         insert.run(
           row.rowid,
           row.id,
@@ -199,7 +206,7 @@ export class SpotlightIndex {
           return n;
         }
       }, 0);
-      if (bytes > 256 * 1024 * 1024) throw new Error("Search index exceeded its 256 MiB budget");
+      if (bytes > 512 * 1024 * 1024) throw new Error("Search index exceeded its 512 MiB budget");
     }
   }
   search(query: string, limit = 50): SpotlightMatch[] {

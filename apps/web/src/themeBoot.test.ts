@@ -1,13 +1,14 @@
-import { APPLE_THEME } from "@t3tools/shared/themePalettes";
 import { describe, expect, it, vi } from "vite-plus/test";
 
 import indexHtml from "../index.html?raw";
 import {
   CUSTOM_THEMES_STORAGE_KEY,
+  ENVIRONMENT_THEMES_STORAGE_KEY,
   getDefaultThemeColors,
   getThemeColorsForMode,
   invalidateCustomThemes,
   isKnownThemePreference,
+  publishedThemeDefinitions,
   resolveThemeAppearance,
   T3_CHAT_THEME,
   EMBER_THEME,
@@ -284,6 +285,30 @@ describe("index.html boot script", () => {
     expect(boot.metaContent).toBe(colors.chrome);
   });
 
+  it("paints a published theme from its stored copy before the server connects", () => {
+    const [published] = publishedThemeDefinitions([
+      {
+        id: "nightfall",
+        name: "Nightfall",
+        appearance: "dark",
+        canvas: "#1a1b26",
+        accent: "#7aa2f7",
+      },
+    ]);
+    if (!published) throw new Error("expected the published theme");
+    const boot = runBootScript({
+      storage: {
+        [THEME_STORAGE_KEY]: "nightfall",
+        [ENVIRONMENT_THEMES_STORAGE_KEY]: JSON.stringify([published]),
+      },
+      prefersDark: true,
+    });
+
+    expect(boot.themeId).toBe("nightfall");
+    expect(boot.bootVariables["--boot-background"]).toBe(published.colors.canvas);
+    expect(boot.backgroundColor).toBe(published.colors.chrome);
+  });
+
   it("keeps every built-in boot splash in sync with the real palettes", () => {
     for (const theme of [T3_CHAT_THEME, GROVE_THEME, OCEAN_THEME, EMBER_THEME, IRIS_THEME]) {
       expect(theme.appearance).toBe("light");
@@ -380,23 +405,4 @@ describe("index.html boot script", () => {
     const dark = runBootScript({ storageThrows: true, prefersDark: true });
     expect(dark.isDark).toBe(true);
   });
-});
-
-it("boots Apple in the selected appearance before React mounts", () => {
-  for (const mode of ["light", "dark"] as const) {
-    const colors = getThemeColorsForMode(APPLE_THEME, mode)!;
-    const boot = runBootScript({
-      storage: {
-        [THEME_STORAGE_KEY]: "apple",
-        [THEME_APPEARANCE_MODE_STORAGE_KEY]: mode,
-      },
-      prefersDark: mode !== "dark",
-    });
-    expect(boot.themeId).toBe("apple");
-    expect(boot.isDark).toBe(mode === "dark");
-    expect(boot.bootVariables["--boot-background"]).toBe(colors.canvas);
-    expect(boot.bootVariables["--boot-foreground"]).toBe(colors.text);
-    expect(boot.bootVariables["--boot-accent"]).toBe(colors.accent);
-    expect(boot.backgroundColor).toBe(colors.chrome);
-  }
 });

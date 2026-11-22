@@ -1,5 +1,7 @@
 // Remote clients cannot answer macOS prompts; time out reads but retain the in-flight request for reuse.
-import * as NodeModule from "node:module";
+import * as ChildProcess from "effect/process/ChildProcess";
+import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
+import { collectUint8StreamText } from "@t3tools/provider-core/server/collectStreamText";
 
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
@@ -12,8 +14,6 @@ import * as Schema from "effect/Schema";
 
 const CACHE_MS = 5 * 60_000;
 const DEFAULT_TIMEOUT = Duration.seconds(30);
-
-const requireForKeyring = NodeModule.createRequire(import.meta.url);
 
 export class CursorKeychainTimeoutError extends Schema.TaggedError<CursorKeychainTimeoutError>()(
   "CursorKeychainTimeoutError",
@@ -45,20 +45,33 @@ export class CursorKeychain extends Context.Service<
   }
 >()("@t3tools/provider-cursor/server/CursorKeychain") {}
 
-const readKeychainEntry = Effect.tryPromise({
-  try: async () => {
-    const { AsyncEntry } = requireForKeyring(
-      "@napi-rs/keyring",
-    ) as typeof import("@napi-rs/keyring");
-    return (await new AsyncEntry("cursor-access-token", "cursor-user").getPassword()) ?? null;
-  },
-  catch: (cause) => new CursorKeychainReadError({ cause }),
-});
-
-const make = (
-  read: Effect.Effect<string | null, CursorKeychainReadError> = readKeychainEntry,
-  timeout: Duration.Input = DEFAULT_TIMEOUT,
-): CursorKeychain["Service"] => {
+export const make = Effect.gen(function* () {
+  const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+  const read = Effect.gen(function* () {
+    const child = yield* spawner.spawn(
+      ChildProcess.make(
+        "/usr/bin/security",
+        ["find-generic-password", "-s", "cursor-access-token", "-a", "cursor-user", "-w"],
+        { forceKillAfter: "1 second", stderr: "ignore" },
+      ),
+    );
+    const [stdout, code] = yield* Effect.all(
+      [collectUint8StreamText({ stream: child.stdout, maxBytes: 65536 }), child.exitCode],
+      { concurrency: "unbounded" },
+    );
+    if (Number(code) === 44) return null;
+    if (Number(code) !== 0 || stdout.truncated || stdout.invalidUtf8) {
+      return yield* new CursorKeychainReadError({
+        cause: new Error("Cursor Keychain access failed"),
+      });
+    }
+    return stdout.text.trim() || null;
+  }).pipe(
+    Effect.scoped,
+    Effect.timeout(DEFAULT_TIMEOUT),
+    Effect.mapError((cause) => new CursorKeychainReadError({ cause })),
+  );
+  const timeout = DEFAULT_TIMEOUT;
   let cached: { readonly token: string; readonly untilMs: number } | null = null;
   let pending: Deferred.Deferred<string | null, CursorKeychainReadError> | null = null;
 
@@ -97,6 +110,6 @@ const make = (
   });
 
   return CursorKeychain.of({ accessToken });
-};
+});
 
-export const layer = Layer.sync(CursorKeychain, () => make());
+export const layer = Layer.effect(CursorKeychain, make);

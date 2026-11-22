@@ -1,3 +1,4 @@
+import { testUiLocale } from "../../../test/uiLocale";
 import { applyThemePalette } from "../../themePalette";
 import { ComposerBannerStack } from "./ComposerBannerStack";
 import { Button } from "../ui/button";
@@ -41,6 +42,7 @@ function setup() {
 }
 
 it("renders only supported rows and the resume controls", async () => {
+  using _locale = testUiLocale("zh-CN");
   setup();
   const action = async () => {};
   await using screen = await render(
@@ -65,6 +67,7 @@ it("renders only supported rows and the resume controls", async () => {
 });
 
 it("keeps failed submissions retryable and hides only after the existing send accepts", async () => {
+  using _locale = testUiLocale("zh-CN");
   setup();
   const send = vi
     .fn<() => Promise<void>>()
@@ -93,6 +96,7 @@ it("keeps failed submissions retryable and hides only after the existing send ac
 });
 
 it("hides locally for later and skips exit motion under reduced motion", async () => {
+  using _locale = testUiLocale("zh-CN");
   setup();
   const media = window.matchMedia("(prefers-reduced-motion: reduce)");
   using _matches = vi.spyOn(media, "matches", "get").mockReturnValue(true);
@@ -112,7 +116,7 @@ it("hides locally for later and skips exit motion under reduced motion", async (
   expect(screen.container.querySelector("[data-resume-card]")).toBeNull();
 });
 
-it("fits the three workbench themes and keeps artifacts on one row", async () => {
+it("fits the three workbench themes with the upstream banner layout", async () => {
   setup();
   const action = async () => {};
   await using screen = await render(
@@ -151,10 +155,8 @@ it("fits the three workbench themes and keeps artifacts on one row", async () =>
     fixture.classList.replace("w-[45rem]", "w-80");
     expect(fixture.scrollWidth).toBeLessThanOrEqual(fixture.clientWidth);
     fixture.classList.replace("w-80", "w-[45rem]");
-    const row = screen.container.querySelector(
-      "[data-artifact-compact] [data-composer-banner-row]",
-    )!;
-    expect(getComputedStyle(row).flexWrap).toBe("nowrap");
+    const row = screen.container.querySelector("[data-composer-banner-row]")!;
+    expect(row.scrollWidth).toBeLessThanOrEqual(row.clientWidth);
     if (import.meta.env.VITE_CAPTURE_RESUME_CARD === "1") {
       await page.getByTestId("resume-fixture").screenshot({ path: `c61-card-${theme}.png` });
     }

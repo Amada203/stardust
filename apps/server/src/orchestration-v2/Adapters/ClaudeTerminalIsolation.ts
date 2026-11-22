@@ -3,6 +3,7 @@ import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import type { Options } from "@anthropic-ai/claude-agent-sdk";
+import { CLAUDE_TASK_TOOLS_ENV, withClaudeTaskTools } from "./ClaudeTaskTools.ts";
 
 const FORWARDED_ENV = new Set([
   "PATH",
@@ -30,6 +31,9 @@ const FORWARDED_ENV = new Set([
   "CLAUDE_CODE_MAX_RETRIES",
   "T3_CLAUDE_TUI_TEST_UPSTREAM",
   "T3CODE_THREAD_ID",
+  "CLAUDE_CODE_RESUME_INTERRUPTED_TURN",
+  "CLAUDE_CODE_RESUME_REASON",
+  CLAUDE_TASK_TOOLS_ENV,
 ]);
 const SETTING_KEYS = new Set([
   "autoCompactWindow",
@@ -152,8 +156,12 @@ export function isolateClaudeTerminalOptions(
     if (server.type !== "http" && server.type !== "sse")
       fail("only HTTP MCP servers are supported in this prototype");
   }
-  const env: NodeJS.ProcessEnv = Object.fromEntries(
-    Object.entries(parent).filter(([key, value]) => FORWARDED_ENV.has(key) && value !== undefined),
+  const env: NodeJS.ProcessEnv = withClaudeTaskTools(
+    Object.fromEntries(
+      Object.entries(parent).filter(
+        ([key, value]) => FORWARDED_ENV.has(key) && value !== undefined,
+      ),
+    ),
   );
   Object.assign(env, {
     HOME: home,
@@ -257,8 +265,12 @@ function isolateSelectedAccount(options: Options): Options {
     if (server.type !== "http" && server.type !== "sse")
       fail("TUI currently supports HTTP/SSE MCP only");
   }
-  const env = Object.fromEntries(
-    Object.entries(parent).filter(([key, value]) => FORWARDED_ENV.has(key) && value !== undefined),
+  const env = withClaudeTaskTools(
+    Object.fromEntries(
+      Object.entries(parent).filter(
+        ([key, value]) => FORWARDED_ENV.has(key) && value !== undefined,
+      ),
+    ),
   );
   return {
     ...options,

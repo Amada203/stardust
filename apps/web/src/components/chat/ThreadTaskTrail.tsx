@@ -2,8 +2,8 @@ import { useState, type ReactNode } from "react";
 import type { ScopedThreadRef } from "@t3tools/contracts";
 import type { ThreadStructure } from "@t3tools/client-runtime/state/shell";
 import type { TaskProgressSnapshot } from "../../taskProgress";
-import { TaskProgressSteps } from "./TaskProgressSteps";
-import { taskTrailDetails } from "./taskTrailModel";
+import { TaskPlanCapsule, waitingStepId } from "./TaskPlanCapsule";
+import { taskTrailDetails, type TrailDetails } from "./taskTrailModel";
 import { TaskTrailDecision, type TrailDecisionInput } from "./TaskTrailDecision";
 import { useWallArtifacts } from "../../useWallArtifacts";
 import { approvalPresentation, trailApprovalResults } from "../../approvalPresentation";
@@ -14,16 +14,20 @@ export function ThreadTaskTrail({
   threadRef,
   progress,
   projection = null,
+  details,
   decision,
   approvals,
   onOpenFile,
+  onDismissed,
 }: {
   readonly threadRef: ScopedThreadRef;
   readonly progress: TaskProgressSnapshot;
   readonly projection?: ThreadStructure | null;
+  readonly details?: TrailDetails | undefined;
   readonly decision?: TrailDecisionInput;
   readonly approvals?: TrailApprovalInput;
   readonly onOpenFile?: (path: string) => void;
+  readonly onDismissed?: () => void;
 }) {
   const artifacts = useWallArtifacts(
     threadRef.environmentId,
@@ -60,10 +64,7 @@ export function ThreadTaskTrail({
   }
   const approval = approvals?.pending[0];
   const results = trailApprovalResults(projection, progress);
-  const stepId =
-    progress.steps.find((step) => step.status === "running")?.id ??
-    progress.steps.find((step) => step.status === "pending")?.id ??
-    progress.steps.at(-1)?.id;
+  const stepId = waitingStepId(progress);
   const [bindings, setBindings] = useState<{
     planId: string | undefined;
     steps: Record<string, string>;
@@ -94,36 +95,32 @@ export function ThreadTaskTrail({
       );
   }
   return (
-    <div className="chat-content-lane pb-3" data-thread-task-trail="true">
-      <TaskProgressSteps
-        expansionKey={`${threadRef.environmentId}:${threadRef.threadId}`}
-        variant="trail"
-        progress={progress}
-        defaultExpanded={progress.state !== "complete"}
-        details={taskTrailDetails(progress, projection)}
-        {...(approval && approvals
-          ? {
-              approval: {
-                requestId: approval.requestId,
-                summary: approvalPresentation(approval).summary,
-                card: <TaskTrailApproval input={approvals} />,
-              },
-            }
-          : {})}
-        {...(results.length ? { approvalResults: resultsByStep } : {})}
-        {...(onOpenFile ? { onOpenFile } : {})}
-        {...(decision
-          ? {
-              decision: (
-                <TaskTrailDecision
-                  key={`${decision.requestId}:${decision.question.id}`}
-                  input={decision}
-                  images={images}
-                />
-              ),
-            }
-          : {})}
-      />
-    </div>
+    <TaskPlanCapsule
+      progress={progress}
+      details={details ?? taskTrailDetails(progress, projection)}
+      {...(approval && approvals
+        ? {
+            approval: {
+              requestId: approval.requestId,
+              summary: approvalPresentation(approval).summary,
+              card: <TaskTrailApproval input={approvals} />,
+            },
+          }
+        : {})}
+      {...(results.length ? { approvalResults: resultsByStep } : {})}
+      {...(onOpenFile ? { onOpenFile } : {})}
+      {...(onDismissed ? { onDismissed } : {})}
+      {...(decision
+        ? {
+            decision: (
+              <TaskTrailDecision
+                key={`${decision.requestId}:${decision.question.id}`}
+                input={decision}
+                images={images}
+              />
+            ),
+          }
+        : {})}
+    />
   );
 }

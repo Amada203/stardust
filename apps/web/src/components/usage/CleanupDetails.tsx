@@ -1,9 +1,13 @@
+import { serverCopy } from "~/i18n/serverCopy";
+import { uiText } from "../../i18n";
+import { Tooltip, TooltipTrigger, TooltipPopup } from "../ui/tooltip";
+import { useTheme } from "../../hooks/useTheme";
 import { useState } from "react";
 import type { StorageActionInput, StorageInspection } from "@t3tools/contracts";
 import { Button } from "../ui/button";
 import { cleanupRisk, GIB } from "./cleanupModel";
 import { formatBytes } from "../../lib/formatBytes";
-import { cleanupText as text, cleanupCategoryLabel } from "./cleanupText";
+import { cleanupCategoryLabel } from "./cleanupText";
 import styles from "./cleanupOverview.module.css";
 
 function splitTiles(
@@ -39,7 +43,9 @@ export function CleanupDetails({
   disabled,
   onSettings,
   onSelect,
+  selectedVolumePath,
 }: {
+  selectedVolumePath?: string;
   data: StorageInspection;
   disabled: boolean;
   onSettings?:
@@ -47,18 +53,29 @@ export function CleanupDetails({
     | undefined;
   onSelect: (id: string) => void;
 }) {
+  const { theme } = useTheme();
+  const apple = theme === "apple";
   const [volumePath, setVolumePath] = useState("");
   const [category, setCategory] = useState<string | null>(null);
-  const volume = data.volumes.find((v) => v.path === volumePath) ?? data.volumes[0];
+  const volume =
+    data.volumes.find((v) => v.path === (selectedVolumePath ?? volumePath)) ?? data.volumes[0];
   const entries = data.entries.filter(
     (e) => (!volume || e.volumePath === volume.path) && e.bytes != null && e.bytes > 0,
   );
   const nonOverlapping = entries.filter(
-    (e) => !entries.some((other) => other.id !== e.id && e.path.startsWith(other.path + "/")),
+    (e) =>
+      !entries.some(
+        (other) =>
+          !other.id.endsWith(":remainder") &&
+          other.id !== e.id &&
+          e.path.startsWith(other.path + "/"),
+      ),
   );
+  const keyFor = (e: (typeof entries)[number]) =>
+    cleanupRisk(e) === "locked" ? e.id : (e.category ?? e.kind);
   const grouped = new Map<string, number>();
   for (const e of nonOverlapping)
-    grouped.set(e.category ?? e.kind, (grouped.get(e.category ?? e.kind) ?? 0) + (e.bytes ?? 0));
+    grouped.set(keyFor(e), (grouped.get(keyFor(e)) ?? 0) + (e.bytes ?? 0));
   const rows = category
     ? nonOverlapping
         .filter((e) => (e.category ?? e.kind) === category)
@@ -66,136 +83,155 @@ export function CleanupDetails({
     : [...grouped].map(([id, bytes]) => ({ id, bytes }));
   const tiles = splitTiles(rows.toSorted((a, b) => b.bytes - a.bytes));
   return (
-    <details className={styles.group}>
+    <details className={styles.group} data-clean-map={apple || undefined} open={apple || undefined}>
       <summary>
-        <span>{text("Space map & protection", "空间构成与保护设置")}</span>
-        <span>{text("Details", "展开")}</span>
+        <span>{apple ? uiText("Space map") : uiText("Space map & protection")}</span>
+        {!apple ? <span>{uiText("Expand")}</span> : <span data-usage-map-disk>{volume?.name}</span>}
       </summary>
       <div className={styles.detailsBody}>
-        <label className={styles.destination}>
-          {text("Volume", "磁盘")}
-          <select
-            value={volume?.path ?? ""}
-            onChange={(e) => {
-              setVolumePath(e.target.value);
-              setCategory(null);
-            }}
-          >
-            {data.volumes.map((v) => (
-              <option key={v.id} value={v.path}>
-                {v.name}
-              </option>
-            ))}
-          </select>
-        </label>
+        {!apple ? (
+          <label className={styles.destination}>
+            {uiText("Volume")}
+            <select
+              value={volume?.path ?? ""}
+              onChange={(e) => {
+                setVolumePath(e.target.value);
+                setCategory(null);
+              }}
+            >
+              {data.volumes.map((v) => (
+                <option key={v.id} value={v.path}>
+                  {serverCopy(v.name)}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
         <div className={styles.listHeading}>
           <button type="button" className={styles.clear} onClick={() => setCategory(null)}>
-            {text("Measured items", "已测量项目")}
+            {uiText("Measured items")}
           </button>
           <span>
-            {category
-              ? cleanupCategoryLabel(category)
-              : text("Select a category to drill down", "点分类下钻；未测量项目不计入")}
+            {category ? cleanupCategoryLabel(category) : uiText("Select a category to drill down")}
           </span>
         </div>
         <div
           className={styles.treemap}
-          aria-label={text("Measured storage treemap", "已测量空间树图")}
+          data-empty={tiles.length ? undefined : true}
+          aria-label={uiText("Measured storage treemap")}
         >
           {tiles.map((tile, index) => {
-            const entry = category ? nonOverlapping.find((e) => e.id === tile.id) : undefined;
+            const entry = nonOverlapping.find((e) => e.id === tile.id);
             const row = rows.find((r) => r.id === tile.id)!;
             return (
-              <button
-                type="button"
-                key={tile.id}
-                aria-label={`${entry?.path ?? cleanupCategoryLabel(tile.id)} · ${formatBytes(row.bytes)}`}
-                style={{
-                  left: `${tile.x}%`,
-                  top: `${tile.y}%`,
-                  width: `${tile.width}%`,
-                  height: `${tile.height}%`,
-                  opacity: 1 - (index % 3) * 0.12,
-                }}
-                disabled={disabled || (!!entry && cleanupRisk(entry) === "locked")}
-                onClick={() => (entry ? onSelect(entry.id) : setCategory(tile.id))}
-              >
-                <strong>{entry?.name ?? cleanupCategoryLabel(tile.id)}</strong>
-                <span>{formatBytes(row.bytes)}</span>
-              </button>
+              <Tooltip key={tile.id}>
+                <TooltipTrigger
+                  render={<button type="button" />}
+                  data-small={tile.width < 18 || tile.height < 14 || undefined}
+                  aria-label={`${entry?.path ?? cleanupCategoryLabel(tile.id)} · ${formatBytes(row.bytes)}`}
+                  style={{
+                    left: `${tile.x}%`,
+                    top: `${tile.y}%`,
+                    width: `${tile.width}%`,
+                    height: `${tile.height}%`,
+                    opacity: 1 - (index % 3) * 0.12,
+                  }}
+                  data-protected={
+                    entry
+                      ? cleanupRisk(entry) === "locked"
+                      : nonOverlapping
+                          .filter((e) => (e.category ?? e.kind) === tile.id)
+                          .some((e) => cleanupRisk(e) === "locked")
+                  }
+                  disabled={disabled}
+                  onClick={() =>
+                    entry
+                      ? cleanupRisk(entry) !== "locked"
+                        ? onSelect(entry.id)
+                        : undefined
+                      : setCategory(tile.id)
+                  }
+                >
+                  <strong>
+                    {entry?.path.endsWith("/sessions")
+                      ? uiText("Conversation records")
+                      : (entry?.name ?? cleanupCategoryLabel(tile.id))}
+                    {entry && cleanupRisk(entry) === "locked" ? uiText(" · Protected") : ""}
+                  </strong>
+                  <span>{formatBytes(row.bytes)}</span>
+                </TooltipTrigger>
+                <TooltipPopup>
+                  {entry?.name ?? cleanupCategoryLabel(tile.id)} · {formatBytes(row.bytes)}
+                </TooltipPopup>
+              </Tooltip>
             );
           })}
-          {!tiles.length ? (
-            <p>
-              {text("No measured entries on this volume yet.", "此卷暂无已测量项目，请先扫描。")}
-            </p>
-          ) : null}
+          {!tiles.length ? <p>{uiText("No measured entries on this volume yet.")}</p> : null}
         </div>
-        <div className={styles.settingsGrid}>
-          {data.volumes.map((v) => (
-            <form
-              className={styles.protection}
-              key={`${v.id}:${v.reserveGiB}`}
-              onSubmit={(event) => {
-                event.preventDefault();
-                const reserve = Number(new FormData(event.currentTarget).get("reserve"));
-                if (Number.isFinite(reserve) && reserve >= 40 && reserve <= 1024)
-                  onSettings?.({
-                    action: "cleanup-settings",
-                    volumePath: v.path,
-                    reserveGiB: reserve,
-                  });
-              }}
-            >
-              <strong>{v.name}</strong>
-              <label>
-                {text("Reserve GiB (minimum 40)", "保护线 GiB（最低40）")}
-                <input
-                  name="reserve"
-                  type="number"
-                  min="40"
-                  max="1024"
-                  step="1"
-                  required
-                  defaultValue={v.reserveGiB ?? 40}
-                  disabled={disabled || !onSettings}
-                />
-              </label>
-              <Button type="submit" variant="outline" size="sm" disabled={disabled || !onSettings}>
-                {text("Save", "保存")}
-              </Button>
-              {v.freeBytes < (v.reserveGiB ?? 40) * GIB ? (
-                <p role="alert">
-                  {text(
-                    "Below reserve. Execution will be refused.",
-                    "已低于保护线，执行会被拒绝。",
-                  )}
-                </p>
-              ) : null}
-              {(v.history?.length ?? 0) > 1 ? (
-                <svg
-                  viewBox="0 0 240 60"
-                  role="img"
-                  aria-label={text("Free space history", "空闲空间历史")}
-                >
-                  <polyline
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    points={v
-                      .history!.map(
-                        (sample, i) =>
-                          `${(i * 240) / (v.history!.length - 1)},${55 - Math.min(1, sample.freeBytes / (v.totalBytes ?? Math.max(...v.history!.map((s) => s.freeBytes)))) * 50}`,
-                      )
-                      .join(" ")}
+        <details>
+          <summary>{uiText("Protection settings")}</summary>
+          <div className={styles.settingsGrid}>
+            {data.volumes.map((v) => (
+              <form
+                className={styles.protection}
+                key={`${v.id}:${v.reserveGiB}`}
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  const reserve = Number(new FormData(event.currentTarget).get("reserve"));
+                  if (Number.isFinite(reserve) && reserve >= 40 && reserve <= 1024)
+                    onSettings?.({
+                      action: "cleanup-settings",
+                      volumePath: v.path,
+                      reserveGiB: reserve,
+                    });
+                }}
+              >
+                <strong>{serverCopy(v.name)}</strong>
+                <label>
+                  {uiText("Reserve GiB (minimum 40)")}
+                  <input
+                    name="reserve"
+                    type="number"
+                    min="40"
+                    max="1024"
+                    step="1"
+                    required
+                    defaultValue={v.reserveGiB ?? 40}
+                    disabled={disabled || !onSettings}
                   />
-                </svg>
-              ) : (
-                <span>{text("History accumulates after scans", "扫描后逐日积累历史")}</span>
-              )}
-            </form>
-          ))}
-        </div>
+                </label>
+                <Button
+                  type="submit"
+                  variant="outline"
+                  size="sm"
+                  disabled={disabled || !onSettings}
+                >
+                  {uiText("Save")}
+                </Button>
+                {v.freeBytes < (v.reserveGiB ?? 40) * GIB ? (
+                  <p role="alert">{uiText("Below reserve. Execution will be refused.")}</p>
+                ) : null}
+                {!apple && (v.history?.length ?? 0) > 1 ? (
+                  <svg viewBox="0 0 240 60" role="img" aria-label={uiText("Free space history.")}>
+                    <polyline
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      points={v
+                        .history!.map(
+                          (sample, i) =>
+                            `${(i * 240) / (v.history!.length - 1)},${55 - Math.min(1, sample.freeBytes / (v.totalBytes ?? Math.max(...v.history!.map((s) => s.freeBytes)))) * 50}`,
+                        )
+                        .join(" ")}
+                    />
+                  </svg>
+                ) : (
+                  <span>{uiText("History accumulates after scans")}</span>
+                )}
+              </form>
+            ))}
+          </div>
+        </details>
         <label className={styles.entryChoice}>
           <input
             type="checkbox"
@@ -205,12 +241,11 @@ export function CleanupDetails({
               onSettings?.({ action: "cleanup-settings", scanOnOpenDaily: event.target.checked })
             }
           />
-          {text("Scan once daily when this page is opened", "每天打开此页时自动扫描一次")}
+          {uiText("Scan once daily when this page is opened")}
         </label>
         <p className={styles.scope}>
-          {text(
+          {uiText(
             "No background timer or automatic deletion. Trash is retained until manually restored or emptied.",
-            "没有常驻扫描或自动删除。废纸篓内容由你恢复或清空；T3不会在7天后自动删除。",
           )}
         </p>
       </div>

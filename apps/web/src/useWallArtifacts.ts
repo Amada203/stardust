@@ -1,3 +1,4 @@
+import { uiText } from "./i18n";
 import type { EnvironmentId, WallArtifact } from "@t3tools/contracts";
 import { useSyncExternalStore } from "react";
 import { loadWallArtifacts } from "./lib/artifactWallClient";
@@ -51,7 +52,7 @@ class Collection {
         this.publish({ artifacts, loading: false, error: null });
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : "暂时无法读取产物";
+      const message = error instanceof Error ? error.message : uiText("Couldn’t read artifacts");
       // A repeating poll failure must not wake every subscriber (and ChatView) every 15 seconds.
       if (
         !controller.signal.aborted &&
@@ -62,13 +63,14 @@ class Collection {
     } finally {
       if (this.controller === controller) {
         this.controller = null;
-        if (this.listeners.size > 0) this.timer = setTimeout(this.poll, 15_000);
+        if (this.listeners.size > 0)
+          this.timer = setTimeout(this.poll, this.scope === "project" ? 60_000 : 30_000);
       }
     }
   };
   private poll = () => {
     if (document.visibilityState === "visible") void this.load();
-    else this.timer = setTimeout(this.poll, 15_000);
+    else this.timer = setTimeout(this.poll, this.scope === "project" ? 60_000 : 30_000);
   };
   private onVisible = () => {
     if (document.visibilityState === "visible") void this.load();

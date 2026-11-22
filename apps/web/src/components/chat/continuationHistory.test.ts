@@ -1,3 +1,4 @@
+import { testUiLocale } from "../../../test/uiLocale";
 import { describe, expect, it } from "vite-plus/test";
 import {
   buildContinuationChain,
@@ -14,6 +15,7 @@ import {
 
 describe("continuation history", () => {
   it("keeps quoted skills, mentions and file links inert", () => {
+    using _locale = testUiLocale("zh-CN");
     const quote = continuationQuote(
       "用 $codex-free-imagegen 出图，看 @src/app.ts 和 [a.ts](/w/a.ts) 再说，预算 $20，邮件 a@b.com",
       "原会话 $title-skill",
@@ -28,12 +30,14 @@ describe("continuation history", () => {
     expect(quote).toContain("threadId: thread-1 · 条目 item-9");
   });
   it("leaves fenced and inline code byte-for-byte unchanged", () => {
+    using _locale = testUiLocale("zh-CN");
     const text = "运行 `echo $HOME` 然后：\n```bash\nexport A=$PATH @x\n```\n再用 $skill-x";
     expect(neutralizeQuotedTokens(text)).toBe(
       "运行 `echo $HOME` 然后：\n```bash\nexport A=$PATH @x\n```\n再用 `$skill-x`",
     );
   });
   it("quotes multiline messages, neutralizes title newlines, and caps Unicode characters", () => {
+    using _locale = testUiLocale("zh-CN");
     expect(continuationQuote("第一行\n第二行", "标题\n下一行")).toBe(
       "\n\n> 第一行\n> 第二行\n\n来源：原会话《标题 下一行》\n\n",
     );
@@ -43,6 +47,7 @@ describe("continuation history", () => {
     expect(continuationQuote("a".repeat(1500), "标题")).not.toContain("已截断");
   });
   it("reads the generated first prompt, supports spaces, and falls back to the source's last assistant", () => {
+    using _locale = testUiLocale("zh-CN");
     expect(
       continuationHandoffPath(
         "接手旧会话《测试》。先完整读取 /work/with spaces/HANDOFF.md，按其中未完成事项继续；已验证的部分不要重做。",
@@ -62,6 +67,7 @@ describe("continuation history", () => {
     ).toBeNull();
   });
   it("filters tools, searches loaded pages without case sensitivity, and keeps chronology", () => {
+    using _locale = testUiLocale("zh-CN");
     const rows = [
       { position: 3, item: { type: "assistant_message", text: "older NEEDLE", id: "a" } },
       { position: 2, item: { type: "command_execution", text: "needle", id: "tool" } },
@@ -82,6 +88,7 @@ describe("continuation lineage", () => {
     deletedAt: null as string | null,
   });
   it("walks all generations in oldest-first order and ignores unrelated siblings", () => {
+    using _locale = testUiLocale("zh-CN");
     const current = segment("c", "b");
     const result = buildContinuationChain(current, [
       segment("a", null),
@@ -92,6 +99,7 @@ describe("continuation lineage", () => {
     expect(result.issue).toBeNull();
   });
   it("stops cycles without duplicating segments", () => {
+    using _locale = testUiLocale("zh-CN");
     const current = segment("b", "a");
     const result = buildContinuationChain(current, [segment("a", "b"), current]);
     expect(result.issue).toBe("cycle");
@@ -102,11 +110,13 @@ describe("continuation lineage", () => {
     { ...segment("a", null), forkedFrom: { threadId: "fork" } },
     { ...segment("a", null), deletedAt: "2026-10-19" },
   ])("never assigns continuation positions to a fork, subagent or deleted segment", (invalid) => {
+    using _locale = testUiLocale("zh-CN");
     const result = buildContinuationChain(segment("b", "a"), [invalid]);
     expect(result.issue).toBe("broken");
     expect(result.segments.map((thread) => thread.id)).toEqual(["b"]);
   });
   it("reports missing links without claiming the source was deleted", () => {
+    using _locale = testUiLocale("zh-CN");
     expect(buildContinuationChain(segment("c", "missing"), []).missingId).toBe("missing");
   });
 });

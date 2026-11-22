@@ -1,5 +1,4 @@
-import { createStore, useStore } from "zustand";
-import { createContext, useContext, useEffect, useLayoutEffect, useState } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
 import { type PanelAnimationDurationMs } from "@t3tools/contracts/settings";
 
 import { useMediaQuery } from "./hooks/useMediaQuery";
@@ -47,16 +46,12 @@ export function usePanelPresence<T>(
   durationMs: PanelAnimationDurationMs,
 ): { present: boolean; value: T | null } {
   const [present, setPresent] = useState(open);
-  const [retainedStore] = useState(() =>
-    createStore<{ retained: { scopeKey: string | null; value: T | null } | null }>(() => ({
-      retained: open ? { scopeKey, value } : null,
-    })),
+  const [retained, setRetained] = useState<{ scopeKey: string | null; value: T | null } | null>(
+    open ? { scopeKey, value } : null,
   );
-  const retained = useStore(retainedStore, (state) => (open ? null : state.retained));
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Retain committed content for the CSS closing transition; open panels ignore store notifications.
-  useLayoutEffect(() => {
-    if (open) retainedStore.setState({ retained: { scopeKey, value } });
-  }, [open, retainedStore, scopeKey, value]);
+  if (open && (retained?.scopeKey !== scopeKey || retained.value !== value)) {
+    setRetained({ scopeKey, value });
+  }
 
   if (open && !present) setPresent(true);
   if (!open && !animated && present) setPresent(false);

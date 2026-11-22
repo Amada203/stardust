@@ -33,6 +33,29 @@ describe("applyUsageLimitsUpdate", () => {
       },
     });
     expect(next).toBe(published);
+    const scoped = { checkedAt, windows: [{ ...weekly, modelIds: ["opencode/a"] }] };
+    const providerScoped = { checkedAt, windows: [{ ...weekly, providerIds: ["opencode"] }] };
+    expect(
+      applyUsageLimitsUpdate({
+        previous: providerScoped,
+        checkedAt,
+        update: { windows: [{ ...weekly, providerIds: ["console-custom"] }] },
+      })?.windows[0]?.providerIds,
+    ).toEqual(["console-custom"]);
+    expect(
+      applyUsageLimitsUpdate({
+        previous: scoped,
+        checkedAt,
+        update: { windows: [{ ...weekly, modelIds: ["opencode/a"] }] },
+      }),
+    ).toBe(scoped);
+    expect(
+      applyUsageLimitsUpdate({
+        previous: scoped,
+        checkedAt,
+        update: { windows: [{ ...weekly, modelIds: ["opencode/b"] }] },
+      })?.windows[0]?.modelIds,
+    ).toEqual(["opencode/b"]);
   });
 
   it("upserts by id and keeps the reset a percent-only update omits", () => {
@@ -66,10 +89,10 @@ describe("applyUsageLimitsUpdate", () => {
     ).toEqual({ checkedAt, windows: [weekly], unavailable: { reason: "probeFailed" } });
   });
 
-  it("preserves reset credits when a streamed window update changes usage", () => {
+  it("preserves reset credits and a $0 cap when a streamed window update changes usage", () => {
     const resetCredits = { availableCount: 2, nextExpiresAt: "2026-10-01T00:00:00.000Z" };
     const next = applyUsageLimitsUpdate({
-      previous: { ...published, resetCredits },
+      previous: { ...published, resetCredits, zeroSpendCap: true },
       checkedAt: "2026-09-03T12:00:05.000Z",
       update: { windows: [{ ...session, usedPercent: 55 }] },
     });
@@ -78,6 +101,7 @@ describe("applyUsageLimitsUpdate", () => {
       checkedAt: "2026-09-03T12:00:05.000Z",
       windows: [{ ...session, usedPercent: 55 }, weekly],
       resetCredits,
+      zeroSpendCap: true,
     });
   });
 });
@@ -118,5 +142,59 @@ describe("resolveUsageLimitsAfterProbe", () => {
     expect(resolveUsageLimitsAfterProbe({ published, probed: failed })).toBe(published);
     expect(resolveUsageLimitsAfterProbe({ published, probed: unsupported })).toBe(unsupported);
     expect(resolveUsageLimitsAfterProbe({ published: undefined, probed: failed })).toBe(failed);
+  });
+});
+
+describe("verified live readings", () => {
+  const failed = { checkedAt, windows: [], unavailable: { reason: "probeFailed" as const } };
+
+  it("clears a probe failure when a verified reading arrives", () => {
+    const next = applyUsageLimitsUpdate({
+      previous: failed,
+      checkedAt: "2026-09-03T12:00:05.000Z",
+      update: { windows: [session, weekly] },
+      verified: true,
+    });
+    expect(next).toEqual({ checkedAt: "2026-09-03T12:00:05.000Z", windows: [session, weekly] });
+  });
+
+  it("marks a first verified reading as readable, unlike a sparse unverified one", () => {
+    expect(
+      applyUsageLimitsUpdate({
+        previous: undefined,
+        checkedAt,
+        update: { windows: [weekly] },
+        verified: true,
+      }),
+    ).toEqual({ checkedAt, windows: [weekly] });
+  });
+
+  it("refreshes the reading time for unchanged verified values at most once a minute", () => {
+    const soon = applyUsageLimitsUpdate({
+      previous: published,
+      checkedAt: "2026-09-03T12:00:30.000Z",
+      update: { windows: [session, weekly] },
+      verified: true,
+    });
+    expect(soon).toBe(published);
+    const later = applyUsageLimitsUpdate({
+      previous: published,
+      checkedAt: "2026-09-03T12:01:00.000Z",
+      update: { windows: [session, weekly] },
+      verified: true,
+    });
+    expect(later).toEqual({ checkedAt: "2026-09-03T12:01:00.000Z", windows: [session, weekly] });
+  });
+
+  it("keeps an unsupported account untouched even for verified readings", () => {
+    const unsupported = { checkedAt, windows: [], unavailable: { reason: "unsupported" as const } };
+    expect(
+      applyUsageLimitsUpdate({
+        previous: unsupported,
+        checkedAt,
+        update: { windows: [session] },
+        verified: true,
+      }),
+    ).toBe(unsupported);
   });
 });

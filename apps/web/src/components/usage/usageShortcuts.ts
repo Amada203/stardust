@@ -1,4 +1,3 @@
-import { cleanupText } from "./cleanupText";
 import { uiText } from "~/i18n";
 import type { KeybindingCommand, ResolvedKeybindingsConfig } from "@t3tools/contracts";
 import type { UsageChartMetric } from "./UsageProviderChart";
@@ -6,17 +5,65 @@ import { resolveShortcutCommand, type ShortcutEventLike } from "../../keybinding
 
 export type UsageMetric = UsageChartMetric | "limits" | "disk";
 export const METRIC_OPTIONS = [
-  { value: "cost", label: uiText("Cost"), command: "usage.cost" },
-  { value: "tokens", label: uiText("Tokens"), command: "usage.tokens" },
-  { value: "limits", label: uiText("Limits"), command: "usage.limits" },
-  { value: "disk", label: cleanupText("Cleanup", "清理与整理"), command: "usage.disk" },
+  {
+    value: "cost",
+    get label() {
+      return uiText("Cost");
+    },
+    command: "usage.cost",
+  },
+  {
+    value: "tokens",
+    get label() {
+      return uiText("Tokens");
+    },
+    command: "usage.tokens",
+  },
+  {
+    value: "limits",
+    get label() {
+      return uiText("Limits");
+    },
+    command: "usage.limits",
+  },
+  {
+    value: "disk",
+    get label() {
+      return uiText("Cleanup & organization");
+    },
+    command: "usage.disk",
+  },
 ] as const satisfies readonly { value: UsageMetric; label: string; command: KeybindingCommand }[];
 
 export const WINDOW_OPTIONS = [
-  { days: 1, label: uiText("Past 24h"), command: "usage.period.day" },
-  { days: 7, label: uiText("7 days"), command: "usage.period.week" },
-  { days: 30, label: uiText("30 days"), command: "usage.period.month" },
-  { days: 90, label: uiText("90 days"), command: "usage.period.quarter" },
+  {
+    days: 1,
+    get label() {
+      return uiText("Past 24h");
+    },
+    command: "usage.period.day",
+  },
+  {
+    days: 7,
+    get label() {
+      return uiText("7 days");
+    },
+    command: "usage.period.week",
+  },
+  {
+    days: 30,
+    get label() {
+      return uiText("30 days");
+    },
+    command: "usage.period.month",
+  },
+  {
+    days: 90,
+    get label() {
+      return uiText("90 days");
+    },
+    command: "usage.period.quarter",
+  },
 ] as const;
 
 export function resolveUsageShortcut(

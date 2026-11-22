@@ -1,3 +1,4 @@
+import * as Config from "effect/Config";
 // @effect-diagnostics nodeBuiltinImport:off - bounded header reads and canonical inode identities.
 import * as NodeCrypto from "node:crypto";
 import * as NodeFSP from "node:fs/promises";
@@ -90,7 +91,13 @@ const make = Effect.gen(function* () {
   const config = yield* ServerConfig.ServerConfig;
   const allowed = new Map<string, AllowedFile>();
   const keys = new Map<string, string>();
-  const extraRoots = (process.env.T3CODE_ARTIFACT_EXCLUDE_DIRS ?? "")
+  const threadRecordCache = new Map<
+    string,
+    { readonly fingerprint: string; readonly records: readonly ArtifactRecord[] }
+  >();
+  const extraRoots = (yield* Config.String("T3CODE_ARTIFACT_EXCLUDE_DIRS").pipe(
+    Config.withDefault(""),
+  ))
     .split(NodePath.delimiter)
     .filter(Boolean)
     .map((p) => NodePath.resolve(p));
@@ -107,14 +114,36 @@ const make = Effect.gen(function* () {
            SELECT project_id FROM orchestration_v2_projection_threads WHERE thread_id=${threadId} AND deleted_at IS NULL)))`;
     const decodePayload = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Unknown));
     const records: ArtifactRecord[] = [];
-    // Read only the requested real project; never scan every project's message history.
+    // Read only the requested real project; skip re-parsing threads whose message/turn-item counts and rowids did not change.
     for (const thread of threads) {
+      const [msgSummary, itemSummary] = yield* Effect.all([
+        sql<{ cnt: number; max_row: number | null }>`
+          SELECT COUNT(*) AS cnt, MAX(rowid) AS max_row FROM orchestration_v2_projection_messages
+          WHERE thread_id=${thread.thread_id} AND role IN ('assistant','user')`,
+        sql<{ cnt: number; max_row: number | null }>`
+          SELECT COUNT(*) AS cnt, MAX(rowid) AS max_row FROM orchestration_v2_projection_turn_items
+          WHERE thread_id=${thread.thread_id}
+          AND type IN ('file_change','command_execution','dynamic_tool','assistant_message','user_message')`,
+      ]);
+      const msgCount = Number(msgSummary[0]?.cnt ?? 0);
+      const itemCount = Number(itemSummary[0]?.cnt ?? 0);
+      if (msgCount === 0 && itemCount === 0) {
+        threadRecordCache.delete(thread.thread_id);
+        continue;
+      }
+      const fingerprint = `${thread.cwd ?? ""}|${msgCount}:${msgSummary[0]?.max_row ?? 0}|${itemCount}:${itemSummary[0]?.max_row ?? 0}`;
+      const cached = threadRecordCache.get(thread.thread_id);
+      if (cached !== undefined && cached.fingerprint === fingerprint) {
+        for (const rec of cached.records) records.push(rec);
+        continue;
+      }
       const rows = yield* sql<{ payload_json: string; created_at: string }>`
         SELECT payload_json, created_at FROM orchestration_v2_projection_messages
           WHERE thread_id=${thread.thread_id} AND role IN ('assistant','user')
         UNION ALL SELECT payload_json, COALESCE(json_extract(payload_json,'$.startedAt'), updated_at) AS created_at
           FROM orchestration_v2_projection_turn_items WHERE thread_id=${thread.thread_id}
           AND type IN ('file_change','command_execution','dynamic_tool','assistant_message','user_message')`;
+      const threadRecords: ArtifactRecord[] = [];
       for (const row of rows) {
         const payload = decodePayload(row.payload_json);
         if (
@@ -123,13 +152,19 @@ const make = Effect.gen(function* () {
           payload.value !== null &&
           !Array.isArray(payload.value)
         )
-          records.push({
+          threadRecords.push({
             threadId: thread.thread_id,
             cwd: thread.cwd ?? "",
             createdAt: row.created_at,
             payload: payload.value as Record<string, unknown>,
           });
       }
+      if (threadRecordCache.size >= 1500) {
+        const oldestKey = threadRecordCache.keys().next().value;
+        if (oldestKey !== undefined) threadRecordCache.delete(oldestKey);
+      }
+      threadRecordCache.set(thread.thread_id, { fingerprint, records: threadRecords });
+      for (const rec of threadRecords) records.push(rec);
     }
     const candidates = yield* Effect.tryPromise({
       try: () =>
@@ -197,29 +232,36 @@ const make = Effect.gen(function* () {
             const stat = stats.get(candidate.path)!;
             const extension = NodePath.extname(candidate.path).slice(1).toLowerCase();
             const kind = artifactKind(extension);
-            const dimensions =
-              kind === "image"
-                ? await Effect.runPromiseWith(context)(
-                    Effect.scoped(
-                      openMediaFile(candidate.path, {
-                        device: String(stat.dev),
-                        inode: String(stat.ino),
-                      }).pipe(
-                        Effect.flatMap((file) =>
-                          file
-                            ? readMediaFileHeader(candidate.path, file, 65536).pipe(
-                                Effect.map(readImageDimensions),
-                              )
-                            : Effect.succeed(null),
-                        ),
-                        Effect.orElseSucceed(() => null),
-                      ),
-                    ),
-                  )
-                : null;
             const revision = artifactRevision(stat);
             const previousId = keys.get(candidate.path);
             const previous = previousId === undefined ? undefined : allowed.get(previousId);
+            // Re-stat every poll, but read a valid image header only once per full file revision.
+            // The revision includes device/inode/size/mtime/ctime; file serving still validates its descriptor.
+            const dimensions =
+              kind === "image" &&
+              previous?.artifact.revision === revision &&
+              previous.artifact.width !== undefined &&
+              previous.artifact.height !== undefined
+                ? { width: previous.artifact.width, height: previous.artifact.height }
+                : kind === "image"
+                  ? await Effect.runPromiseWith(context)(
+                      Effect.scoped(
+                        openMediaFile(candidate.path, {
+                          device: String(stat.dev),
+                          inode: String(stat.ino),
+                        }).pipe(
+                          Effect.flatMap((file) =>
+                            file
+                              ? readMediaFileHeader(candidate.path, file, 65536).pipe(
+                                  Effect.map(readImageDimensions),
+                                )
+                              : Effect.succeed(null),
+                          ),
+                          Effect.orElseSucceed(() => null),
+                        ),
+                      ),
+                    )
+                  : null;
             const id =
               previous?.artifact.revision === revision
                 ? previousId!

@@ -105,17 +105,20 @@ export function groupSidebarWithSubtasks(
   threads: readonly SidebarThreadSummary[],
   configs: Parameters<typeof groupSidebarByProvider>[2],
   placements: ThreadPlacements,
+  legacy?: Parameters<typeof groupSidebarByProvider>[4],
 ) {
   const tree = buildSubtaskTree(threads);
-  return groupSidebarByProvider(projects, tree.roots, configs, placements).map((project) => {
-    const keys = new Set(project.providerThreadKeys);
-    for (const thread of threads)
-      if (
-        !thread.archivedAt &&
-        !thread.deletedAt &&
-        keys.has(subtaskThreadKey(tree.rootFor(thread)))
-      )
-        keys.add(subtaskThreadKey(thread));
-    return { ...project, providerThreadKeys: keys };
-  });
+  return groupSidebarByProvider(projects, tree.roots, configs, placements, legacy).map(
+    (project) => {
+      const keys = new Set(project.providerThreadKeys);
+      for (const thread of threads)
+        if (
+          !thread.archivedAt &&
+          !thread.deletedAt &&
+          keys.has(subtaskThreadKey(tree.rootFor(thread)))
+        )
+          keys.add(subtaskThreadKey(thread));
+      return { ...project, providerThreadKeys: keys };
+    },
+  );
 }

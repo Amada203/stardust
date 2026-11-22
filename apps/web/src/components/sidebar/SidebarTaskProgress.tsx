@@ -1,3 +1,4 @@
+import { useUiText } from "~/i18n/useUiText";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import type { ScopedThreadRef } from "@t3tools/contracts";
 import { useQuietThreadProjection, useThreadShell } from "../../state/entities";
@@ -5,12 +6,13 @@ import { useEnvironment } from "../../state/environments";
 import { taskProgressSnapshot } from "../../taskProgress";
 import { useNavigate } from "@tanstack/react-router";
 import { buildThreadRouteParams } from "../../threadRoutes";
-import { uiText } from "../../i18n";
+
 import { cn } from "~/lib/utils";
 import { progressTone, taskProgressStateLabels } from "../chat/TaskProgressSteps";
 
 /** One-line summary; the full step list lives in the conversation so the sidebar never reflows. */
 export function SidebarTaskProgress({ threadRef }: { threadRef: ScopedThreadRef }) {
+  const uiText = useUiText();
   const projection = useQuietThreadProjection(threadRef)?.projection ?? null;
   const shell = useThreadShell(threadRef);
   const environment = useEnvironment(threadRef.environmentId);
@@ -65,7 +67,9 @@ export function SidebarTaskProgress({ threadRef }: { threadRef: ScopedThreadRef 
           </button>
         }
       />
-      <TooltipPopup>{current ? `${stateLabel}：${current}` : stateLabel}</TooltipPopup>
+      <TooltipPopup>
+        {current ? uiText("{label}: {value}", { label: stateLabel, value: current }) : stateLabel}
+      </TooltipPopup>
     </Tooltip>
   );
 }

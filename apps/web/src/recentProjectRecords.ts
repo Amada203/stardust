@@ -1,3 +1,4 @@
+import { secondaryCollectionRank } from "./workspaceCollections";
 import { scopeThreadRef, scopedThreadKey } from "@t3tools/client-runtime/environment";
 import type { SidebarProjectSnapshot } from "./sidebarProjectGrouping";
 import type { SidebarThreadSummary } from "./types";
@@ -9,7 +10,7 @@ export function recentProjectRecords(
 ) {
   const projectForThread = new Map<string, SidebarProjectSnapshot>();
   for (const project of projects) {
-    if (["自动化与测试", "其他项目"].includes(project.displayName)) continue;
+    if (secondaryCollectionRank(project.displayName) > 0) continue;
     for (const key of project.providerThreadKeys ?? []) projectForThread.set(key, project);
   }
   const ordered = threads

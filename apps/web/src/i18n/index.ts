@@ -1,26 +1,15 @@
 import { zhCN } from "./catalog";
-
+import { readCustomLocale } from "./customLocale";
 export type UiLocale = "zh-CN" | "en";
-const UI_LOCALE_KEY = "t3code:ui-locale:v1";
-let sessionLocale: UiLocale | undefined;
-
 export function readUiLocale(): UiLocale {
-  if (sessionLocale) return sessionLocale;
-  try {
-    const saved = globalThis.localStorage?.getItem(UI_LOCALE_KEY);
-    if (saved === "en" || saved === "zh-CN") return (sessionLocale = saved);
-  } catch {
-    // A restricted browser must still render without changing user data.
-  }
-  // Existing component tests use English fixtures; product defaults to Chinese.
-  return (sessionLocale = import.meta.env?.MODE === "test" ? "en" : "zh-CN");
+  return readCustomLocale();
 }
-
 export function writeUiLocale(locale: UiLocale): void {
-  localStorage.setItem(UI_LOCALE_KEY, locale);
+  void import("../hooks/useSettings").then(({ updateClientSettings }) =>
+    updateClientSettings({ language: locale === "zh-CN" ? "zh" : "en" }),
+  );
 }
-
-/** Only application-authored copy calls this function. User content never passes through it. */
+// Legacy custom copy follows the official language setting; user content is never translated.
 export function uiText(
   source: string,
   values?: Readonly<Record<string, unknown>>,

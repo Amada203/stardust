@@ -1,15 +1,16 @@
+import { uiText } from "./i18n";
 import type { WallArtifact } from "@t3tools/contracts";
 
 export function artifactCheckLabel(artifact: WallArtifact): string {
   switch (artifact.verification?.status) {
     case "passed":
-      return "检查命令通过";
+      return uiText("Check passed");
     case "failed":
-      return "检查未通过";
+      return uiText("Check failed");
     case "stale":
-      return "文件已更新，需重新检查";
+      return uiText("File updated · Run the check again");
     default:
-      return "文件已生成 · 未附检查记录";
+      return uiText("File generated · No check recorded");
   }
 }
 
@@ -47,7 +48,7 @@ export function groupArtifacts(artifacts: readonly WallArtifact[], now = new Dat
   )) {
     const key = day(new Date(artifactTime(a)));
     const group = groups.get(key) ?? {
-      label: key === today ? "今天" : key === yesterday ? "昨天" : key,
+      label: key === today ? uiText("Today") : key === yesterday ? uiText("Yesterday") : key,
       artifacts: [],
     };
     group.artifacts.push(a);
@@ -82,9 +83,9 @@ export function artifactVideoDuration(seconds: number) {
 }
 
 export function artifactRevisionPrompt(artifact: WallArtifact, note: string): string {
-  if (!note.trim()) throw new Error("请先填写修改意见");
+  if (!note.trim()) throw new Error(uiText("Add feedback first."));
   return [
-    "请按以下批注修改产物：",
+    uiText("Update the artifact using the annotations below:"),
     JSON.stringify(
       {
         path: artifact.path,
@@ -96,10 +97,14 @@ export function artifactRevisionPrompt(artifact: WallArtifact, note: string): st
       null,
       2,
     ),
-    "修改意见：",
+    uiText("Feedback:"),
     note.trim(),
-    "开始前核对本次请求的路径、来源会话与 revision；临时访问 ID 的变化不代表文件变化。无法核对或文件版本已变化时先说明，不猜测旧版内容。",
-    "保留原文件，将修改结果另存为新文件。完成后提供原图和新图链接，说明修改与验证情况，等待我对比验收。",
+    uiText(
+      "Before starting, verify the path, source conversation, and revision. A temporary access ID change does not mean the file changed. If you cannot verify the file or its revision changed, say so and do not guess at the old content.",
+    ),
+    uiText(
+      "Keep the original file and save your revision as a new file. Link both images when done, describe your changes and checks, and wait for me to compare them.",
+    ),
   ].join("\n");
 }
 

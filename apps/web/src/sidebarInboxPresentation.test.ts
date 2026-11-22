@@ -1,3 +1,4 @@
+import { testUiLocale } from "../test/uiLocale";
 import { describe, expect, it } from "vite-plus/test";
 import { EnvironmentId, ThreadId, RunId } from "@t3tools/contracts";
 import { inboxThreadKey, type InboxThread } from "./workbenchInbox";
@@ -39,6 +40,7 @@ const item = (
 ) => ({ ...thread(patch), id: ThreadId.make(id), updatedAt });
 describe("sidebar inbox presentation", () => {
   it("starts at the first sorted attention item, advances and wraps across the full list", () => {
+    using _locale = testUiLocale("zh-CN");
     const rows = sortedAttentionThreads(
       [
         item("failure", { latestRun: run("failed") }),
@@ -57,6 +59,7 @@ describe("sidebar inbox presentation", () => {
     expect(nextAttentionThread([], null)).toBeNull();
   });
   it("sorts by structured request time rather than an older run's start", () => {
+    using _locale = testUiLocale("zh-CN");
     const olderRunNewRequest = {
       ...item("new-request", {
         hasPendingApprovals: true,
@@ -76,6 +79,7 @@ describe("sidebar inbox presentation", () => {
     ).toEqual(["old-request", "new-request"]);
   });
   it("orders requests before failures before results and oldest first within each category", () => {
+    using _locale = testUiLocale("zh-CN");
     const rows = [
       item("result", { latestRun: run("completed"), lastVisitedAt: "2026-10-05" }),
       item("error", { latestRun: run("failed") }),
@@ -93,12 +97,14 @@ describe("sidebar inbox presentation", () => {
     ).not.toContain("error");
   });
   it("defaults to five rows with an accurate expandable remainder", () => {
+    using _locale = testUiLocale("zh-CN");
     const rows = Array.from({ length: 9 }, (_, i) => i);
     expect(attentionPage(rows, false)).toEqual({ rows: [0, 1, 2, 3, 4], hidden: 4 });
     expect(attentionPage(rows, true)).toEqual({ rows, hidden: 0 });
     expect(attentionPage([], false)).toEqual({ rows: [], hidden: 0 });
   });
   it("exempts requests and unknown failures beyond six, plus the open thread, without duplicates", () => {
+    using _locale = testUiLocale("zh-CN");
     const rows = Array.from({ length: 6 }, (_, i) => item(String(i)));
     rows.push(
       item("permission", { hasPendingApprovals: true }),
@@ -116,6 +122,7 @@ describe("sidebar inbox presentation", () => {
     expect(sidebarPreviewThreads(rows, 6, {}, inboxThreadKey(rows[0]!))).toHaveLength(9);
   });
   it("counts requests once and only unknown failures, excluding results and deleted threads", () => {
+    using _locale = testUiLocale("zh-CN");
     const rows = [
       item("both", { hasPendingApprovals: true, hasPendingUserInput: true }),
       item("question", { hasPendingUserInput: true }),
@@ -131,6 +138,7 @@ describe("sidebar inbox presentation", () => {
     expect(groupAttentionCounts([], {})).toEqual({ requests: 0, errors: 0 });
   });
   it("formats sidebar-only Chinese short relative times", () => {
+    using _locale = testUiLocale("zh-CN");
     const now = Date.parse("2026-10-06T10:00:00Z");
     expect(sidebarRelativeTime("2026-10-06T09:59:50Z", now)).toBe("刚刚");
     expect(sidebarRelativeTime("2026-10-06T09:55:00Z", now)).toBe("5分");

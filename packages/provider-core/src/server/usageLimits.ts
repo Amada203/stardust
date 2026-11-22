@@ -47,12 +47,17 @@ export function makeUnavailableUsageLimits(input: {
   };
 }
 
+const VERIFIED_REFRESH_MS = 60_000;
+
 export function applyUsageLimitsUpdate(input: {
   readonly previous: ServerProviderUsageLimits | undefined;
   readonly update: ProviderUsageLimitsUpdate;
   readonly checkedAt: string;
+  /** Authoritative live reading: clears a probe failure and keeps the reading time current. */
+  readonly verified?: boolean;
 }): ServerProviderUsageLimits | undefined {
   const { previous, update } = input;
+  const verified = input.verified === true;
   if (update.windows.length === 0 || previous?.unavailable?.reason === "unsupported") {
     return previous;
   }
@@ -77,13 +82,25 @@ export function applyUsageLimitsUpdate(input: {
     }
   }
   if (!changed && previous !== undefined) {
-    return previous;
+    // A verified reading of unchanged values still proves the numbers are current; refresh the
+    // time at most once a minute so repeated responses do not churn snapshots.
+    const refresh =
+      verified &&
+      (previous.unavailable?.reason === "probeFailed" ||
+        Date.parse(input.checkedAt) - Date.parse(previous.checkedAt) >= VERIFIED_REFRESH_MS);
+    if (!refresh) return previous;
   }
-  const unavailable =
-    previous === undefined ? { reason: "probeFailed" as const } : previous.unavailable;
+  const unavailable = verified
+    ? previous?.unavailable?.reason === "probeFailed"
+      ? undefined
+      : previous?.unavailable
+    : previous === undefined
+      ? { reason: "probeFailed" as const }
+      : previous.unavailable;
   return {
     ...makeUsageLimits({ checkedAt: input.checkedAt, windows: merged.values() }),
     ...(previous?.resetCredits !== undefined ? { resetCredits: previous.resetCredits } : {}),
+    ...(previous?.zeroSpendCap ? { zeroSpendCap: true } : {}),
     ...(unavailable !== undefined ? { unavailable } : {}),
   };
 }
@@ -94,6 +111,16 @@ function usageWindowEquals(a: ServerProviderUsageWindow, b: ServerProviderUsageW
     a.kind === b.kind &&
     a.label === b.label &&
     a.usedPercent === b.usedPercent &&
+    (a.modelIds === b.modelIds ||
+      (a.modelIds !== undefined &&
+        b.modelIds !== undefined &&
+        a.modelIds.length === b.modelIds.length &&
+        a.modelIds.every((id, index) => id === b.modelIds?.[index]))) &&
+    (a.providerIds === b.providerIds ||
+      (a.providerIds !== undefined &&
+        b.providerIds !== undefined &&
+        a.providerIds.length === b.providerIds.length &&
+        a.providerIds.every((id, index) => id === b.providerIds?.[index]))) &&
     a.resetsAt === b.resetsAt &&
     a.windowDurationMins === b.windowDurationMins
   );

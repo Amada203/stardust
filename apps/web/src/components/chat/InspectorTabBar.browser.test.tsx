@@ -1,3 +1,4 @@
+import { testUiLocale } from "../../../test/uiLocale";
 import "~/index.css";
 import { describe, expect, it } from "vite-plus/test";
 import { render } from "../../../test/render";
@@ -33,6 +34,7 @@ const pressed = (container: Element) =>
 
 describe("inspector tabs", () => {
   it("switches tabs and remembers the last one for the next mount", async () => {
+    using _locale = testUiLocale("zh-CN");
     localStorage.removeItem(INSPECTOR_TAB_STORAGE_KEY);
     {
       await using screen = await render(
@@ -68,6 +70,7 @@ describe("inspector tabs", () => {
 });
 
 it("opens the run tab without removing existing inspector entries", async () => {
+  using _locale = testUiLocale("zh-CN");
   localStorage.removeItem(INSPECTOR_TAB_STORAGE_KEY);
   await using screen = await render(
     <Harness available={["artifacts", "history", "subtasks", "project"]} />,

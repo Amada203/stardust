@@ -1,5 +1,7 @@
+import { uiText } from "../../i18n";
+
 import { DEFAULT_SIDEBAR_APPEARANCE } from "../../sidebarAppearance";
-import { uiText } from "~/i18n";
+
 import type { ReactNode } from "react";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 import {
@@ -14,6 +16,7 @@ import {
   MIN_TERMINAL_FONT_SIZE,
 } from "@t3tools/contracts/settings";
 import * as Schema from "effect/Schema";
+import { useGT } from "gt-react";
 import { useLocalStorage } from "../../hooks/useLocalStorage";
 import { useScopedSettings, useUpdateScopedSettings } from "./useScopedSettings";
 import { isMacPlatform } from "../../lib/utils";
@@ -42,28 +45,43 @@ import {
 import {
   isAdvancedTypographyTarget,
   revealSettingsSearchTarget,
-  searchableSetting,
+  useSearchableSetting,
 } from "./settingsSearch";
+
+let fontDefaultFamilies: { readonly sans: string | null; readonly code: string | null } | undefined;
+
+function resolveFontDefaultFamilies() {
+  if (fontDefaultFamilies !== undefined) return fontDefaultFamilies;
+  const families = {
+    sans: resolveDefaultFamilyLabel(DEFAULT_SANS_FONT_STACK) ?? null,
+    code: resolveDefaultFamilyLabel(DEFAULT_CODE_FONT_STACK) ?? null,
+  };
+  if (document.fonts.status === "loaded") fontDefaultFamilies = families;
+  return families;
+}
+
 function useFontDefaultFamilies() {
+  const gt = useGT();
   const settings = useScopedSettings();
-  const [defaults] = useState(() => ({
-    sans: resolveDefaultFamilyLabel(DEFAULT_SANS_FONT_STACK) ?? "System default",
-    code: resolveDefaultFamilyLabel(DEFAULT_CODE_FONT_STACK) ?? "System monospace",
-  }));
+  const [defaults] = useState(resolveFontDefaultFamilies);
+  const sans = defaults.sans ?? gt("System default");
   return {
-    sans: defaults.sans,
-    code: defaults.code,
-    interfaceFamily: settings.fontFamilySans.trim() || defaults.sans,
+    sans,
+    code: defaults.code ?? gt("System monospace"),
+    interfaceFamily: settings.fontFamilySans.trim() || sans,
   };
 }
 function InterfaceFontRow({ preview }: { preview?: ReactNode }) {
+  const gt = useGT();
+  const searchableSetting = useSearchableSetting();
   const settings = useScopedSettings();
   const updateSettings = useUpdateScopedSettings();
   const defaults = useFontDefaultFamilies();
   return (
     <FontFamilySettingsRow
       {...searchableSetting("interface-font")}
-      description={uiText("Everything outside code blocks and the terminal.")}
+      resetLabel={gt("Reset interface font to default")}
+      description={gt("Everything outside code blocks and the terminal.")}
       defaultFamily={defaults.sans}
       defaultValue={DEFAULT_UNIFIED_SETTINGS.fontFamilySans}
       value={settings.fontFamilySans}
@@ -75,7 +93,7 @@ function InterfaceFontRow({ preview }: { preview?: ReactNode }) {
         })
       }
       size={{
-        label: uiText("Interface font size"),
+        label: gt("Interface font size"),
         min: MIN_INTERFACE_FONT_SIZE,
         max: MAX_INTERFACE_FONT_SIZE,
         value: settings.fontSizeInterface,
@@ -87,13 +105,16 @@ function InterfaceFontRow({ preview }: { preview?: ReactNode }) {
   );
 }
 function PromptFontRow() {
+  const gt = useGT();
+  const searchableSetting = useSearchableSetting();
   const settings = useScopedSettings();
   const updateSettings = useUpdateScopedSettings();
   const defaults = useFontDefaultFamilies();
   return (
     <FontFamilySettingsRow
       {...searchableSetting("prompt-font")}
-      description={uiText("Only the box you write prompts in. Mono works well here.")}
+      resetLabel={gt("Reset prompt font to default")}
+      description={gt("Only the box you write prompts in. Mono works well here.")}
       defaultFamily={defaults.interfaceFamily}
       defaultValue={DEFAULT_UNIFIED_SETTINGS.fontFamilyComposer}
       value={settings.fontFamilyComposer}
@@ -105,7 +126,7 @@ function PromptFontRow() {
         })
       }
       size={{
-        label: uiText("Prompt font size"),
+        label: gt("Prompt font size"),
         min: MIN_PROMPT_FONT_SIZE,
         max: MAX_PROMPT_FONT_SIZE,
         value: settings.fontSizePrompt,
@@ -118,13 +139,17 @@ function PromptFontRow() {
 }
 function CodeFontRow({
   title,
-  description = "Code blocks, diffs, and file previews.",
+  resetLabel,
+  description,
   preview,
 }: {
   title?: string;
+  resetLabel?: string;
   description?: string;
   preview?: ReactNode;
 }) {
+  const gt = useGT();
+  const searchableSetting = useSearchableSetting();
   const settings = useScopedSettings();
   const updateSettings = useUpdateScopedSettings();
   const defaults = useFontDefaultFamilies();
@@ -132,7 +157,8 @@ function CodeFontRow({
     <FontFamilySettingsRow
       {...searchableSetting("code-font")}
       {...(title !== undefined ? { title } : {})}
-      description={description}
+      resetLabel={resetLabel ?? gt("Reset code font to default")}
+      description={description ?? gt("Code blocks, diffs, and file previews.")}
       defaultFamily={defaults.code}
       defaultValue={DEFAULT_UNIFIED_SETTINGS.fontFamilyCode}
       value={settings.fontFamilyCode}
@@ -145,7 +171,7 @@ function CodeFontRow({
       }
       requireMonospace
       size={{
-        label: uiText("Code font size"),
+        label: gt("Code font size"),
         min: MIN_CODE_FONT_SIZE,
         max: MAX_CODE_FONT_SIZE,
         value: settings.fontSizeCode,
@@ -157,13 +183,16 @@ function CodeFontRow({
   );
 }
 function TerminalFontRow() {
+  const gt = useGT();
+  const searchableSetting = useSearchableSetting();
   const settings = useScopedSettings();
   const updateSettings = useUpdateScopedSettings();
   const defaults = useFontDefaultFamilies();
   return (
     <FontFamilySettingsRow
       {...searchableSetting("terminal-font")}
-      description={uiText("Terminal output, independent from code blocks and diffs.")}
+      resetLabel={gt("Reset terminal font to default")}
+      description={gt("Terminal output, independent from code blocks and diffs.")}
       defaultFamily={defaults.code}
       defaultValue={DEFAULT_UNIFIED_SETTINGS.fontFamilyTerminal}
       value={settings.fontFamilyTerminal}
@@ -176,7 +205,7 @@ function TerminalFontRow() {
       }
       requireMonospace
       size={{
-        label: uiText("Terminal font size"),
+        label: gt("Terminal font size"),
         min: MIN_TERMINAL_FONT_SIZE,
         max: MAX_TERMINAL_FONT_SIZE,
         value: settings.fontSizeTerminal,
@@ -197,17 +226,19 @@ function TerminalFontRow() {
   );
 }
 function FontSmoothingRow() {
+  const gt = useGT();
+  const searchableSetting = useSearchableSetting();
   const settings = useScopedSettings();
   const updateSettings = useUpdateScopedSettings();
   if (!isMacPlatform(navigator.platform)) return null;
   return (
     <SettingsRow
       {...searchableSetting("font-smoothing")}
-      description={uiText("Use thinner grayscale text smoothing instead of the macOS default.")}
+      description={gt("Use thinner grayscale text smoothing instead of the macOS default.")}
       resetAction={
         settings.fontSmoothing !== DEFAULT_UNIFIED_SETTINGS.fontSmoothing ? (
           <SettingResetButton
-            label={uiText("font smoothing")}
+            ariaLabel={gt("Reset font smoothing to default")}
             onClick={() =>
               updateSettings({ fontSmoothing: DEFAULT_UNIFIED_SETTINGS.fontSmoothing })
             }
@@ -218,25 +249,25 @@ function FontSmoothingRow() {
         <Switch
           checked={settings.fontSmoothing}
           onCheckedChange={(checked) => updateSettings({ fontSmoothing: Boolean(checked) })}
-          aria-label={uiText("Font smoothing")}
+          aria-label={gt("Font smoothing")}
         />
       }
     />
   );
 }
 function WordWrapRow() {
+  const gt = useGT();
+  const searchableSetting = useSearchableSetting();
   const settings = useScopedSettings();
   const updateSettings = useUpdateScopedSettings();
   return (
     <SettingsRow
       {...searchableSetting("word-wrap")}
-      description={uiText(
-        "Wrap long lines in code blocks, tables, diffs, and file previews by default.",
-      )}
+      description={gt("Wrap long lines in code blocks, diffs, and file previews by default.")}
       resetAction={
         settings.wordWrap !== DEFAULT_UNIFIED_SETTINGS.wordWrap ? (
           <SettingResetButton
-            label={uiText("word wrapping")}
+            ariaLabel={gt("Reset word wrapping to default")}
             onClick={() => updateSettings({ wordWrap: DEFAULT_UNIFIED_SETTINGS.wordWrap })}
           />
         ) : null
@@ -245,7 +276,7 @@ function WordWrapRow() {
         <Switch
           checked={settings.wordWrap}
           onCheckedChange={(checked) => updateSettings({ wordWrap: Boolean(checked) })}
-          aria-label={uiText("Wrap code, tables, diffs, and file previews by default")}
+          aria-label={gt("Wrap code, diffs, and file previews by default")}
         />
       }
     />
@@ -269,31 +300,35 @@ function SeparateFontsRow({
   readonly checked: boolean;
   readonly onCheckedChange: (checked: boolean) => void;
 }) {
+  const gt = useGT();
+  const searchableSetting = useSearchableSetting();
   return (
     <SettingsRow
       {...searchableSetting("separate-fonts")}
-      description={uiText(
+      description={gt(
         "Set the prompt, code, and terminal fonts separately instead of one monospace font.",
       )}
       control={
         <Switch
           checked={checked}
           onCheckedChange={(next) => onCheckedChange(Boolean(next))}
-          aria-label={uiText("Separate fonts")}
+          aria-label={gt("Separate fonts")}
         />
       }
     />
   );
 }
 function SimpleFontRows() {
+  const gt = useGT();
   const settings = useScopedSettings();
   return (
     <>
       <InterfaceFontRow preview={<PromptFontPreview />} />
       <SidebarTypographyRows />
       <CodeFontRow
-        title={uiText("Monospace font")}
-        description={uiText("Code blocks, diffs, file previews, and the terminal.")}
+        title={gt("Monospace font")}
+        resetLabel={gt("Reset monospace font to default")}
+        description={gt("Code blocks, diffs, file previews, and the terminal.")}
         preview={
           <>
             <CodeFontPreview />
@@ -316,6 +351,8 @@ function SimpleFontRows() {
   );
 }
 export function TypographySection() {
+  const gt = useGT();
+  const searchableSetting = useSearchableSetting();
   const [advanced, setAdvanced] = useLocalStorage(
     TYPOGRAPHY_ADVANCED_STORAGE_KEY,
     false,
@@ -332,7 +369,7 @@ export function TypographySection() {
   const showAdvanced =
     advanced || (searchTargetId !== null && isAdvancedTypographyTarget(searchTargetId));
   return (
-    <SettingsSection id="typography" title={uiText("Typography")}>
+    <SettingsSection id="typography" title={gt("Typography")}>
       {showAdvanced ? <FontSettingsGroup /> : <SimpleFontRows />}
       <WordWrapRow />
       <AdvancedSettings
@@ -347,6 +384,7 @@ export function TypographySection() {
 function FontFamilySettingsRow({
   id,
   title,
+  resetLabel,
   description,
   defaultFamily,
   defaultValue,
@@ -359,6 +397,7 @@ function FontFamilySettingsRow({
 }: {
   id?: string;
   title: string;
+  resetLabel: string;
   description: string;
   defaultFamily: string;
   defaultValue: string;
@@ -377,6 +416,7 @@ function FontFamilySettingsRow({
     followLabel?: string;
   };
 }) {
+  const gt = useGT();
   const trimmed = value.trim();
   const [draft, setDraft] = useState(value);
   const [draftSettled, setDraftSettled] = useState(true);
@@ -429,14 +469,14 @@ function FontFamilySettingsRow({
   };
   const resetAction =
     value !== defaultValue || size.value !== size.defaultValue ? (
-      <SettingResetButton label={title.toLowerCase()} onClick={resetToDefault} />
+      <SettingResetButton ariaLabel={resetLabel} onClick={resetToDefault} />
     ) : null;
   const fontEnumeration = useFontEnumeration();
   const [inputFocused, setInputFocused] = useState(false);
   const familyControl =
     fontEnumeration.status === "granted" ? (
       <FontFamilyPicker
-        ariaLabel={uiText("{0} family", { "0": title })}
+        ariaLabel={gt("{title} family", { title })}
         defaultFamily={defaultFamily}
         selectedFamily={trimmed}
         requireMonospace={requireMonospace}
@@ -446,7 +486,7 @@ function FontFamilySettingsRow({
     ) : (
       <Input
         size="sm"
-        aria-label={uiText("{0} family", { "0": title })}
+        aria-label={gt("{title} family", { title })}
         aria-invalid={draftPending || undefined}
         autoCapitalize="off"
         autoComplete="off"
@@ -493,8 +533,8 @@ function FontFamilySettingsRow({
       />
     );
   const control = (
-    <div className="flex w-full items-center gap-2 sm:w-auto">
-      <div className="min-w-0 flex-1 sm:w-44 sm:flex-none">{familyControl}</div>
+    <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto @min-[32rem]/settings-row:flex-nowrap">
+      <div className="min-w-36 flex-1 sm:w-44 sm:flex-none">{familyControl}</div>
       <Select
         value={String(size.value)}
         onValueChange={(next) => {
@@ -545,6 +585,7 @@ function FontFamilySettingsRow({
 }
 
 function SidebarTypographyRows() {
+  const searchableSetting = useSearchableSetting();
   const settings = useScopedSettings();
   const updateSettings = useUpdateScopedSettings();
   const defaults = useFontDefaultFamilies();
@@ -552,31 +593,39 @@ function SidebarTypographyRows() {
     <>
       <FontFamilySettingsRow
         {...searchableSetting("sidebar-font")}
-        description="只调整侧边栏。留空跟随界面字体；字号按现有文字层级等比调整。"
+        resetLabel={uiText("Reset sidebar font")}
+        description={uiText(
+          "Applies to the sidebar. Leave it blank to use the interface font. Text sizes scale proportionally.",
+        )}
         defaultFamily={defaults.interfaceFamily}
         defaultValue=""
         value={settings.fontFamilySidebar}
         onValueChange={(fontFamilySidebar) => updateSettings({ fontFamilySidebar })}
         onReset={() => updateSettings(DEFAULT_SIDEBAR_APPEARANCE)}
         size={{
-          label: "侧边栏字号",
+          label: uiText("Sidebar font size"),
           min: MIN_INTERFACE_FONT_SIZE,
           max: MAX_INTERFACE_FONT_SIZE,
           value: settings.fontSizeSidebar,
           defaultValue: 0,
-          followLabel: "跟随界面字号",
+          followLabel: uiText("Use interface size"),
           onChange: (fontSizeSidebar) => updateSettings({ fontSizeSidebar }),
         }}
       />
       {(["light", "dark"] as const).map((theme) => {
         const key = theme === "light" ? "sidebarTextColorLight" : "sidebarTextColorDark";
-        const label = theme === "light" ? "侧边栏文字颜色（浅色）" : "侧边栏文字颜色（深色）";
+        const label =
+          theme === "light"
+            ? uiText("Sidebar text color (light)")
+            : uiText("Sidebar text color (dark)");
         return (
           <SettingsRow
             key={theme}
             id={`sidebar-colors-${theme}`}
             title={label}
-            description="默认保留现有颜色；高对比预设增强标题与次要文字。"
+            description={uiText(
+              "Keep the current colors or choose High contrast for stronger titles and secondary text.",
+            )}
             control={
               <div className="flex items-center gap-2">
                 <Select
@@ -587,15 +636,19 @@ function SidebarTypographyRows() {
                   }}
                 >
                   <SelectTrigger aria-label={label}>
-                    <SelectValue>{settings[key] === "default" ? "默认颜色" : "高对比"}</SelectValue>
+                    <SelectValue>
+                      {settings[key] === "default"
+                        ? uiText("Default colors")
+                        : uiText("High contrast")}
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectPopup>
-                    <SelectItem value="default">默认颜色</SelectItem>
-                    <SelectItem value="high-contrast">高对比</SelectItem>
+                    <SelectItem value="default">{uiText("Default colors")}</SelectItem>
+                    <SelectItem value="high-contrast">{uiText("High contrast")}</SelectItem>
                   </SelectPopup>
                 </Select>
                 <SettingResetButton
-                  label={label}
+                  ariaLabel={label}
                   onClick={() => updateSettings({ [key]: "default" })}
                 />
               </div>
@@ -604,11 +657,11 @@ function SidebarTypographyRows() {
         );
       })}
       <SettingsRow
-        title="恢复侧边栏默认"
-        description="恢复字体、字号和浅色/深色文字颜色。"
+        title={uiText("Restore sidebar defaults")}
+        description={uiText("Reset the font, size, and light and dark text colors.")}
         control={
           <SettingResetButton
-            label="侧边栏"
+            ariaLabel={uiText("Sidebar.")}
             onClick={() => updateSettings(DEFAULT_SIDEBAR_APPEARANCE)}
           />
         }

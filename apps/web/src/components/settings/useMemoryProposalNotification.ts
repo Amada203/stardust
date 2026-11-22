@@ -1,3 +1,4 @@
+import { uiText } from "../../i18n";
 import { useEffect, useRef } from "react";
 import { useEnvironments } from "../../state/environments";
 import { toastManager } from "../ui/toast";
@@ -18,8 +19,10 @@ export function useMemoryProposalNotification() {
     if (previous !== null && [...current].some((id) => !previous.has(id))) {
       toastManager.add({
         type: "info",
-        title: "有新的记忆提案待确认",
-        description: "前往设置 → 记忆，批准、修改或拒绝。批准前不会提供给模型。",
+        title: uiText("New memory proposal to review"),
+        description: uiText(
+          "Open Settings → Memory to approve, edit, or reject it. Models receive approved memories only.",
+        ),
       });
     }
     seen.current = current;

@@ -1,3 +1,4 @@
+import { threadKey } from "@t3tools/client-runtime/state/entities";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { EnvironmentId, ProjectId, ProviderInstanceId, ThreadId } from "@t3tools/contracts";
 import type { Thread } from "../types";
@@ -666,11 +667,13 @@ describe("buildThreadActionItems", () => {
     ]);
   });
 
-  it("hides subagent threads but keeps forks", () => {
+  it("hides subagent threads and tasks shown under their parent but keeps forks", () => {
     const parentId = ThreadId.make("parent");
+    const delegatedId = ThreadId.make("delegated");
     const items = buildThreadActionItems({
       threads: [
         makeThread({ id: parentId, title: "Parent" }),
+        makeThread({ id: delegatedId, title: "Delegated task" }),
         makeThread({
           id: ThreadId.make("subagent"),
           title: "Subagent",
@@ -690,6 +693,9 @@ describe("buildThreadActionItems", () => {
           },
         }),
       ],
+      delegatedUnderParent: new Set([
+        threadKey({ environmentId: LOCAL_ENVIRONMENT_ID, threadId: delegatedId }),
+      ]),
       projectByKey: new Map(),
       icon: null,
       runThread: async () => undefined,
@@ -795,6 +801,26 @@ describe("filterPinnedBrowseEntries", () => {
       visibleEntries: windowsEntries,
       exactEntry: windowsEntries[0],
     });
+    const decomposed = { name: "De\u0301veloppement", fullPath: "/Users/me/De\u0301veloppement" };
+    expect(
+      filterPinnedBrowseEntries({
+        browseEntries: [decomposed],
+        filterQuery: "D\u00e9veloppement",
+        pinnedDirectoryName: "repo",
+        caseSensitive: true,
+      }).exactEntry,
+    ).toBe(decomposed);
+    expect(
+      filterPinnedBrowseEntries({
+        browseEntries: [
+          { name: "\u212B", fullPath: "/home/me/\u212B" },
+          { name: "A\u030A", fullPath: "/home/me/A\u030A" },
+        ],
+        filterQuery: "\u00C5",
+        pinnedDirectoryName: "repo",
+        caseSensitive: true,
+      }).exactEntry,
+    ).toBeNull();
   });
 });
 
@@ -921,48 +947,6 @@ describe("returning from file and content search", () => {
   });
 });
 
-describe("linked pull request thread navigation", () => {
-  it("keeps archived relations searchable and routes them through the PR environment", async () => {
-    const environmentId = EnvironmentId.make("remote");
-    const id = ThreadId.make("archived-thread");
-    const runThread = vi.fn(async () => {});
-    const query = "https://github.com/acme/web/pull/42";
-    const linkedThreads = {
-      environmentId,
-      threads: [
-        {
-          id,
-          projectId: ProjectId.make("project"),
-          title: "Completed work",
-          archivedAt: "2026-09-01T00:00:00.000Z",
-        },
-      ],
-    };
-    const state = reduceCommandPaletteUiState(
-      { open: false, mode: "command", openIntent: null, session: 0 },
-      {
-        _tag: "OpenSearch",
-        query,
-        linkedThreads,
-      },
-    );
-    expect(state.openIntent).toEqual({ kind: "search", query, linkedThreads });
-    const items = buildLinkedThreadActionItems({ ...linkedThreads, query, icon: null, runThread });
-    const groups = filterCommandPaletteGroups({
-      activeGroups: [],
-      query,
-      isInSubmenu: false,
-      projectSearchItems: [],
-      settingsSearchItems: [],
-      threadSearchItems: items,
-    });
-    expect(groups.flatMap((group) => group.items)).toEqual(items);
-    expect(items[0]?.description).toBe("Archived thread");
-    await items[0]?.run();
-    expect(runThread).toHaveBeenCalledWith({ environmentId, id });
-  });
-});
-
 it("resolves project metadata and browse roots within the active environment", () => {
   const local = { title: "Local project", workspaceRoot: "/local/repo" };
   const remote = { title: "Remote project", workspaceRoot: "/remote/repo" };
@@ -990,7 +974,7 @@ describe("newThreadNoProjectIndex", () => {
   });
 
   it("goes after the pinned projects and the first unpinned one", () => {
-    expect(newThreadNoProjectIndex([entry(true), entry(true), entry(false, true), entry()])).toBe(
+    expect(newThreadNoProjectIndex([entry(false, true), entry(true), entry(true), entry()])).toBe(
       3,
     );
     expect(newThreadNoProjectIndex([entry(false, true), entry(), entry(false, false, true)])).toBe(

@@ -1,3 +1,4 @@
+import { uiText } from "./i18n";
 import type { ProviderApprovalDecision } from "@t3tools/contracts";
 import type { ThreadPendingApproval } from "@t3tools/client-runtime/state/thread-requests";
 import type { ThreadStructure } from "@t3tools/client-runtime/state/shell";
@@ -16,28 +17,28 @@ export function approvalPresentation(approval: ThreadPendingApproval) {
   const outside = /outside (?:the )?workspace|工作区(?:以)?外/i.test(approval.reason ?? "");
   const title =
     outside && approval.requestKind === "file-change"
-      ? "想写入工作区以外的文件夹"
+      ? uiText("Wants to write outside the workspace")
       : approval.requestKind === "file-change"
-        ? "想修改文件"
+        ? uiText("Wants to modify files")
         : approval.requestKind === "file-read"
-          ? "想读取文件"
+          ? uiText("Wants to read files")
           : approval.requestKind === "command"
             ? network
-              ? "想联网安装依赖或访问网络"
-              : "想运行一条命令"
-            : "请求工具使用许可";
+              ? uiText("Wants to install dependencies or access the network")
+              : uiText("Wants to run a command")
+            : uiText("Requests permission to use a tool");
   // Only a bare, known read command earns a low-risk label; shell syntax stays unclassified.
   const readOnly =
     /^(pwd|ls|cat|head|tail|wc|stat)(?:\s+[\w./ -]+)?$/.test(detail) && !/[\n\r]/.test(detail);
   const risk =
     destructive || outside
-      ? "删除或越权 · 高风险"
+      ? uiText("Deletion or elevated access · High risk")
       : network
-        ? "联网或改依赖 · 需留意"
+        ? uiText("Network or dependency changes · Use caution")
         : approval.requestKind === "file-change"
-          ? "会写文件 · 中风险"
+          ? uiText("Writes files · Medium risk")
           : approval.requestKind === "file-read" || readOnly
-            ? "只读 · 低风险"
+            ? uiText("Read-only · Low risk")
             : null;
   const summary = (detail || approval.appName || title).replace(/\s+/g, " ").slice(0, 100);
   return { title, risk, summary, detail };
@@ -46,15 +47,15 @@ export function approvalPresentation(approval: ThreadPendingApproval) {
 export function approvalResultLabel(decision: ProviderApprovalDecision) {
   switch (decision) {
     case "accept":
-      return "✓ 已批准（仅这一次）";
+      return uiText("✓ Approved (once)");
     case "acceptForSession":
-      return "✓ 已批准（本会话同类不再问）";
+      return uiText("✓ Approved (for this conversation)");
     case "acceptAlways":
-      return "✓ 已批准（始终允许）";
+      return uiText("✓ Approved (always)");
     case "decline":
-      return "✕ 已拒绝";
+      return uiText("✕ Denied");
     case "cancel":
-      return "✕ 已取消";
+      return uiText("✕ Canceled");
   }
 }
 

@@ -1,4 +1,4 @@
-import { uiText } from "~/i18n";
+import { T, useGT } from "gt-react";
 import { useState } from "react";
 import {
   AuthSourceControlWriteScope,
@@ -10,14 +10,18 @@ import { cn } from "~/lib/utils";
 import { readEnvironmentScope, useEnvironmentScope } from "~/state/session";
 
 import { Button } from "../ui/button";
-import { Textarea } from "../ui/textarea";
 import { Toggle, ToggleGroup } from "../ui/toggle-group";
 import { PullRequestMarkdown } from "./PullRequestMarkdown";
+import {
+  PullRequestMarkdownTextarea,
+  type PullRequestCompletionScope,
+} from "./PullRequestMarkdownTextarea";
 
 export function PullRequestMarkdownEditor({
   value,
   cwd,
   environmentId,
+  completionScope,
   threadRef = null,
   placeholder,
   label,
@@ -30,6 +34,7 @@ export function PullRequestMarkdownEditor({
   readonly value: string;
   readonly cwd: string;
   readonly environmentId: EnvironmentId;
+  readonly completionScope: PullRequestCompletionScope | null;
   readonly threadRef?: ScopedThreadRef | null;
   readonly placeholder?: string | undefined;
   readonly label: string;
@@ -39,6 +44,7 @@ export function PullRequestMarkdownEditor({
   readonly onSave: (next: string) => void;
   readonly onCancel: () => void;
 }) {
+  const gt = useGT();
   const canWriteSourceControl = useEnvironmentScope(environmentId, AuthSourceControlWriteScope);
   const [draft, setDraft] = useState(value);
   const [preview, setPreview] = useState(false);
@@ -77,7 +83,7 @@ export function PullRequestMarkdownEditor({
       }}
     >
       <ToggleGroup
-        aria-label={uiText("Markdown editor mode")}
+        aria-label={gt("Markdown editor mode")}
         variant="segmented"
         value={[preview ? "preview" : "write"]}
         disabled={saving}
@@ -86,13 +92,19 @@ export function PullRequestMarkdownEditor({
           if (mode === "write" || mode === "preview") setPreview(mode === "preview");
         }}
       >
-        <Toggle value="write">{uiText("Write")}</Toggle>
-        <Toggle value="preview">{uiText("Preview")}</Toggle>
+        <Toggle value="write">
+          <T context="verb, markdown editor mode">Write</T>
+        </Toggle>
+        <Toggle value="preview">
+          <T context="markdown editor mode">Preview</T>
+        </Toggle>
       </ToggleGroup>
       {preview ? (
         <div className="rounded-lg border border-border/60 px-3 py-2">
           {empty ? (
-            <p className="text-xs text-muted-foreground">{uiText("Nothing to preview.")}</p>
+            <p className="text-xs text-muted-foreground">
+              <T>Nothing to preview.</T>
+            </p>
           ) : (
             <PullRequestMarkdown
               text={draft}
@@ -103,19 +115,20 @@ export function PullRequestMarkdownEditor({
           )}
         </div>
       ) : (
-        <Textarea
+        <PullRequestMarkdownTextarea
           autoFocus
           disabled={saving}
+          completionScope={completionScope}
           value={draft}
           rows={6}
           placeholder={placeholder}
           aria-label={label}
-          onChange={(event) => setDraft(event.target.value)}
+          onValueChange={setDraft}
         />
       )}
       <div className="flex justify-end gap-2">
         <Button size="xs" variant="ghost" disabled={saving} onClick={onCancel}>
-          {uiText("Cancel")}
+          <T>Cancel</T>
         </Button>
         <Button
           size="xs"
@@ -131,7 +144,7 @@ export function PullRequestMarkdownEditor({
             onSave(draft);
           }}
         >
-          {saving ? uiText("Saving...") : uiText("Save")}
+          {saving ? gt("Saving...") : gt("Save")}
         </Button>
       </div>
     </div>

@@ -1,3 +1,5 @@
+import type { SidebarCategoryPreset, SidebarCategorySettings } from "@t3tools/contracts/settings";
+import { uiText } from "./i18n";
 import { useSyncExternalStore } from "react";
 
 /**
@@ -7,95 +9,134 @@ import { useSyncExternalStore } from "react";
 export interface ThreadCategory {
   readonly id: string;
   readonly label: string;
-  readonly group: ThreadCategoryGroup;
+  readonly group?: string;
+  readonly keywords: readonly string[];
 }
-export type ThreadCategoryGroup = "内容与账号" | "公司与业务" | "工具与系统" | "待归类";
-export const THREAD_CATEGORY_GROUPS: readonly ThreadCategoryGroup[] = [
-  "内容与账号",
-  "公司与业务",
-  "工具与系统",
-  "待归类",
-];
+export type ThreadCategoryGroup = string;
+export type EditableCategoryPreset = Exclude<SidebarCategoryPreset, "project">;
 export const UNSORTED_CATEGORY_ID = "unsorted";
-export const THREAD_CATEGORIES: readonly ThreadCategory[] = [
-  { id: "wechat", label: "公众号", group: "内容与账号" },
-  { id: "douyin-real", label: "抖音 · 真人主号", group: "内容与账号" },
-  { id: "douyin-ai", label: "抖音 · 一根 AI", group: "内容与账号" },
-  { id: "douyin-other", label: "抖音 · 其他", group: "内容与账号" },
-  { id: "xiaohongshu", label: "小红书", group: "内容与账号" },
-  { id: "x", label: "X", group: "内容与账号" },
-  { id: "xiaodao", label: "小岛经济学", group: "内容与账号" },
-  { id: "video", label: "视频 · 动画 · 音乐", group: "内容与账号" },
-  { id: "content-other", label: "其他内容", group: "内容与账号" },
-  { id: "company", label: "公司经营", group: "公司与业务" },
-  { id: "client", label: "客户交付", group: "公司与业务" },
-  { id: "product", label: "产品与网站", group: "公司与业务" },
-  { id: "invest", label: "投资研究", group: "公司与业务" },
-  { id: "t3", label: "T3 功能与维护", group: "工具与系统" },
-  { id: "models", label: "模型与账号", group: "工具与系统" },
-  { id: "automation", label: "自动化与知识库", group: "工具与系统" },
-  { id: "devices", label: "电脑与设备", group: "工具与系统" },
-  { id: "tools-other", label: "其他工具", group: "工具与系统" },
-  { id: UNSORTED_CATEGORY_ID, label: "待归类", group: "待归类" },
-];
-const CATEGORY_BY_ID = new Map(THREAD_CATEGORIES.map((category) => [category.id, category]));
-export function threadCategoryById(id: string): ThreadCategory {
-  return CATEGORY_BY_ID.get(id) ?? CATEGORY_BY_ID.get(UNSORTED_CATEGORY_ID)!;
+export const SIDEBAR_CATEGORY_PRESETS = {
+  general: { label: "General preset", description: "A bit of everything" },
+  developer: { label: "Developer", description: "Mostly code" },
+  creator: { label: "Creator", description: "Writing, video, and publishing" },
+  project: { label: "By project", description: "Organize by folder" },
+} as const satisfies Record<SidebarCategoryPreset, { label: string; description: string }>;
+
+function category(id: string, label: string, keywords: string): ThreadCategory {
+  return { id, label, keywords: keywords.split("|") };
+}
+const PRESET_CATEGORIES: Record<SidebarCategoryPreset, readonly ThreadCategory[]> = {
+  general: [
+    category(
+      "development",
+      "Development",
+      "代码|接口|开发|数据库|代码库|code|api|bug|refactor|database|test",
+    ),
+    category("content", "Writing & content", "文章|博客|文案|写作|article|blog|copywriting|readme"),
+    category("research", "Research", "分析|对比|调研|研究|analyze|compare|research"),
+    category("work", "Work admin", "周报|会议|邮件|报销|report|meeting|email|invoice"),
+    category("systems", "Tools & system", "磁盘|模型|设置|系统|disk|model|settings|network"),
+  ],
+  developer: [
+    category("fixes", "Bug fixes", "修复|报错|故障|bug|fix|error|debug"),
+    category("features", "Features", "功能|接口|新增|feature|api|implement"),
+    category("review", "Code review", "评审|审查|review"),
+    category("docs", "Docs", "文档|说明|docs|readme"),
+    category("deploy", "Deploy & ops", "部署|运维|监控|deploy|ops|infra"),
+  ],
+  creator: [
+    category("scripts", "Ideas & scripts", "选题|脚本|分镜|idea|script|storyboard"),
+    category("writing", "Writing", "文章|文案|博客|article|writing|blog"),
+    category("media", "Video & audio", "视频|动画|音频|video|audio|animation"),
+    category("publishing", "Publishing", "发布|运营|推广|publish|campaign|marketing"),
+  ],
+  project: [],
+};
+const UNSORTED: ThreadCategory = { id: UNSORTED_CATEGORY_ID, label: "Unsorted", keywords: [] };
+
+export function categoryDefinitions(settings: SidebarCategorySettings): readonly ThreadCategory[] {
+  if (settings.preset === "project") return [];
+  return [
+    ...(settings.editedCategories[settings.preset] ?? PRESET_CATEGORIES[settings.preset]),
+    UNSORTED,
+  ];
 }
 
-// Ordered: account/platform words win over generic topic words, so "T3 工作台 X 文章"
-// stays content and "Claude视频抖音发布" stays on Douyin.
-const TITLE_RULES: ReadonlyArray<readonly [string, RegExp]> = [
-  ["xiaodao", /小岛/],
-  ["wechat", /公众号/],
-  ["xiaohongshu", /小红书/],
-  ["douyin-real", /真人主号|橙镜/],
-  ["douyin-ai", /一根\s*AI|AI\s*时代普通人的机会/i],
-  ["x", /(?:^|[^A-Za-z])X\s*(?:账号|帖子|长推|文章|主页)/],
-  ["douyin-other", /抖音/],
-  [
-    "video",
-    /动画|样片|分镜|剧本|配乐|声线|歌词|副歌|说唱|试听|视频脚本|短视频|伤感女声|音频|Suno/i,
-  ],
-  ["invest", /长桥|美股|港股|核心股|投资|TradePilot|Exness|黄金行情|交易研究/i],
-  ["company", /公司|飞书|劳动合同|租金|办公室|绩效|报销|发票|组织调整/],
-  ["client", /客户|报价|海报|游戏美术|主图|电商视觉|角色材质|交付边界/],
-  ["product", /网站|试衣|产品方向|创意产品|淘宝|闲鱼|批量生图/],
-  ["content-other", /专栏|爆火|选题|自媒体/],
-  ["t3", /\bT3\b|t3\s|^t3|侧栏|工作台/i],
-  ["devices", /磁盘|硬盘|网盘|VPN|WiFi|代理|电脑|服务器|VPS|MacBook|网速|弹窗|手机卡顿/i],
-  ["models", /Claude|Codex|Gemini|GPT|OpenAI|DeepSeek|Grok|模型|token|额度|账号停用|LibTV|发布会/i],
-  ["automation", /Obsidian|Skill|自动化|Agent|知识|定时|复盘|回顾|语音灵感/i],
-];
-const PROJECT_FALLBACK: ReadonlyArray<readonly [RegExp, string]> = [
-  [/自媒体|公众号|小岛/, "content-other"],
-  [/交易|生财/, "invest"],
-  [/公司/, "company"],
-  [/电商/, "client"],
-  [/AI\s*工作台|模型|Codex|Claude/i, "tools-other"],
-];
+/** Keep labels of individually filed threads when switching presets. */
+export function visibleCategoryDefinitions(
+  settings: SidebarCategorySettings,
+  overrides: Readonly<Record<string, string>>,
+): readonly ThreadCategory[] {
+  const definitions = categoryDefinitions(settings);
+  if (settings.preset === "project") return definitions;
+  const included = new Set(definitions.map((entry) => entry.id));
+  const assigned = new Set(Object.values(overrides));
+  const extra = (["general", "developer", "creator"] as const).flatMap((preset) =>
+    categoryDefinitions({ ...settings, preset }).filter((entry) => {
+      if (!assigned.has(entry.id) || included.has(entry.id)) return false;
+      included.add(entry.id);
+      return true;
+    }),
+  );
+  return [...definitions.slice(0, -1), ...extra, UNSORTED];
+}
+export function categoryLabel(category: ThreadCategory, text = uiText) {
+  if (category.id === UNSORTED_CATEGORY_ID) return text("Unsorted");
+  const isPresetLabel = Object.values(PRESET_CATEGORIES).some((entries) =>
+    entries.some((entry) => entry.id === category.id && entry.label === category.label),
+  );
+  if (!isPresetLabel) return category.label;
+  return text(category.label);
+}
+export function threadCategoryById(
+  id: string,
+  categories: readonly ThreadCategory[],
+): ThreadCategory {
+  return categories.find((category) => category.id === id) ?? UNSORTED;
+}
 
-/** Generated prompts and image dumps carry no topic: they wait for a human decision. */
+type Rule = NonNullable<SidebarCategorySettings["legacyRules"]>["title"][number];
+const compiledPatterns = new WeakMap<Rule, RegExp | null>();
+export function matchLocalCategoryRule(rule: Rule, text: string): boolean {
+  if (!compiledPatterns.has(rule)) {
+    try {
+      compiledPatterns.set(rule, new RegExp(rule.source, rule.flags.replace(/[gy]/g, "")));
+    } catch {
+      compiledPatterns.set(rule, null);
+    }
+  }
+  return compiledPatterns.get(rule)?.test(text) ?? false;
+}
+
 function untitled(title: string) {
   const value = title.trim();
-  return (
-    value === "" ||
-    value.startsWith("<image") ||
-    value.startsWith("[external unsupported") ||
-    value.startsWith("Call your built-in")
-  );
+  return !value || /^(<image|\[external unsupported|Call your built-in)/.test(value);
 }
 
-export function classifyThread(input: {
-  readonly title: string;
-  readonly projectName: string | null | undefined;
-}): string {
-  const title = input.title ?? "";
-  if (!untitled(title)) for (const [id, pattern] of TITLE_RULES) if (pattern.test(title)) return id;
-  const project = input.projectName ?? "";
-  if (untitled(title)) return UNSORTED_CATEGORY_ID;
-  for (const [pattern, id] of PROJECT_FALLBACK) if (pattern.test(project)) return id;
-  return UNSORTED_CATEGORY_ID;
+export function classifyThread(
+  input: { readonly title: string; readonly projectName?: string | null | undefined },
+  settings: SidebarCategorySettings,
+): string {
+  if (!settings.automatic || settings.preset === "project" || untitled(input.title)) {
+    return UNSORTED_CATEGORY_ID;
+  }
+  const categories = categoryDefinitions(settings);
+  const title = input.title.normalize("NFKC").toLowerCase();
+  const legacy = settings.preset === "general" ? settings.legacyRules : undefined;
+  const matched =
+    legacy?.title.find((rule) => matchLocalCategoryRule(rule, input.title)) ??
+    legacy?.project.find((rule) => matchLocalCategoryRule(rule, input.projectName ?? ""));
+  if (matched && categories.some((entry) => entry.id === matched.categoryId))
+    return matched.categoryId;
+  const category = categories.find((entry) =>
+    entry.keywords.some((keyword) => {
+      const value = keyword.normalize("NFKC").toLowerCase().trim();
+      if (!value) return false;
+      if (!/^[a-z0-9]+$/.test(value)) return title.includes(value);
+      return title.split(/[^a-z0-9]+/).includes(value);
+    }),
+  );
+  return category?.id ?? UNSORTED_CATEGORY_ID;
 }
 
 const STORAGE_KEY = "t3code:thread-categories:v1";
@@ -112,8 +153,7 @@ export function parseCategoryOverrides(raw: string | null): Overrides {
     if (!value || typeof value !== "object" || Array.isArray(value)) return EMPTY;
     return Object.fromEntries(
       Object.entries(value as Record<string, unknown>).filter(
-        (entry): entry is [string, string] =>
-          typeof entry[1] === "string" && CATEGORY_BY_ID.has(entry[1]),
+        (entry): entry is [string, string] => typeof entry[1] === "string" && entry[1].length > 0,
       ),
     );
   } catch {
@@ -145,10 +185,12 @@ export function useThreadCategoryOverrides(): Overrides {
   return useSyncExternalStore(subscribe, read, () => EMPTY);
 }
 /** A manual choice is final: automatic rules never move that thread again. */
-export function setThreadCategory(threadKey: string, categoryId: string | null): boolean {
+export function setThreadCategories(changes: Readonly<Record<string, string | null>>): boolean {
   const next: Record<string, string> = { ...read() };
-  if (categoryId === null) delete next[threadKey];
-  else next[threadKey] = categoryId;
+  for (const [key, categoryId] of Object.entries(changes)) {
+    if (categoryId === null) delete next[key];
+    else next[key] = categoryId;
+  }
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
   } catch {
@@ -157,12 +199,20 @@ export function setThreadCategory(threadKey: string, categoryId: string | null):
   listeners.forEach((listener) => listener());
   return true;
 }
+export function setThreadCategory(threadKey: string, categoryId: string | null): boolean {
+  return setThreadCategories({ [threadKey]: categoryId });
+}
 export function resolveThreadCategory(
   overrides: Overrides,
   threadKey: string,
   input: Parameters<typeof classifyThread>[0],
+  settings: SidebarCategorySettings,
+  categories = visibleCategoryDefinitions(settings, overrides),
 ): string {
-  return overrides[threadKey] ?? classifyThread(input);
+  const manual = overrides[threadKey];
+  return manual && categories.some((category) => category.id === manual)
+    ? manual
+    : classifyThread(input, settings);
 }
 
 export const CATEGORY_PROJECT_KEY_PREFIX = "thread-category:";
@@ -186,4 +236,17 @@ export function useThreadCategoryPicker() {
     () => pickerTarget,
     () => null,
   );
+}
+
+/** A category picked on an empty draft follows it once to the chosen folder's own draft. */
+let carriedDraftCategory: { readonly projectKey: string; readonly categoryId: string } | null =
+  null;
+export function carryDraftCategory(projectKey: string, categoryId: string) {
+  carriedDraftCategory = { projectKey, categoryId };
+}
+export function takeCarriedDraftCategory(projectKey: string): string | null {
+  if (carriedDraftCategory?.projectKey !== projectKey) return null;
+  const { categoryId } = carriedDraftCategory;
+  carriedDraftCategory = null;
+  return categoryId;
 }

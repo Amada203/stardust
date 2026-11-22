@@ -1,15 +1,18 @@
+import * as CursorKeychain from "./CursorKeychain.ts";
 import {
   ProviderDriverKind,
   ProviderSetupError,
   type ServerProviderModel,
 } from "@t3tools/contracts";
 import { CursorSettings } from "../settings.ts";
+import type { SDKModel } from "@cursor/sdk";
 import * as Effect from "effect/Effect";
 import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 import * as HttpClient from "effect/http/HttpClient";
+import { cursorRateModel } from "./accountUsage.ts";
 import { readCursorUsageLimits } from "./usageLimits.ts";
 
 import * as ProviderHost from "@t3tools/provider-core/server/ProviderHost";
@@ -37,7 +40,6 @@ import { makeCursorAuth } from "./auth.ts";
 import * as CursorCredentialStore from "./credentialStore.ts";
 import * as CursorAgentSdk from "./CursorAgentSdk.ts";
 import * as CursorSdk from "./CursorSdk.ts";
-import * as CursorKeychain from "./CursorKeychain.ts";
 import * as CursorUsageAccounts from "./CursorUsageAccounts.ts";
 
 const decodeCursorSettings = Schema.decodeSync(CursorSettings);
@@ -56,8 +58,7 @@ export type CursorDriverEnv =
   | Path.Path
   | HttpClient.HttpClient
   | CursorSdk.CursorSdk
-  | ProviderHost.ProviderHost
-  | CursorKeychain.CursorKeychain;
+  | ProviderHost.ProviderHost;
 
 export const CursorDriver: ProviderDriver<
   CursorSettings,
@@ -74,6 +75,7 @@ export const CursorDriver: ProviderDriver<
   usage: {
     kind: "scan",
     provider: "cursor",
+    rateModel: cursorRateModel,
     scan: ({ instances, settings, windowStartMs, retentionCutoffMs, awaitRefresh }) =>
       CursorUsageAccounts.CursorUsageAccounts.pipe(
         Effect.flatMap((accounts) =>
@@ -96,10 +98,10 @@ export const CursorDriver: ProviderDriver<
     config,
   }) {
     const host = yield* ProviderHost.ProviderHost;
+    const keychain = yield* CursorKeychain.make;
     const fileSystem = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
     const httpClient = yield* HttpClient.HttpClient;
-    const keychain = yield* CursorKeychain.CursorKeychain;
     const sdkRunner = yield* CursorAgentSdk.CursorAgentSdkRunner;
     const processEnv = yield* mergeProviderInstanceEnvironment(environment);
     const continuationIdentity = defaultProviderContinuationIdentity({
@@ -166,10 +168,12 @@ export const CursorDriver: ProviderDriver<
       });
 
     let catalogModels: ReadonlyArray<ServerProviderModel> = [];
+    let catalogSdkModels: ReadonlyArray<SDKModel> = [];
     const orchestrationAdapter = yield* makeCursorAdapterV2({
       instanceId,
       environment: processEnv,
       getModels: () => catalogModels,
+      getSdkModels: () => catalogSdkModels,
     }).pipe(
       Effect.provideService(CursorAgentSdk.CursorAgentSdkRunner, {
         ...sdkRunner,
@@ -212,6 +216,9 @@ export const CursorDriver: ProviderDriver<
       processEnv,
       auth.requireApiKey,
       auth.withAccess,
+      () => catalogModels,
+      () => catalogSdkModels,
+      sdkRunner,
     );
 
     const checkProvider = auth.readApiKey.pipe(
@@ -234,11 +241,16 @@ export const CursorDriver: ProviderDriver<
               ),
             (snapshot) =>
               host.settings.get.pipe(
+                Effect.orElseSucceed(() => ({ cursorKeychainUsageEnabled: false })),
                 Effect.flatMap((settings) =>
                   readCursorUsageLimits(
                     effectiveConfig,
-                    { ...processEnv, CURSOR_API_KEY: apiKey },
+                    {
+                      ...processEnv,
+                      CURSOR_API_KEY: apiKey,
+                    },
                     settings.cursorKeychainUsageEnabled,
+                    keychain.accessToken,
                   ),
                 ),
                 Effect.map((usageLimits) => ({ ...snapshot, usageLimits })),
@@ -248,7 +260,6 @@ export const CursorDriver: ProviderDriver<
       ),
       Effect.provideService(FileSystem.FileSystem, fileSystem),
       Effect.provideService(Path.Path, path),
-      Effect.provideService(CursorKeychain.CursorKeychain, keychain),
       Effect.map(stampSnapshot),
       Effect.tap((provider) =>
         Effect.sync(() => {
@@ -257,6 +268,19 @@ export const CursorDriver: ProviderDriver<
             catalogModels = provider.models;
           }
         }),
+      ),
+      Effect.provideServiceEffect(
+        CursorSdkCatalog.CursorSdkCatalog,
+        Effect.map(CursorSdkCatalog.CursorSdkCatalog, (catalog) =>
+          CursorSdkCatalog.CursorSdkCatalog.of({
+            // Untraced: CursorSdkCatalog.read already spans this call.
+            read: Effect.fnUntraced(function* (apiKey) {
+              const snapshot = yield* catalog.read(apiKey);
+              if (snapshot.models.length > 0) catalogSdkModels = snapshot.models;
+              return snapshot;
+            }),
+          }),
+        ),
       ),
       Effect.provide(CursorSdkCatalog.layer),
       Effect.provideService(HttpClient.HttpClient, httpClient),

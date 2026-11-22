@@ -1,3 +1,4 @@
+import { uiText } from "./i18n";
 import type { ContextMenuItem } from "@t3tools/contracts";
 import type { SidebarProjectGroupMember } from "./sidebarProjectGrouping";
 import type { SidebarThreadSummary } from "./types";
@@ -58,25 +59,52 @@ export function defaultProjectMember<T extends Member>(
     used ?? members.find((member) => !isDatedCodexWorkspace(member.workspaceRoot)) ?? members[0]
   );
 }
+/** Auto-created working folders (dated Codex chats, Claude scratch, the "/" catch-all) are history, not projects. */
+export function isTemporaryFolder(path: string): boolean {
+  return (
+    path === "/" ||
+    isDatedCodexWorkspace(path) ||
+    /\/Claude\/scratch-workspaces\//.test(path) ||
+    /\/\.t3\/scratch\/[^/]/.test(path)
+  );
+}
 export function projectMemberMenu(
   members: readonly Member[],
   threads: readonly Usage[],
+  options: { readonly heading?: string; readonly remembered?: string | null } = {},
 ): ContextMenuItem[] {
   const multipleEnvironments = new Set(members.map((member) => member.environmentId)).size > 1;
+  const titleCount = new Map<string, number>();
+  for (const member of members)
+    titleCount.set(member.title, (titleCount.get(member.title) ?? 0) + 1);
+  const chosen = defaultProjectMember(members, threads, options.remembered ?? null);
+  // Names only; a path is shown just to tell apart two folders with the same name.
   const item = (member: Member): ContextMenuItem => ({
     id: member.physicalProjectKey,
-    label: `${member.title}${multipleEnvironments && member.environmentLabel ? ` · ${member.environmentLabel}` : ""} · ${compactWorkspacePath(member.workspaceRoot)}`,
+    label: `${member.title}${multipleEnvironments && member.environmentLabel ? ` · ${member.environmentLabel}` : ""}${(titleCount.get(member.title) ?? 0) > 1 ? ` · ${compactWorkspacePath(member.workspaceRoot)}` : ""}`,
+    ...(member === chosen ? { checked: true } : {}),
   });
   const sorted = recentProjectMembers(members, threads);
-  const current = sorted.filter((member) => !isDatedCodexWorkspace(member.workspaceRoot));
-  const history = sorted.filter((member) => isDatedCodexWorkspace(member.workspaceRoot));
+  const current = sorted.filter((member) => !isTemporaryFolder(member.workspaceRoot));
+  const history = sorted.filter((member) => isTemporaryFolder(member.workspaceRoot));
   return [
+    ...(options.heading
+      ? [
+          {
+            id: "member-menu-heading",
+            label: uiText("Which folder in “{heading}” should hold the new task?", {
+              heading: options.heading,
+            }),
+            disabled: true,
+          },
+        ]
+      : []),
     ...current.map(item),
     ...(history.length
       ? [
           {
             id: "historical-members",
-            label: `更早的历史目录（${history.length}）`,
+            label: uiText("Earlier temporary folders ({count})", { count: history.length }),
             separatorBefore: current.length > 0,
             children: history.map(item),
           },

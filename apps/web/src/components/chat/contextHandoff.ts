@@ -1,3 +1,4 @@
+import { uiText } from "../../i18n";
 import type { ThreadStructure } from "@t3tools/client-runtime/state/shell";
 import type { OrchestrationV2ThreadShell, ThreadId } from "@t3tools/contracts";
 
@@ -148,7 +149,7 @@ export function continuationParameters(
   handoffPath: string | null,
   continueInstructions = "",
 ) {
-  const title = `${thread.title}（续）`;
+  const title = uiText("{title} (continued)", { title: thread.title });
   const instructions = continueInstructions.trim();
   const context =
     handoffPath === null

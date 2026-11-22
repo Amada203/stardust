@@ -1,7 +1,11 @@
-import { scopeThreadRef } from "@t3tools/client-runtime/environment";
+import { testUiLocale } from "../../../test/uiLocale";
+import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { ThreadResumeCard } from "../chat/ThreadResumeCard";
 import { useResumeCardStore } from "../../resumeCardStore";
+import { useUiStateStore } from "../../uiStateStore";
 import { describe, expect, it, vi } from "vite-plus/test";
+import { page, userEvent } from "vite-plus/test/browser";
+import { applyThemePalette } from "~/themePalette";
 import { RunId, ThreadId } from "@t3tools/contracts";
 import "~/index.css";
 import { act, fakeTimers, render } from "../../../test/render";
@@ -10,6 +14,7 @@ import type { SidebarThreadSummary } from "../../types";
 import { useRightPanelStore } from "../../rightPanelStore";
 import type { BoardData } from "../../taskBoard.logic";
 import { WorkbenchInbox } from "./WorkbenchInbox";
+import { threadResumeToken } from "../../resumeCard";
 
 const board = vi.hoisted(() => ({ data: null as BoardData | null }));
 
@@ -23,19 +28,23 @@ vi.mock("../../taskBoard", () => ({
   requestTaskBoardCard: () => {},
   focusTaskBoardItem: () => {},
 }));
-vi.mock("../../state/entities", () => ({
+vi.mock("../../state/entities", async (original) => ({
+  ...(await original<typeof import("../../state/entities")>()),
   useAllEnvironmentShellsBootstrapped: () => true,
   useQuietThreadProjection: () => null,
   useThreadShell: () => null,
 }));
-vi.mock("../../state/environments", () => ({
+vi.mock("../../state/environments", async (original) => ({
+  ...(await original<typeof import("../../state/environments")>()),
   useEnvironments: () => ({
     environments: [{ connection: { phase: "connected" } }],
     isReady: true,
   }),
   useEnvironment: () => null,
 }));
-vi.mock("../../state/use-atom-command", () => ({ useAtomCommand: () => vi.fn() }));
+vi.mock("../../state/use-atom-command", () => ({
+  useAtomCommand: () => async () => ({ _tag: "Success" }),
+}));
 
 const finished = (index: number): SidebarThreadSummary => ({
   ...makeThreadFixture({ id: ThreadId.make(`done-${index}`), title: `Done ${index}` }),
@@ -52,6 +61,7 @@ const finished = (index: number): SidebarThreadSummary => ({
 
 describe("sidebar inbox", () => {
   it("lists unread, waiting and failed threads inline, five at a time, and opens them directly", async () => {
+    using _locale = testUiLocale("zh-CN");
     const waiting = {
       ...makeThreadFixture({ id: ThreadId.make("ask"), title: "Needs answer" }),
       hasPendingUserInput: true,
@@ -82,6 +92,7 @@ describe("sidebar inbox", () => {
 });
 
 it("removes attention state immediately while an inert row exits, including the last row", async () => {
+  using _locale = testUiLocale("zh-CN");
   const waiting = {
     ...makeThreadFixture({ id: ThreadId.make("motion-ask"), title: "Motion answer" }),
     hasPendingUserInput: true,
@@ -130,6 +141,7 @@ it("skips inbox exit and count animation when reduced motion is requested", asyn
 });
 
 it("does not exit hidden rows on collapse and restores a returning row before its exit deadline", async () => {
+  using _locale = testUiLocale("zh-CN");
   const threads = Array.from({ length: 6 }, (_, index) => finished(index + 1));
   const navigate = vi.fn();
   await using screen = await render(
@@ -205,6 +217,7 @@ it("only lists linked board attention and opens its conversation without a task 
 });
 
 it("sends the continuation from the selected thread and immediately removes its actionable row", async () => {
+  using _locale = testUiLocale("zh-CN");
   useResumeCardStore.setState({ selected: {}, hidden: {}, hiddenUntil: {} });
   const thread = {
     ...makeThreadFixture({ id: ThreadId.make("continue-inbox"), title: "继续扫码任务" }),
@@ -238,4 +251,200 @@ it("sends the continuation from the selected thread and immediately removes its 
         .getByRole("button", { name: /继续扫码任务/ }),
     )
     .not.toBeInTheDocument();
+});
+
+it("never keeps a finished sub-agent in Needs you, even after its result was opened", async () => {
+  const previous = useResumeCardStore.getState();
+  useResumeCardStore.setState({ selected: {}, hidden: {}, hiddenUntil: {} });
+  try {
+    const parent = finished(4);
+    const base = finished(5);
+    const child: SidebarThreadSummary = {
+      ...base,
+      title: "Child audit",
+      lineage: {
+        rootThreadId: parent.id,
+        parentThreadId: parent.id,
+        relationshipToParent: "subagent",
+      },
+    };
+    const key = scopedThreadKey(scopeThreadRef(child.environmentId, child.id));
+    // What opening the child used to record (InboxStrip registers artifacts as a new result).
+    useResumeCardStore.getState().open({
+      key,
+      token: threadResumeToken(child, "有新结果"),
+      ref: scopeThreadRef(child.environmentId, child.id),
+      title: child.title,
+      reason: "有新结果",
+    });
+    await using screen = await render(
+      <WorkbenchInbox
+        threads={[{ ...parent, lastVisitedAt: "2026-11-03T00:00:00.000Z" }, child]}
+        projects={[]}
+        activeKey={null}
+        navigate={vi.fn()}
+      />,
+    );
+    expect(screen.container.textContent).not.toMatch(/子任务|Child audit|Done 4/);
+  } finally {
+    useResumeCardStore.setState(previous, true);
+  }
+});
+it("keeps a result out of Needs you while its background task runs, then lists it once", async () => {
+  const previous = useResumeCardStore.getState();
+  useResumeCardStore.setState({ selected: {}, hidden: {}, hiddenUntil: {} });
+  try {
+    const thread = finished(6);
+    const key = scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id));
+    // The result strip recorded the finished turn before the delegate finished.
+    useResumeCardStore.getState().open({
+      key,
+      token: threadResumeToken(thread, "有新结果"),
+      ref: scopeThreadRef(thread.environmentId, thread.id),
+      title: thread.title,
+      reason: "有新结果",
+    });
+    const waiting = {
+      ...thread,
+      pendingBackgroundTasks: [{ taskId: "delegate", kind: "subagent" as const }],
+    };
+    await using screen = await render(
+      <WorkbenchInbox threads={[waiting]} projects={[]} activeKey={null} navigate={vi.fn()} />,
+    );
+    // Only the running row mentions it; no new-result card.
+    expect(screen.container.textContent).toContain("Waiting for background tasks");
+    expect(screen.container.textContent).not.toMatch(/New results?/);
+    await screen.rerender(
+      <WorkbenchInbox threads={[thread]} projects={[]} activeKey={null} navigate={vi.fn()} />,
+    );
+    expect(screen.container.textContent?.match(/New results?/g)).toHaveLength(1);
+    expect(screen.container.textContent).not.toContain("Waiting for background tasks");
+  } finally {
+    useResumeCardStore.setState(previous, true);
+  }
+});
+it("keeps an opened new result until explicit dismissal, including a persisted reload", async () => {
+  const previous = useResumeCardStore.getState();
+  const previousVisits = useUiStateStore.getState().threadLastVisitedAtById;
+  useResumeCardStore.setState({ selected: {}, hidden: {}, hiddenUntil: {} });
+  try {
+    const thread = finished(2);
+    const navigate = vi.fn();
+    await using screen = await render(
+      <WorkbenchInbox threads={[thread]} projects={[]} activeKey={null} navigate={navigate} />,
+    );
+    await screen.getByRole("button", { name: /Done 2/ }).click();
+    const key = scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id));
+    const request = useResumeCardStore.getState().selected[key]!;
+    const visited = { ...thread, lastVisitedAt: "2026-11-03T00:00:00.000Z" };
+    await screen.rerender(
+      <WorkbenchInbox threads={[visited]} projects={[]} activeKey={key} navigate={navigate} />,
+    );
+    await expect.element(screen.getByRole("button", { name: /Done 2/ })).toBeVisible();
+    await act(() => useResumeCardStore.getState().hide(request, 4102444800000));
+    await expect.element(screen.getByRole("button", { name: /Done 2/ })).not.toBeInTheDocument();
+    const persisted = localStorage.getItem("t3code:resume-attention:v1")!;
+    useResumeCardStore.setState({ selected: {}, hidden: {}, hiddenUntil: {} });
+    localStorage.setItem("t3code:resume-attention:v1", persisted);
+    await act(() => useResumeCardStore.persist.rehydrate());
+    expect(useResumeCardStore.getState().selected[key]).toEqual(request);
+    await expect.element(screen.getByRole("button", { name: /Done 2/ })).not.toBeInTheDocument();
+    await act(() => useResumeCardStore.getState().restore(request));
+    await expect.element(screen.getByRole("button", { name: /Done 2/ })).toBeVisible();
+    const row = screen.container.querySelector('[data-inbox-thread="done-2"]')!.closest("li")!;
+    await userEvent.hover(row);
+    await userEvent.click(
+      row.querySelector<HTMLButtonElement>('[data-inbox-quick-action="done"]')!,
+    );
+    await vi.waitFor(() => expect(useResumeCardStore.getState().hidden[key]).toBe(request.token));
+    await expect.element(screen.getByRole("button", { name: /Done 2/ })).not.toBeInTheDocument();
+    expect(navigate).toHaveBeenCalledTimes(1);
+  } finally {
+    useResumeCardStore.setState(previous, true);
+    useUiStateStore.setState({ threadLastVisitedAtById: previousVisits });
+  }
+});
+
+it("V12 shows finish / archive / more on a result row and a handle button on a waiting row", async () => {
+  using _locale = testUiLocale("zh-CN");
+  applyThemePalette("apple", "light");
+  await page.viewport(360, 420);
+  const waiting = {
+    ...makeThreadFixture({ id: ThreadId.make("ask-quick"), title: "Needs answer" }),
+    hasPendingUserInput: true,
+  };
+  const navigate = vi.fn();
+  await using screen = await render(
+    <div data-slot="sidebar" style={{ width: 300, padding: 8, background: "var(--sidebar)" }}>
+      <WorkbenchInbox
+        threads={[waiting, finished(1)]}
+        projects={[]}
+        activeKey={null}
+        navigate={navigate}
+      />
+    </div>,
+  );
+  const resultRow = document.querySelector('[data-inbox-thread="done-1"]')!.closest("li")!;
+  await userEvent.hover(resultRow);
+  const strip = resultRow.querySelector<HTMLElement>("[data-inbox-quick-actions]")!;
+  expect(strip.dataset.inboxQuickActions).toBe("finished");
+  expect(
+    [...strip.querySelectorAll("[data-inbox-quick-action]")].map((n) =>
+      n.getAttribute("data-inbox-quick-action"),
+    ),
+  ).toEqual(["done", "archive", "more"]);
+  await vi.waitFor(() => expect(getComputedStyle(strip).opacity).toBe("1"));
+  const askRow = document.querySelector('[data-inbox-thread="ask-quick"]')!.closest("li")!;
+  await userEvent.hover(askRow);
+  const askStrip = askRow.querySelector<HTMLElement>("[data-inbox-quick-actions]")!;
+  expect(askStrip.dataset.inboxQuickActions).toBe("needs-you");
+  await userEvent.click(
+    askStrip.querySelector<HTMLButtonElement>('[data-inbox-quick-action="open"]')!,
+  );
+  expect(navigate).toHaveBeenCalledWith(expect.objectContaining({ threadId: "ask-quick" }));
+});
+
+it("V14 keeps titles clear of the hover actions, lists today's done threads, and offers status changes", async () => {
+  using _locale = testUiLocale("zh-CN");
+  applyThemePalette("apple", "light");
+  await page.viewport(360, 520);
+  const doneToday = {
+    ...makeThreadFixture({ id: ThreadId.make("settled-today"), title: "Settled today" }),
+    settledOverride: "settled" as const,
+    settledAt: new Date().toISOString(),
+  };
+  await using screen = await render(
+    <div data-slot="sidebar" style={{ width: 300, padding: 8, background: "var(--sidebar)" }}>
+      <WorkbenchInbox
+        threads={[finished(2), doneToday]}
+        projects={[]}
+        activeKey={null}
+        navigate={vi.fn()}
+      />
+    </div>,
+  );
+  const row = document.querySelector('[data-inbox-thread="done-2"]')!.closest("li")!;
+  await userEvent.hover(row);
+  const strip = row.querySelector<HTMLElement>("[data-inbox-quick-actions]")!;
+  await vi.waitFor(() => expect(getComputedStyle(strip).opacity).toBe("1"));
+  const title = row.querySelector<HTMLElement>(".truncate")!;
+  // The title ends before the first action button: nothing is drawn over the text.
+  expect(title.getBoundingClientRect().right).toBeLessThanOrEqual(
+    strip.getBoundingClientRect().left,
+  );
+  // Done today is collapsed until asked for.
+  const doneHeader = screen.getByRole("button", { name: /今天已完成/ });
+  await expect.element(doneHeader).toHaveAttribute("aria-expanded", "false");
+  expect(document.querySelector('[data-inbox-done-thread="settled-today"]')).toBeNull();
+  await doneHeader.click();
+  await expect
+    .element(screen.getByRole("button", { name: /Settled today/ }))
+    .toBeVisible();
+  // The status dot opens the state list: done is checked, "in progress" follows the agent.
+  await userEvent.click(row.querySelector<HTMLButtonElement>("[data-inbox-status]")!);
+  await expect.element(page.getByRole("menuitem", { name: /待我处理/ })).toBeVisible();
+  await expect.element(page.getByRole("menuitem", { name: /进行中/ })).toHaveAttribute(
+    "aria-disabled",
+    "true",
+  );
 });

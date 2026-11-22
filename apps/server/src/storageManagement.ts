@@ -4,7 +4,13 @@ import * as DateTime from "effect/DateTime";
 import * as NodeFSP from "node:fs/promises";
 import * as NodePath from "node:path";
 import * as ServerSettings from "./serverSettings.ts";
-import { scanCleanup, cleanupRoots, assertVolumeBudget, type ScanProgress } from "./storageMole.ts";
+import {
+  scanCleanup,
+  cleanupRoots,
+  cleanupStagingDir,
+  assertVolumeBudget,
+  type ScanProgress,
+} from "./storageMole.ts";
 import * as NodeChildProcess from "node:child_process";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import {
@@ -53,19 +59,33 @@ const make = Effect.gen(function* () {
       Schema.Array(Schema.Struct({ at: Schema.String, freeBytes: Schema.Number })),
     ),
   );
-  let history = yield* Effect.tryPromise(() => NodeFSP.readFile(historyPath, "utf8")).pipe(
+  let history = yield* Effect.tryPromise({
+    try: () => NodeFSP.readFile(historyPath, "utf8"),
+    catch: (cause) => new StorageManagementError({ message: String(cause) }),
+  }).pipe(
     Effect.flatMap(Schema.decodeUnknownEffect(historySchema)),
     Effect.orElseSucceed((): typeof historySchema.Type => ({})),
   );
+  const MAX_WORKER_STDOUT_BYTES = 16 * 1024 * 1024;
+  const workerTimeoutMs = (input: object) => {
+    const action = (input as { action?: unknown }).action;
+    if (action === "execute") return 3_900_000;
+    if (action === "plan" || action === "restore-plan" || action === "logs-plan") return 960_000;
+    return 120_000;
+  };
   const call = Effect.fn("StorageManagement.worker")(function* (input: object) {
     const currentSettings = yield* settings.getSettings.pipe(
       Effect.mapError(() => new StorageManagementError({ message: "无法读取保护设置" })),
     );
     return yield* Effect.tryPromise({
-      try: () =>
+      try: (signal) =>
         new Promise<unknown>((resolve, reject) => {
           if (platform !== "darwin") {
             reject(new Error("当前归档操作需要 macOS 的 Python 3；不会执行清理"));
+            return;
+          }
+          if (signal.aborted) {
+            reject(new Error("归档操作已取消"));
             return;
           }
           const child = NodeChildProcess.spawn(
@@ -75,35 +95,66 @@ const make = Effect.gen(function* () {
               stdio: ["pipe", "pipe", "pipe"],
             },
           );
+          let settled = false;
           let output = "";
+          let outputBytes = 0;
           let stderr = "";
-          child.stdout.on("data", (data) => {
-            output += String(data);
+          const finish = (fn: () => void) => {
+            if (settled) return;
+            settled = true;
+            signal.removeEventListener("abort", onAbort);
+            fn();
+          };
+          const killChild = () => {
+            try {
+              child.kill("SIGTERM");
+            } catch {
+              /* Child already exited. */
+            }
+          };
+          const onAbort = () => {
+            killChild();
+            finish(() => reject(new Error("归档操作已取消")));
+          };
+          signal.addEventListener("abort", onAbort, { once: true });
+          child.stdout.on("data", (data: Buffer | string) => {
+            const chunk = Buffer.isBuffer(data) ? data : Buffer.from(String(data));
+            outputBytes += chunk.byteLength;
+            if (outputBytes > MAX_WORKER_STDOUT_BYTES) {
+              killChild();
+              finish(() => reject(new Error("归档进程输出超过上限，已中止")));
+              return;
+            }
+            output += chunk.toString("utf8");
           });
           child.stderr.on("data", (data) => {
             stderr = (stderr + String(data)).slice(-2000);
           });
-          child.on("error", reject);
+          child.on("error", (error) => finish(() => reject(error)));
           child.on("close", (code) => {
-            try {
-              const result: unknown = JSON.parse(output);
-              if (code !== 0)
-                reject(
-                  new Error(
-                    typeof result === "object" && result !== null && "error" in result
-                      ? String(result.error)
-                      : "归档操作未完成",
-                  ),
-                );
-              else resolve(result);
-            } catch {
-              reject(new Error(stderr || "归档进程未返回有效结果"));
-            }
+            finish(() => {
+              try {
+                const result: unknown = JSON.parse(output);
+                if (code !== 0)
+                  reject(
+                    new Error(
+                      typeof result === "object" && result !== null && "error" in result
+                        ? String(result.error)
+                        : "归档操作未完成",
+                    ),
+                  );
+                else resolve(result);
+              } catch {
+                reject(new Error(stderr || "归档进程未返回有效结果"));
+              }
+            });
           });
+          child.stdin.on("error", () => undefined);
           child.stdin.end(
             JSON.stringify({
               ...input,
               base: config.baseDir,
+              staging: cleanupStagingDir(),
               reserveByVolume: currentSettings.storageCleanup.volumeReserveGiB ?? {},
               inventoryPaths: {
                 logs: config.logsDir,
@@ -117,7 +168,12 @@ const make = Effect.gen(function* () {
         new StorageManagementError({
           message: error instanceof Error ? error.message : String(error),
         }),
-    });
+    }).pipe(
+      Effect.timeoutOrElse({
+        duration: workerTimeoutMs(input),
+        orElse: () => Effect.fail(new StorageManagementError({ message: "归档进程超时，已终止" })),
+      }),
+    );
   });
   const readInspection = Effect.fn("StorageManagement.readInspection")(function* (
     input: StorageInspectInput,
@@ -182,9 +238,10 @@ const make = Effect.gen(function* () {
     const encoded = yield* Schema.encodeEffect(historySchema)(history).pipe(
       Effect.orElseSucceed(() => "{}"),
     );
-    yield* Effect.tryPromise(() => NodeFSP.writeFile(historyPath, encoded, { mode: 0o600 })).pipe(
-      Effect.orElseSucceed(() => undefined),
-    );
+    yield* Effect.tryPromise({
+      try: () => NodeFSP.writeFile(historyPath, encoded, { mode: 0o600 }),
+      catch: (cause) => new StorageManagementError({ message: String(cause) }),
+    }).pipe(Effect.orElseSucceed(() => undefined));
   });
   const inspect = Effect.fn("StorageManagement.inspect")(function* (input: StorageInspectInput) {
     const result = yield* readInspection(input);
@@ -300,6 +357,12 @@ const make = Effect.gen(function* () {
       );
       if (operation.phase === "queued") {
         yield* cleanup.withMaintenanceLock(call(request)).pipe(
+          Effect.catch((error) =>
+            Effect.logWarning("Storage management background execution failed", {
+              planId: operation.id,
+              error: error.message,
+            }),
+          ),
           Effect.ensuring(
             Effect.sync(() => {
               scanned = [];
@@ -307,7 +370,6 @@ const make = Effect.gen(function* () {
               progress = undefined;
             }),
           ),
-          Effect.uninterruptible,
           Effect.forkIn(scope),
         );
       }

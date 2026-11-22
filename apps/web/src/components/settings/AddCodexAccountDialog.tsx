@@ -1,4 +1,3 @@
-import { uiText } from "~/i18n";
 import { AuthProvidersManageScope } from "@t3tools/contracts";
 import { readEnvironmentScope, useEnvironmentScope } from "../../state/session";
 import { useAtomValue } from "@effect/atom-react";
@@ -8,6 +7,7 @@ import {
   type EnvironmentId,
   type ServerProvider,
 } from "@t3tools/contracts";
+import { T, useGT } from "gt-react";
 import { useState, type ReactNode } from "react";
 import { usesChatGptSharing } from "@t3tools/shared/usageLimits";
 
@@ -32,16 +32,20 @@ export function AddCodexAccountDialog({
 }: {
   readonly environmentId: EnvironmentId;
   readonly onClose: () => void;
+  // Told when the account is created; the dialog then runs its own sign-in.
   readonly onAccountCreated?:
     | ((instanceId: ProviderInstanceId, displayName: string) => void)
     | undefined;
   readonly renderSetup: (instanceId: ProviderInstanceId, provider: ServerProvider) => ReactNode;
 }) {
+  const gt = useGT();
   const canManageProviders = useEnvironmentScope(environmentId, AuthProvidersManageScope);
   const settings = useEnvironmentSettings(environmentId);
   const providers = useAtomValue(serverEnvironment.providersValueAtom(environmentId));
   const update = useAtomCommand(serverEnvironment.updateSettings, "Add ChatGPT account");
-  const [name, setName] = useState("Personal");
+  const [name, setName] = useState(() =>
+    gt("Personal", { $context: "default name for a ChatGPT account" }),
+  );
   const displayName = `ChatGPT - ${name.trim()}`;
   const [instanceId, setInstanceId] = useState<ProviderInstanceId | null>(null);
   const [pending, setPending] = useState(false);
@@ -72,12 +76,8 @@ export function AddCodexAccountDialog({
       },
     });
     if (result._tag === "Success") {
-      if (onAccountCreated) {
-        onAccountCreated(id, displayName);
-        onClose();
-      } else {
-        setInstanceId(id);
-      }
+      onAccountCreated?.(id, displayName);
+      setInstanceId(id);
     }
     setPending(false);
   };
@@ -94,8 +94,8 @@ export function AddCodexAccountDialog({
     >
       <WizardPopup size="wide">
         <WizardHeader
-          title={instanceId ? displayName : uiText("Add ChatGPT account")}
-          description={uiText(
+          title={instanceId ? displayName : gt("Add ChatGPT account")}
+          description={gt(
             "Each account has its own Codex instance and sign-in. Choose the other account on the sign-in page.",
           )}
         />
@@ -105,8 +105,8 @@ export function AddCodexAccountDialog({
               renderSetup(instanceId, provider)
             ) : (
               <SettingsRow
-                title={uiText("Codex runtime")}
-                description={uiText("Preparing managed setup.")}
+                title={gt("Codex runtime")}
+                description={gt("Preparing managed setup.")}
               />
             )
           ) : (
@@ -119,15 +119,15 @@ export function AddCodexAccountDialog({
               }}
             >
               <SettingsRow
-                title={uiText("Account name")}
-                description={uiText("Shown in the provider list and model picker.")}
+                title={gt("Account name")}
+                description={gt("Shown in the provider list and model picker.")}
                 control={
                   <Input
-                    aria-label={uiText("Account name")}
+                    aria-label={gt("Account name")}
                     value={name}
                     disabled={pending}
                     onChange={(event) => setName(event.target.value)}
-                    placeholder={uiText("e.g. Personal or Work")}
+                    placeholder={gt("e.g. Personal or Work")}
                   />
                 }
               />
@@ -138,19 +138,19 @@ export function AddCodexAccountDialog({
         <WizardFooter>
           {instanceId ? (
             <Button variant="outline" onClick={onClose}>
-              {uiText("Finish later")}
+              <T>Finish later</T>
             </Button>
           ) : (
             <>
               <Button variant="outline" disabled={pending} onClick={onClose}>
-                {uiText("Cancel")}
+                <T>Cancel</T>
               </Button>
               <Button
                 type="submit"
                 form="add-codex-account"
                 disabled={pending || !name.trim() || !canManageProviders}
               >
-                {pending ? uiText("Adding account…") : uiText("Continue")}
+                {pending ? gt("Adding account…") : gt("Continue")}
               </Button>
             </>
           )}

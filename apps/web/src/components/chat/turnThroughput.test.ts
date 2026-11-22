@@ -117,7 +117,7 @@ describe("turn throughput", () => {
       updatedAt: at(27),
     };
     const s = selectTurnThroughput({ ...p, turnItems: [item, child] as never })!;
-    expect(s.phase).toBe("执行工具 / 子任务");
+    expect(s.phase).toBe("Running tools or subtasks");
     expect(throughputReading(s, 40000).quietMs).toBe(18000);
   });
   it("does not tick for a queued round while the queue is paused", () => {

@@ -1,3 +1,5 @@
+import { inboxLabel } from "~/i18n/inboxLabel";
+import { uiText } from "./i18n";
 import type { SidebarThreadSummary } from "./types";
 import { inboxReason, inboxThreadKey, type InboxThread } from "./workbenchInbox";
 
@@ -87,10 +89,10 @@ export function sidebarPreviewThreads<T extends InboxThread>(
 export function sidebarRelativeTime(timestamp: string, now = Date.now()) {
   const elapsed = Math.max(0, now - Date.parse(timestamp));
   if (!Number.isFinite(elapsed)) return "";
-  if (elapsed < 60_000) return "刚刚";
-  if (elapsed < 3_600_000) return `${Math.floor(elapsed / 60_000)}分`;
-  if (elapsed < 86_400_000) return `${Math.floor(elapsed / 3_600_000)}时`;
-  return `${Math.floor(elapsed / 86_400_000)}天`;
+  if (elapsed < 60_000) return uiText("Just now");
+  if (elapsed < 3_600_000) return uiText("{count}m", { count: Math.floor(elapsed / 60_000) });
+  if (elapsed < 86_400_000) return uiText("{count}h.", { count: Math.floor(elapsed / 3_600_000) });
+  return uiText("{count}d", { count: Math.floor(elapsed / 86_400_000) });
 }
 
 export function attentionThreadLabel(
@@ -108,7 +110,10 @@ export function attentionThreadLabel(
         )
       : null;
   return {
-    title: parent?.title || thread.title || "未命名会话",
-    detail: thread.lineage.relationshipToParent === "subagent" ? `子任务 · ${reason ?? ""}` : null,
+    title: parent?.title || thread.title || uiText("Untitled thread"),
+    detail:
+      thread.lineage.relationshipToParent === "subagent"
+        ? uiText("Subtask · {count}", { count: reason ? inboxLabel(reason) : "" })
+        : null,
   };
 }

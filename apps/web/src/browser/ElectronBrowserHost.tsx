@@ -22,6 +22,7 @@ import {
 } from "~/previewStateStore";
 import { appAtomRegistry } from "~/rpc/atomRegistry";
 import { previewEnvironment } from "~/state/preview";
+import { readPreviewTunnelUrl } from "~/state/previewTunnel";
 import { useEnvironmentScope } from "~/state/session";
 
 import { readPreviewAnnotationTheme } from "./annotationTheme";
@@ -79,7 +80,7 @@ function startAnnotationThemeSync(preview: DesktopPreviewBridge): () => void {
   const observer = new MutationObserver(syncTheme);
   observer.observe(document.documentElement, {
     attributes: true,
-    attributeFilter: ["class", "style"],
+    attributeFilter: ["class", "style", "lang"],
   });
   const headObserver = new MutationObserver(syncTheme);
   headObserver.observe(document.head, {
@@ -119,6 +120,11 @@ export function startElectronBrowserHost(): () => void {
       useBrowserPointerStore.getState().apply(event);
     }),
     preview.onOpenLink(openLinkInPreview),
+    preview.onTunnelAccessRequest(({ requestId, environmentId }) => {
+      void readPreviewTunnelUrl(environmentId).then((url) =>
+        preview.resolveTunnelAccess(requestId, url),
+      );
+    }),
   ];
   return () => {
     for (const dispose of disposers) dispose();

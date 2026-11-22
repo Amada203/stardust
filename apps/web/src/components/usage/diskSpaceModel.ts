@@ -9,38 +9,62 @@ export const DISK_SPACE_KINDS: ReadonlyArray<{
 }> = [
   {
     kind: "backups",
-    label: uiText("Upgrade backups"),
-    hint: uiText("Keep required recovery versions; inspect references before archiving."),
+    get label() {
+      return uiText("Upgrade backups");
+    },
+    get hint() {
+      return uiText("Keep required recovery versions; inspect references before archiving.");
+    },
     color: "#d97757",
   },
   {
     kind: "workspaces",
-    label: uiText("Task workspaces"),
-    hint: uiText("Project copies and installed dependencies created by tasks."),
+    get label() {
+      return uiText("Task workspaces");
+    },
+    get hint() {
+      return uiText("Project copies and installed dependencies created by tasks.");
+    },
     color: "#5b9bbd",
   },
   {
     kind: "agent-history",
-    label: uiText("Codex history"),
-    hint: uiText("Conversation records. Never removed automatically."),
+    get label() {
+      return uiText("Codex history");
+    },
+    get hint() {
+      return uiText("Conversation records. Never removed automatically.");
+    },
     color: "#8c7bd1",
   },
   {
     kind: "database",
-    label: uiText("Chat database"),
-    hint: uiText("All your chats live here."),
+    get label() {
+      return uiText("Chat database");
+    },
+    get hint() {
+      return uiText("All your chats live here.");
+    },
     color: "#4d9f8a",
   },
   {
     kind: "attachments",
-    label: uiText("Attachments"),
-    hint: uiText("Files and images attached to messages."),
+    get label() {
+      return uiText("Attachments");
+    },
+    get hint() {
+      return uiText("Files and images attached to messages.");
+    },
     color: "#8b8b8b",
   },
   {
     kind: "logs",
-    label: uiText("Logs"),
-    hint: uiText("Server and provider logs."),
+    get label() {
+      return uiText("Logs");
+    },
+    get hint() {
+      return uiText("Server and provider logs.");
+    },
     color: "#b8a24a",
   },
 ];

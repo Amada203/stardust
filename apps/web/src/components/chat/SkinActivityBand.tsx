@@ -1,3 +1,4 @@
+import { uiText } from "../../i18n";
 import { useEffect, useRef, useState } from "react";
 import { observeVisibleAnimation } from "../../lib/visibleAnimation";
 
@@ -19,7 +20,7 @@ export function SkinActivityBand(props: {
   readonly startedAt?: string | null;
 }) {
   const { working, activity, startedAt, subagentsSettled, subagentsTotal } = props;
-  const next = activity?.trim() || "正在思考";
+  const next = activity?.trim() || uiText("Thinking.");
   const [phase, setPhase] = useState<"hidden" | "working" | "done" | "leaving">(
     working ? "working" : "hidden",
   );
@@ -75,7 +76,10 @@ export function SkinActivityBand(props: {
   const label =
     phase === "working"
       ? line.text
-      : `已完成 · 用时 ${Math.floor(seconds / 60)} 分 ${seconds % 60} 秒`;
+      : uiText("Completed · {count} min {total} sec", {
+          count: Math.floor(seconds / 60),
+          total: seconds % 60,
+        });
   return (
     <div className="skin-activity-anchor" aria-hidden="true">
       <div className="skin-activity-band" data-state={phase}>

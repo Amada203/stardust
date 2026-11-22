@@ -1,3 +1,4 @@
+import { useUiText } from "~/i18n/useUiText";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ShieldCheckIcon, FilePenIcon, TerminalIcon } from "lucide-react";
 import type { ProviderApprovalDecision, RuntimeRequestId } from "@t3tools/contracts";
@@ -8,7 +9,6 @@ import { fullAccessOverrideExplanation } from "@t3tools/client-runtime/state/thr
 import { animateWorkbenchOnce } from "../../lib/workbenchMotion";
 import { useStableCallback } from "../../hooks/useStableCallback";
 import { DEFAULT_APPROVAL_OPTIONS } from "./ComposerPendingApprovalActions";
-import { uiText } from "../../i18n";
 
 export interface TrailApprovalInput {
   readonly pending: readonly PendingApproval[];
@@ -49,6 +49,7 @@ function ApprovalCard({
   approval: PendingApproval;
   input: TrailApprovalInput;
 }) {
+  const uiText = useUiText();
   const ref = useRef<HTMLDivElement>(null);
   const inFlight = useRef(false);
   const [pending, setPending] = useState(false);
@@ -77,11 +78,13 @@ function ApprovalCard({
         !("_tag" in result) ||
         result._tag !== "Success"
       ) {
-        setError("请求尚未提交成功，请重试或查看会话错误。");
+        setError(
+          uiText("The request hasn’t been submitted. Retry or check the conversation error."),
+        );
         setPending(false);
       }
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "提交失败，请重试。");
+      setError(cause instanceof Error ? cause.message : uiText("Couldn’t submit. Try again."));
       setPending(false);
     }
     inFlight.current = false;
@@ -154,7 +157,7 @@ function ApprovalCard({
       className="combo-decision trail-approval"
       tabIndex={0}
       role="group"
-      aria-label="权限请求"
+      aria-label={uiText("Permission request")}
       data-approval-shortcuts="true"
       data-approval-id={approval.requestId}
       aria-busy={pending}
@@ -162,17 +165,27 @@ function ApprovalCard({
       <div className="trail-approval-heading">
         <Icon size={15} aria-hidden />
         <strong>{info.title}</strong>
-        {input.pending.length > 1 ? <span>还有 {input.pending.length - 1} 个</span> : null}
+        {input.pending.length > 1 ? (
+          <span>
+            {uiText("And ")}
+            {input.pending.length - 1} {uiText(" more")}
+          </span>
+        ) : null}
       </div>
       {info.risk ? <span className="trail-approval-risk">{info.risk}</span> : null}
       {approval.appName ? <p>{approval.appName}</p> : null}
-      {approval.reason ? <p>为什么：{approval.reason}</p> : null}
+      {approval.reason ? (
+        <p>
+          {uiText("Why:")}
+          {approval.reason}
+        </p>
+      ) : null}
       {info.detail ? (
         <pre
           className="trail-approval-code"
           data-expanded={expanded || !long}
           tabIndex={0}
-          aria-label="完整命令或路径"
+          aria-label={uiText("Full command or path")}
         >
           <code>{info.detail}</code>
         </pre>
@@ -184,16 +197,18 @@ function ApprovalCard({
           aria-expanded={expanded}
           onClick={() => setExpanded(!expanded)}
         >
-          {expanded ? "收起详情" : "展开完整命令或路径"}
+          {expanded ? uiText("Hide details.") : uiText("Show full command or path")}
         </button>
       ) : null}
       {approval.fullAccessOverride ? (
         <p>{uiText(fullAccessOverrideExplanation(approval.fullAccessOverride))}</p>
       ) : null}
       {approval.responseCapability !== "live" ? (
-        <p role="status">提供方进程已退出，请中断或重启后再处理。</p>
+        <p role="status">
+          {uiText("The provider exited. Interrupt or restart it before responding.")}
+        </p>
       ) : null}
-      {held ? <p role="status">正在输入，稍后可处理此请求。</p> : null}
+      {held ? <p role="status">{uiText("Finish typing to respond to this request.")}</p> : null}
       {error ? <p role="alert">{error}</p> : null}
       <div className="trail-approval-actions">
         {options.map((option) => (
@@ -212,7 +227,7 @@ function ApprovalCard({
       </div>
       {options.some((option) => option.decision === "accept") &&
       options.some((option) => option.decision === "decline") ? (
-        <small>↩ 批准 · Esc 拒绝</small>
+        <small>{uiText("↩ Approve · Esc Deny")}</small>
       ) : null}
     </div>
   );

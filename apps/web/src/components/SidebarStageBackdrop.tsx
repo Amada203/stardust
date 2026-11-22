@@ -2,7 +2,7 @@ import { useAtomValue } from "@effect/atom-react";
 import type { EnvironmentIdentificationMode } from "@t3tools/contracts";
 import { useId } from "react";
 
-import { APP_STAGE_LABEL } from "../branding";
+import { APP_STAGE_LABEL, RELEASE_CHANNEL } from "../branding";
 import { resolveServerBackedAppStageLabel } from "../branding.logic";
 import { primaryServerConfigAtom } from "../state/server";
 
@@ -28,7 +28,9 @@ export function resolveEnvironmentIdentificationPillLabel(
   stageLabel: string,
 ): EnvironmentIdentificationPillLabel | null {
   const normalized = stageLabel.trim().toLowerCase();
+  // oxlint-disable-next-line t3code/no-untranslated-copy -- release channel names
   if (normalized === "dev") return "Dev";
+  // oxlint-disable-next-line t3code/no-untranslated-copy -- release channel names
   if (normalized === "nightly") return "Nightly";
   return null;
 }
@@ -40,6 +42,7 @@ export function useEnvironmentStageLabel(): string {
   return resolveServerBackedAppStageLabel({
     primaryServerVersion,
     fallbackStageLabel: APP_STAGE_LABEL,
+    releaseChannel: RELEASE_CHANNEL,
   });
 }
 

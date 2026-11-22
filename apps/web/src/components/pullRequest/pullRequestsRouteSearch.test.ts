@@ -4,9 +4,7 @@ import {
   createRoute,
   createRouter,
 } from "@tanstack/react-router";
-import { describe, expect, it, vi } from "vite-plus/test";
-// Route validation runs in Node; its page's browser-only diff worker is never instantiated.
-vi.mock("@pierre/diffs/worker/worker.js?worker", () => ({ default: function DiffsWorker() {} }));
+import { describe, expect, it } from "vite-plus/test";
 
 import { Route as PullRequestsRoute } from "../../routes/_chat.pull-requests";
 
@@ -37,5 +35,10 @@ describe("pull requests route search", () => {
   it("keeps a q that is text, including quoted digits", () => {
     expect(matchedSearch("/pull-requests?q=fix")?.q).toBe("fix");
     expect(matchedSearch("/pull-requests?q=%224089%22")?.q).toBe("4089");
+  });
+
+  it("drops an author or labels the URL parser turned into a number", () => {
+    expect(matchedSearch("/pull-requests?author=4089")?.author).toBeUndefined();
+    expect(matchedSearch("/pull-requests?labels=4089")?.labels).toBeUndefined();
   });
 });

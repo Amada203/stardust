@@ -178,4 +178,35 @@ describe("startClaudeTerminalApiTap", () => {
       upstream.close();
     }
   });
+
+  it("forwards GET requests without a body and strips hop-by-hop headers cleanly", async () => {
+    const upstream = NodeHttp.createServer((request, response) => {
+      response.writeHead(200, { "content-type": "application/json", connection: "keep-alive" });
+      response.end(JSON.stringify({ method: request.method, url: request.url }));
+    });
+    const upstreamPort = await listen(upstream);
+    const tap = await startClaudeTerminalApiTap(`http://127.0.0.1:${upstreamPort}`, {
+      onMainRequest: () => undefined,
+      onMainResponse: () => undefined,
+      onStreamEvent: () => undefined,
+      onRateLimits: () => undefined,
+    });
+    try {
+      const response = await new Promise<{ status: number; body: string }>((resolve, reject) => {
+        const req = NodeHttp.get(`${tap.url}/v1/models`, (res) => {
+          const chunks: Buffer[] = [];
+          res.on("data", (c: Buffer) => chunks.push(c));
+          res.on("end", () =>
+            resolve({ status: res.statusCode ?? 0, body: Buffer.concat(chunks).toString("utf8") }),
+          );
+        });
+        req.on("error", reject);
+      });
+      expect(response.status).toBe(200);
+      expect(JSON.parse(response.body)).toEqual({ method: "GET", url: "/v1/models" });
+    } finally {
+      tap.close();
+      upstream.close();
+    }
+  });
 });

@@ -1,5 +1,7 @@
+
 import { uiText } from "~/i18n";
 import { DownloadIcon } from "lucide-react";
+import { T, useGT, useMessages, Var } from "gt-react";
 import { useSyncExternalStore } from "react";
 import type { RelayClientInstallProgressStage } from "@t3tools/contracts";
 
@@ -13,6 +15,7 @@ import { Button } from "../ui/button";
 import {
   Dialog,
   DialogDescription,
+  DialogAction,
   DialogFooter,
   DialogHeader,
   DialogPanel,
@@ -23,13 +26,48 @@ const installSteps: ReadonlyArray<{
   readonly stage: RelayClientInstallProgressStage;
   readonly label: string;
 }> = [
-  { stage: "checking", label: uiText("Checking current installation") },
-  { stage: "waiting_for_lock", label: uiText("Waiting for installer") },
-  { stage: "downloading", label: uiText("Downloading relay client") },
-  { stage: "verifying", label: uiText("Verifying download") },
-  { stage: "installing", label: uiText("Installing relay client") },
-  { stage: "validating", label: uiText("Validating executable") },
-  { stage: "activating", label: uiText("Activating installation") },
+  {
+    stage: "checking",
+    get label() {
+      return uiText("Checking current installation");
+    },
+  },
+  {
+    stage: "waiting_for_lock",
+    get label() {
+      return uiText("Waiting for installer");
+    },
+  },
+  {
+    stage: "downloading",
+    get label() {
+      return uiText("Downloading relay client");
+    },
+  },
+  {
+    stage: "verifying",
+    get label() {
+      return uiText("Verifying download");
+    },
+  },
+  {
+    stage: "installing",
+    get label() {
+      return uiText("Installing relay client");
+    },
+  },
+  {
+    stage: "validating",
+    get label() {
+      return uiText("Validating executable");
+    },
+  },
+  {
+    stage: "activating",
+    get label() {
+      return uiText("Activating installation");
+    },
+  },
 ];
 
 export function RelayClientInstallDialog() {
@@ -38,6 +76,8 @@ export function RelayClientInstallDialog() {
     readRelayClientInstallDialogState,
     readRelayClientInstallDialogState,
   );
+  const gt = useGT();
+  const m = useMessages();
   const view = state.status === "closing" ? state.view : state;
   const isConfirming = view.status === "confirming";
   const isInstalling = view.status === "installing";
@@ -66,14 +106,12 @@ export function RelayClientInstallDialog() {
             <DownloadIcon aria-hidden className="size-4.5 text-muted-foreground" />
           </div>
           <DialogTitle>
-            {isInstalling ? uiText("Installing relay client") : uiText("Install relay client?")}
+            {isInstalling ? gt("Installing relay client") : gt("Install relay client?")}
           </DialogTitle>
           <DialogDescription>
             {isInstalling
-              ? uiText(
-                  "T3 Code is preparing this environment for secure access through T3 Connect.",
-                )
-              : uiText(
+              ? gt("T3 Code is preparing this environment for secure access through T3 Connect.")
+              : gt(
                   "T3 Code needs the relay client to make this environment available through T3 Connect.",
                 )}
           </DialogDescription>
@@ -83,31 +121,35 @@ export function RelayClientInstallDialog() {
             <div className="space-y-2.5">
               <div className="flex items-center justify-between gap-3 text-sm">
                 <p aria-live="polite" className="font-medium text-foreground">
-                  {activeStep?.label}
+                  {activeStep ? m(activeStep.label) : null}
                 </p>
                 <p className="shrink-0 tabular-nums text-muted-foreground">
-                  {activeStepIndex + 1} {uiText("of") + " "}
-                  {installSteps.length}
+                  {gt("{step} of {total}", {
+                    step: activeStepIndex + 1,
+                    total: installSteps.length,
+                  })}
                 </p>
               </div>
               <progress
-                aria-label={uiText("Relay client installation progress")}
+                aria-label={gt("Relay client installation progress")}
                 className="h-2 w-full appearance-none overflow-hidden rounded-full bg-muted [&::-moz-progress-bar]:rounded-full [&::-moz-progress-bar]:bg-primary [&::-webkit-progress-bar]:rounded-full [&::-webkit-progress-bar]:bg-muted [&::-webkit-progress-value]:rounded-full [&::-webkit-progress-value]:bg-primary"
                 max={installSteps.length}
                 value={activeStepIndex + 1}
               />
               <p className="text-xs leading-relaxed text-muted-foreground">
-                {uiText("Keep T3 Code open while the relay client is installed.")}
+                <T>Keep T3 Code open while the relay client is installed.</T>
               </p>
             </div>
           ) : (
             <div className="rounded-xl border border-border/70 bg-muted/35 p-3">
               <p className="text-sm font-medium text-foreground">
-                {uiText("Managed relay client")}
+                <T>Managed relay client</T>
               </p>
               <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
-                {uiText("T3 Code will download and install version")}{" "}
-                {view.status === "confirming" ? view.version : ""} {uiText("locally.") + " "}
+                <T>
+                  T3 Code will download and install version{" "}
+                  <Var>{view.status === "confirming" ? view.version : ""}</Var> locally.
+                </T>
               </p>
             </div>
           )}
@@ -118,11 +160,11 @@ export function RelayClientInstallDialog() {
               variant="outline"
               onClick={() => respondToRelayClientInstallConfirmation(false)}
             >
-              {uiText("Cancel")}
+              <T>Cancel</T>
             </Button>
-            <Button onClick={() => respondToRelayClientInstallConfirmation(true)}>
-              {uiText("Download and install")}
-            </Button>
+            <DialogAction onClick={() => respondToRelayClientInstallConfirmation(true)}>
+              <T>Download and install</T>
+            </DialogAction>
           </DialogFooter>
         ) : null}
       </DialogPopup>

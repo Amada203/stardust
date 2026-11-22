@@ -62,8 +62,8 @@ it("updates locally, suspends while hidden/disconnected and tears down its clock
   expect(vi.getTimerCount()).toBe(1);
   await screen.rerender(<TurnThroughput projection={p} disconnected />);
   expect(text()).not.toContain("— tok/s");
-  expect(text()).toContain("用量数据已过期");
-  expect(text()).toContain("连接断开");
+  expect(text()).toContain("Usage data is stale");
+  expect(text()).toContain("Disconnected");
   expect(vi.getTimerCount()).toBe(0);
   await screen.unmount();
   expect(vi.getTimerCount()).toBe(0);
@@ -85,7 +85,7 @@ it("retains a finished round without a collapse timer so details stay available"
   using _timers = fakeTimers();
   vi.setSystemTime(20000);
   expect(screen.container.textContent).toContain("10.0 tok/s");
-  expect(screen.container.textContent).not.toContain("无新活动");
+  expect(screen.container.textContent).toContain("Completed");
   await act(() => {
     vi.advanceTimersByTime(2 * 60 * 1000);
   });

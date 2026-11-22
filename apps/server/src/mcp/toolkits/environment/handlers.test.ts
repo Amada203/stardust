@@ -1,4 +1,3 @@
-import * as StorageManagement from "../../../storageManagement.ts";
 import { expect, it } from "@effect/vitest";
 import {
   DEFAULT_SERVER_SETTINGS,
@@ -33,7 +32,6 @@ it.effect("refuses a preferences update when the caller's turn ends while it wai
     const updates = yield* Ref.make(0);
     const checked = yield* Deferred.make<void>();
     const layerDependencies = Layer.mergeAll(
-      Layer.mock(StorageManagement.StorageManagement)({}),
       ThreadCommandExecutor.layer,
       Layer.succeed(McpInvocationContext.McpInvocationContext, {
         environmentId,

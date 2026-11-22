@@ -11,9 +11,9 @@ import {
 import { act, fakeTimers, render } from "../../../test/render";
 import { makeThreadProjectionFixture } from "../../test-fixtures";
 import { useComposerDraftStore } from "../../composerDraftStore";
-import { usePendingThreadRequests } from "./usePendingThreadRequests";
+import { usePendingThreadRequests, usePendingUserInputDraft } from "./usePendingThreadRequests";
 import { TaskTrailDecision } from "./TaskTrailDecision";
-import { TaskProgressSteps } from "./TaskProgressSteps";
+import { TaskPlanCapsule } from "./TaskPlanCapsule";
 
 function fixture() {
   const projection = makeThreadProjectionFixture();
@@ -83,11 +83,16 @@ function Probe({ projection }: { projection: OrchestrationV2ThreadProjection }) 
     composerRef,
     setThreadError: () => {},
   });
-  const question = state.activePendingProgress?.activeQuestion;
+  const pendingDraft = usePendingUserInputDraft({
+    environmentId,
+    activeThreadId: projection.thread.id,
+    activePendingUserInput: state.activePendingUserInput,
+    supportsQuestionAttachments: false,
+  });
+  const question = pendingDraft.activePendingProgress?.activeQuestion;
   return (
     <>
-      <TaskProgressSteps
-        variant="trail"
+      <TaskPlanCapsule
         progress={{
           steps: [{ id: "pick", text: "选择封面", status: "running" }],
           completed: 0,
@@ -104,9 +109,9 @@ function Probe({ projection }: { projection: OrchestrationV2ThreadProjection }) 
                   input={{
                     requestId: state.activePendingUserInput.requestId,
                     question,
-                    selectedValues: state.activePendingProgress?.selectedOptionValues ?? [],
+                    selectedValues: pendingDraft.activePendingProgress?.selectedOptionValues ?? [],
                     disabled: state.activePendingIsResponding,
-                    canAdvance: state.activePendingProgress?.canAdvance ?? false,
+                    canAdvance: pendingDraft.activePendingProgress?.canAdvance ?? false,
                     onSelect: state.onSelectActivePendingUserInputOption,
                     onAdvance: state.onAdvanceActivePendingUserInputStable,
                     onFocus: () => inputRef.current?.focus(),
@@ -117,7 +122,7 @@ function Probe({ projection }: { projection: OrchestrationV2ThreadProjection }) 
           : {})}
       />
       <input aria-label="补充要求" ref={inputRef} />
-      <output>{JSON.stringify(state.activePendingDraftAnswers)}</output>
+      <output>{JSON.stringify(pendingDraft.activePendingDraftAnswers)}</output>
     </>
   );
 }
@@ -125,10 +130,9 @@ it("shows only a pending structured question and uses the existing answer store 
   const projection = fixture();
   await using screen = await render(<Probe projection={projection} />);
   using _timers = fakeTimers();
-  const card = screen.container.querySelector(".combo-decision")!;
-  expect(getComputedStyle(card).backgroundColor).toBe(
-    getComputedStyle(screen.container.querySelector(".combo-trail")!).backgroundColor,
-  );
+  await expect
+    .element(screen.container.querySelector<HTMLElement>(".combo-decision")!)
+    .toBeVisible();
   const choose = screen.container.querySelector<HTMLButtonElement>(".combo-options button")!;
   await act(() => choose.click());
   expect(screen.container.querySelector("output")?.textContent).toContain(

@@ -88,7 +88,7 @@ export function referencedPaths(value: unknown): string[] {
     if (depth > 12) return;
     if (typeof item === "string") {
       // Providers occasionally store JSON envelopes as text. Unwrap before scanning.
-      if (/^\s*[\[{]/.test(item)) {
+      if (/^\s*[[{]/.test(item)) {
         try {
           const parsed: unknown = JSON.parse(item);
           visit(parsed, depth + 1);
@@ -98,7 +98,7 @@ export function referencedPaths(value: unknown): string[] {
         }
       }
       const pattern =
-        /\]\(<?([^\n]*?\.(?:png|jpe?g|webp|gif|html|pdf|pptx|mp4|mov|m4v|webm|md|docx|xlsx|csv|txt))(?:\:\d+)?>?\)|[`"']([^\n`"']*?\.(?:png|jpe?g|webp|gif|html|pdf|pptx|mp4|mov|m4v|webm|md|docx|xlsx|csv|txt))[`"']|(?:^|[\s=(：，。；！？、（）【】《》「」『』“”‘’])((?:\/|\.\.?\/)?[^\s<>`"'()[\]{}:,;：，。；！？、（）【】《》「」『』“”‘’]+\.(?:png|jpe?g|webp|gif|html|pdf|pptx|mp4|mov|m4v|webm|md|docx|xlsx|csv|txt))(?=$|[\s)\],;:.：，。；！？、（）【】《》「」『』“”‘’])/gim;
+        /\]\(<?([^\n]*?\.(?:png|jpe?g|webp|gif|html|pdf|pptx|mp4|mov|m4v|webm|md|docx|xlsx|csv|txt))(?::\d+)?>?\)|[`"']([^\n`"']*?\.(?:png|jpe?g|webp|gif|html|pdf|pptx|mp4|mov|m4v|webm|md|docx|xlsx|csv|txt))[`"']|(?:^|[\s=(：，。；！？、（）【】《》「」『』“”‘’])((?:\/|\.\.?\/)?[^\s<>`"'()[\]{}:,;：，。；！？、（）【】《》「」『』“”‘’]+\.(?:png|jpe?g|webp|gif|html|pdf|pptx|mp4|mov|m4v|webm|md|docx|xlsx|csv|txt))(?=$|[\s)\],;:.：，。；！？、（）【】《》「」『』“”‘’])/gim;
       for (const match of item.matchAll(pattern)) {
         const path = (match[1] ?? match[2] ?? match[3])?.replace(/^<|>$/g, "");
         if (path) paths.push(path);
@@ -204,7 +204,7 @@ export function commandDirectories(input: unknown, cwd: string, homeDir: string)
   const visit = (value: unknown, depth: number) => {
     if (depth > 12) return;
     if (typeof value === "string") {
-      if (/^\s*[\[{]/.test(value)) {
+      if (/^\s*[[{]/.test(value)) {
         try {
           visit(JSON.parse(value), depth + 1);
           return;

@@ -2,7 +2,7 @@
 import { describe, expect, it, vi } from "vite-plus/test";
 import type { UsageSource } from "@t3tools/contracts";
 
-import { formatHourShort, makeWindow, usageSourceMessages } from "./usageFormat.ts";
+import { formatHourShort, formatTokens, makeWindow, usageSourceMessages } from "./usageFormat.ts";
 
 function malformedSource(count: number, overrides: Partial<UsageSource> = {}): UsageSource {
   return {
@@ -116,12 +116,11 @@ describe("usage source messages", () => {
     ]);
   });
 
-  it("omits empty missing sources, healthy sources, and diagnostics handled by an action", () => {
+  it("omits empty missing sources and healthy sources", () => {
     expect(
       usageSourceMessages([
         malformedSource(0, { status: "missing" }),
         malformedSource(1, { status: "ok" }),
-        malformedSource(1, { action: "enableCursorKeychain" }),
       ]),
     ).toEqual([]);
     expect(usageSourceMessages([])).toEqual([]);
@@ -133,9 +132,11 @@ describe("hourly usage formatting", () => {
     const instant = "2026-08-11T12:37:00.000Z";
     for (const zone of ["UTC", "America/New_York", "Asia/Kathmandu", "UTC"]) {
       expect(formatHourShort(instant, zone)).toBe(
-        new Intl.DateTimeFormat("en-US", { timeZone: zone, hour: "numeric" }).format(
-          new Date(instant),
-        ),
+        new Intl.DateTimeFormat("en-US", {
+          timeZone: zone,
+          hour: "numeric",
+          minute: "2-digit",
+        }).format(new Date(instant)),
       );
     }
     expect(() => formatHourShort(instant, "Etc/Unknown")).toThrow(RangeError);
@@ -143,13 +144,13 @@ describe("hourly usage formatting", () => {
   });
 
   it("disambiguates repeated hours during a fall-back transition", () => {
-    expect(formatHourShort("2026-11-01T05:37:00.000Z", "America/New_York")).toBe("1 AM EDT");
-    expect(formatHourShort("2026-11-01T06:37:00.000Z", "America/New_York")).toBe("1 AM EST");
+    expect(formatHourShort("2026-11-01T05:37:00.000Z", "America/New_York")).toBe("1:37 AM EDT");
+    expect(formatHourShort("2026-11-01T06:37:00.000Z", "America/New_York")).toBe("1:37 AM EST");
     expect(formatHourShort("2026-11-01T05:37:00.000Z", "America/New_York", false)).toBe(
-      "01:00 EDT",
+      "01:37 EDT",
     );
     expect(formatHourShort("2026-11-01T06:37:00.000Z", "America/New_York", false)).toBe(
-      "01:00 EST",
+      "01:37 EST",
     );
   });
 
@@ -175,5 +176,13 @@ describe("hourly usage formatting", () => {
     } finally {
       resolvedOptions.mockRestore();
     }
+  });
+});
+
+describe("token formatting", () => {
+  it("moves to the next unit when rounding reaches it", () => {
+    expect(formatTokens(999_999)).toBe("1M");
+    expect(formatTokens(999_999_999)).toBe("1B");
+    expect(formatTokens(-999_999)).toBe("-1M");
   });
 });

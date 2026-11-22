@@ -76,11 +76,55 @@ function streamReader(
   }
   const decompressor = decompressorFor(encoding);
   if (!decompressor) return undefined;
+  let failed = false;
   decompressor.setEncoding("utf8");
   decompressor.on("data", readText);
   // A decoding failure only costs the live preview, never the response.
-  decompressor.on("error", () => undefined);
-  return { write: (chunk) => decompressor.write(chunk), end: () => decompressor.end() };
+  decompressor.on("error", () => {
+    failed = true;
+    decompressor.destroy();
+  });
+  return {
+    write: (chunk) => {
+      if (!failed && !decompressor.destroyed) decompressor.write(chunk);
+    },
+    end: () => {
+      if (!failed && !decompressor.destroyed) decompressor.end();
+    },
+  };
+}
+
+const HOP_BY_HOP_HEADERS = new Set([
+  "connection",
+  "keep-alive",
+  "proxy-authenticate",
+  "proxy-authorization",
+  "proxy-connection",
+  "te",
+  "trailer",
+  "transfer-encoding",
+  "upgrade",
+]);
+
+function stripHopByHopHeaders(
+  headers: NodeHttp.IncomingHttpHeaders,
+  omitContentLength = false,
+): Record<string, string | string[] | undefined> {
+  const result: Record<string, string | string[] | undefined> = {};
+  const connectionTokens = new Set(
+    String(headers.connection ?? "")
+      .toLowerCase()
+      .split(",")
+      .map((token) => token.trim())
+      .filter(Boolean),
+  );
+  for (const [key, value] of Object.entries(headers)) {
+    const lower = key.toLowerCase();
+    if (HOP_BY_HOP_HEADERS.has(lower) || connectionTokens.has(lower)) continue;
+    if (omitContentLength && lower === "content-length") continue;
+    result[key] = value;
+  }
+  return result;
 }
 
 /** Runs a listener callback; its failure only costs the live preview, never the API call. */
@@ -115,10 +159,13 @@ export function startClaudeTerminalApiTap(
 
   const server = NodeHttp.createServer((request, response) => {
     const chunks: Buffer[] = [];
+    request.on("error", () => response.destroy());
     request.on("data", (chunk: Buffer) => chunks.push(chunk));
     request.on("end", () => {
       const body = Buffer.concat(chunks);
-      const messages = isMessagesRequest(request.method, request.url);
+      const method = (request.method ?? "GET").toUpperCase();
+      const hasBody = method !== "GET" && method !== "HEAD" && body.length > 0;
+      const messages = isMessagesRequest(method, request.url);
       let main = false;
       if (messages) {
         try {
@@ -136,13 +183,13 @@ export function startClaudeTerminalApiTap(
       void undici
         .request(`${upstream.origin}${basePath}${request.url ?? "/"}`, {
           dispatcher: agent,
-          method: request.method as Undici.Dispatcher.HttpMethod,
-          headers: { ...request.headers, host: upstream.host },
-          body,
+          method: method as Undici.Dispatcher.HttpMethod,
+          headers: { ...stripHopByHopHeaders(request.headers, !hasBody), host: upstream.host },
+          ...(hasBody ? { body } : {}),
           signal: aborted.signal,
         })
         .then((incoming) => {
-          response.writeHead(incoming.statusCode, incoming.headers);
+          response.writeHead(incoming.statusCode, stripHopByHopHeaders(incoming.headers));
           if (main) notify(() => listener.onMainResponse(incoming.statusCode, incoming.headers));
           if (messages) {
             const infos = rateLimitInfosFromHeaders(incoming.headers);

@@ -9,6 +9,7 @@ import {
 import * as Cause from "effect/Cause";
 import { AsyncResult, Atom, AtomRegistry } from "effect/reactivity";
 import { expect, it } from "vite-plus/test";
+
 import {
   claimThreadOpen,
   nextShownOrder,
@@ -18,11 +19,14 @@ import {
   threadSearchSubject,
   visibleThreadSearch,
 } from "./threadSearch.ts";
+
 const envA = EnvironmentId.make("env-a");
 const envB = EnvironmentId.make("env-b");
+
 it("creates keys without array methods unavailable in Hermes", () => {
   const descriptor = Object.getOwnPropertyDescriptor(Array.prototype, "toSorted");
   Reflect.deleteProperty(Array.prototype, "toSorted");
+
   try {
     expect(makeThreadSearchKey([envB, envA], "needle")).toBe('[["env-a","env-b"],"needle"]');
   } finally {
@@ -31,17 +35,20 @@ it("creates keys without array methods unavailable in Hermes", () => {
     }
   }
 });
+
 it("encodes scoped thread keys without delimiter collisions", () => {
   const first = threadSearchMatchKey({
-    environmentId: EnvironmentId.make("env\0thread"),
+    environmentId: EnvironmentId.make("env\u0000thread"),
     threadId: ThreadId.make("id"),
   });
   const second = threadSearchMatchKey({
     environmentId: EnvironmentId.make("env"),
-    threadId: ThreadId.make("thread\0id"),
+    threadId: ThreadId.make("thread\u0000id"),
   });
+
   expect(first).not.toBe(second);
 });
+
 it("ignores invalid search keys", () => {
   let searchCount = 0;
   const searchAtom = createThreadSearchResultsAtomFamily<Error>({
@@ -52,17 +59,20 @@ it("ignores invalid search keys", () => {
     labelPrefix: "test:thread-search",
   }).results;
   const registry = AtomRegistry.make();
+
   try {
     const state = registry.get(searchAtom(makeThreadSearchKey([envA], "a".repeat(201))));
     const malformedState = registry.get(searchAtom("not json{{"));
-    expect(state).toEqual({ matches: [], isLoading: false, rows: [] });
-    expect(malformedState).toEqual({ matches: [], isLoading: false, rows: [] });
+
+    expect(state).toEqual({ matches: [], isLoading: false, failed: false, rows: [] });
+    expect(malformedState).toEqual({ matches: [], isLoading: false, failed: false, rows: [] });
     expect(searchCount).toBe(0);
   } finally {
     registry.dispose();
   }
 });
-it("merges successful environments and reports failed environments without losing matches", () => {
+
+it("merges successful environments, and reports a failure only when none answered", () => {
   const result: OrchestrationSearchThreadsResult = {
     matches: [
       {
@@ -86,16 +96,26 @@ it("merges successful environments and reports failed environments without losin
     labelPrefix: "test:thread-search",
   }).results;
   const registry = AtomRegistry.make();
+
   const state = registry.get(searchAtom(makeThreadSearchKey([envB, envA], "needle")));
   expect(state).toEqual({
     matches: [{ ...result.matches[0], environmentId: envA }],
     isLoading: false,
+    failed: false,
     rows: [],
-    error: "\u641C\u7D22\u6682\u4E0D\u53EF\u7528\uFF0C\u8BF7\u7A0D\u540E\u91CD\u8BD5\u3002",
   });
   expect(threadSearchMatchKey(state.matches[0]!)).toBe('["env-a","thread-a"]');
+  // With no environment answering, an empty result must not read as "no matches".
+  expect(registry.get(searchAtom(makeThreadSearchKey([envB], "needle")))).toEqual({
+    matches: [],
+    isLoading: false,
+    failed: true,
+    rows: [],
+  });
+
   registry.dispose();
 });
+
 it("asks environments that omit older settled threads for their rows, with the caller's scope", () => {
   const inputs: Array<readonly [EnvironmentId, OrchestrationV2SearchThreadsInput]> = [];
   const row = { id: ThreadId.make("thread-old") } as OrchestrationV2ThreadShell;
@@ -113,6 +133,7 @@ it("asks environments that omit older settled threads for their rows, with the c
     projectIds: [ProjectId.make("project-a")],
     environmentLabels: { [envA]: "Laptop" },
   };
+
   // Too short to match messages: only the environment with older rows is asked, for titles.
   const key = makeThreadSearchKey([envA, envB], "ui", scope);
   expect(registry.get(search.results(key)).rows).toEqual([
@@ -134,8 +155,10 @@ it("asks environments that omit older settled threads for their rows, with the c
   inputs.length = 0;
   registry.get(search.results(makeThreadSearchKey([envB], "needle")));
   expect(inputs).toEqual([[envB, { query: "needle" }]]);
+
   registry.dispose();
 });
+
 it("keeps the previous results visible only while a refined or widened query is pending", () => {
   const previous = {
     query: "websock",
@@ -156,6 +179,7 @@ it("keeps the previous results visible only while a refined or widened query is 
   const ready = { query: "websocke", matches: [] };
   expect(visibleThreadSearch("websocke", ready, previous)).toBe(ready);
 });
+
 it("ranks recent threads by this client's own latest open", () => {
   const thread = {
     environmentId: envA,
@@ -165,12 +189,12 @@ it("ranks recent threads by this client's own latest open", () => {
     createdAt: "2026-10-01T00:00:00.000Z",
     updatedAt: "2026-10-01T00:00:00.000Z",
     latestUserMessageAt: null,
-    opens: { openedAt: 1000, score: 1, picks: [] },
+    opens: { openedAt: 1_000, score: 1, picks: [] },
   };
-  claimThreadOpen(envA, "thread-local", 5000);
-  expect(threadSearchSubject(thread, null).opens?.openedAt).toBe(5000);
+  claimThreadOpen(envA, "thread-local", 5_000);
+  expect(threadSearchSubject(thread, null).opens?.openedAt).toBe(5_000);
   // Also when the server has no record of opens, as an older server would not.
-  claimThreadOpen(envA, "thread-unrecorded", 6000);
+  claimThreadOpen(envA, "thread-unrecorded", 6_000);
   expect(
     threadSearchSubject({ ...thread, id: ThreadId.make("thread-unrecorded"), opens: null }, null)
       .opens,
@@ -180,6 +204,7 @@ it("ranks recent threads by this client's own latest open", () => {
   expect(threadSearchSubject(thread, null).opens?.openedAt).toBe(7_000);
   expect(threadSearchSubject(thread, "Project").projectTitle).toBe("Project");
 });
+
 it("counts recency from what the user wrote, else from when the thread began", () => {
   const thread = {
     environmentId: envA,
@@ -203,6 +228,7 @@ it("counts recency from what the user wrote, else from when the thread began", (
   // An older server omits the field.
   expect(threadSearchSubject(thread, null).activityAt).toBe(Date.parse("2026-10-20T00:00:00.000Z"));
 });
+
 it("keeps shown message rows in place and leaves room for a slower environment", () => {
   // The fast environment answers first and fills the limit.
   const fast = Array.from({ length: 12 }, (_, index) => `a${index}`);
@@ -221,44 +247,11 @@ it("keeps shown message rows in place and leaves room for a slower environment",
   // A new query starts from its own ranking.
   expect(nextShownOrder(second, "rusty", ["b0"], 10).keys).toEqual(["b0"]);
 });
+
 it("sends one open per thread every ten minutes by this client's clock", () => {
-  const minute = 60000;
+  const minute = 60_000;
   expect(claimThreadOpen(envA, "thread-open", 0)).toBe(true);
   expect(claimThreadOpen(envA, "thread-open", 9 * minute)).toBe(false);
   expect(claimThreadOpen(envB, "thread-open", 9 * minute)).toBe(true);
   expect(claimThreadOpen(envA, "thread-open", 10 * minute)).toBe(true);
-});
-
-it("keeps indexed message search and cold rows while adding Spotlight families", () => {
-  const inputs: OrchestrationV2SearchThreadsInput[] = [];
-  const row = { id: ThreadId.make("cold") } as OrchestrationV2ThreadShell;
-  const match = {
-    threadId: ThreadId.make("family"),
-    projectId: ProjectId.make("p"),
-    source: "user" as const,
-    snippet: "needle",
-    messageCreatedAt: null,
-  };
-  const search = createThreadSearchResultsAtomFamily<Error>({
-    getSearchAtom: (_, input) => {
-      inputs.push(input);
-      return Atom.make(
-        AsyncResult.success(
-          input.searchMode === "spotlight"
-            ? { matches: [{ ...match, familyKey: "family", familyTitle: "Family" }] }
-            : { matches: [match], threads: [row], snapshotSequence: 9 },
-        ),
-      );
-    },
-    labelPrefix: "test:augmented-search",
-  });
-  const registry = AtomRegistry.make();
-  const state = registry.get(
-    search.results(makeThreadSearchKey([envA], "needle", { spotlight: true })),
-  );
-  expect(inputs).toEqual([{ query: "needle" }, { query: "needle", searchMode: "spotlight" }]);
-  expect(state.matches).toHaveLength(1);
-  expect(state.matches[0]?.familyTitle).toBe("Family");
-  expect(state.rows[0]?.read.threads).toEqual([row]);
-  registry.dispose();
 });

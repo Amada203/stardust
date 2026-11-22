@@ -1,3 +1,4 @@
+import { uiText } from "../../i18n";
 import { useState, type ReactNode } from "react";
 import { ArchiveIcon, PinIcon, PinOffIcon } from "lucide-react";
 import { setProjectToolsInline, useProjectToolsInline } from "../../sidebarProjectFirst";
@@ -28,7 +29,7 @@ function ArchivedHistoryActions({
           openArchivedHistory();
         }}
       >
-        已归档会话
+        {uiText("Archived threads")}
       </Button>
       <HistorySyncButton />
     </div>
@@ -44,10 +45,10 @@ export function SidebarProjectTools({ openArchivedHistory, stickyProjects }: Pro
     <div className="mb-1 flex items-center gap-1 px-2">
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger render={<Button size="xs" variant="ghost-muted" />}>
-          历史与归档
+          {uiText("History and archives")}
         </PopoverTrigger>
         <PopoverPopup side="right" align="start" width="sm" padding="compact">
-          <PopoverTitle>历史与归档</PopoverTitle>
+          <PopoverTitle>{uiText("History and archives")}</PopoverTitle>
           <div className="mt-2">
             <ArchivedHistoryActions
               openArchivedHistory={openArchivedHistory}
@@ -58,10 +59,10 @@ export function SidebarProjectTools({ openArchivedHistory, stickyProjects }: Pro
       </Popover>
       <Popover>
         <PopoverTrigger render={<Button size="xs" variant="ghost-muted" />}>
-          项目工具
+          {uiText("Project tools")}
         </PopoverTrigger>
         <PopoverPopup side="right" align="start" width="sm" padding="compact">
-          <PopoverTitle>项目工具</PopoverTitle>
+          <PopoverTitle>{uiText("Project tools")}</PopoverTitle>
           <div className="mt-2">{stickyProjects}</div>
         </PopoverPopup>
       </Popover>
@@ -76,12 +77,14 @@ export function SidebarArchiveMenuItem({ openArchivedHistory, stickyProjects }: 
   return (
     <SidebarMenuItem className="shrink-0">
       <Popover open={open} onOpenChange={setOpen}>
-        <PopoverTrigger render={<SidebarMenuButton aria-label="历史与归档" size="icon" />}>
+        <PopoverTrigger
+          render={<SidebarMenuButton aria-label={uiText("History and archives")} size="icon" />}
+        >
           <ArchiveIcon />
         </PopoverTrigger>
         <PopoverPopup side="top" align="start" width="sm" padding="compact">
           <div className="flex items-center justify-between gap-2">
-            <PopoverTitle>历史与归档</PopoverTitle>
+            <PopoverTitle>{uiText("History and archives")}</PopoverTitle>
             <Button
               size="xs"
               variant="ghost-muted"
@@ -89,7 +92,7 @@ export function SidebarArchiveMenuItem({ openArchivedHistory, stickyProjects }: 
               onClick={() => setProjectToolsInline(!inline)}
             >
               {inline ? <PinOffIcon /> : <PinIcon />}
-              {inline ? "取消置顶" : "置顶"}
+              {inline ? uiText("Unpin") : uiText("Pin")}
             </Button>
           </div>
           <div className="mt-2">
@@ -99,7 +102,7 @@ export function SidebarArchiveMenuItem({ openArchivedHistory, stickyProjects }: 
             />
           </div>
           <div className="mt-3 border-t pt-2">
-            <PopoverTitle>项目工具</PopoverTitle>
+            <PopoverTitle>{uiText("Project tools")}</PopoverTitle>
             <div className="mt-2">{stickyProjects}</div>
           </div>
         </PopoverPopup>

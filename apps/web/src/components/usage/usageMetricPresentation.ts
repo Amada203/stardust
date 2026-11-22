@@ -26,3 +26,10 @@ export function usageMetricPresentation(
         }),
   };
 }
+
+export function usageTableHeaders(metric: UsageMetric) {
+  return {
+    primary: uiText(metric === "tokens" ? "Processed tokens" : "Cost"),
+    secondary: uiText(metric === "tokens" ? "Output" : "Tokens"),
+  };
+}

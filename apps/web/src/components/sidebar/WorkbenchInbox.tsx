@@ -1,3 +1,4 @@
+import { uiText } from "../../i18n";
 import { effectiveSnoozed } from "@t3tools/client-runtime/state/thread-settled";
 import { useNowMinute } from "../../hooks/useNowMinute";
 import { type BoardTask } from "../../taskBoard.logic";
@@ -20,7 +21,7 @@ import { isCommandPaletteOpen } from "../../commandPaletteBus";
 import { isModelPickerOpen } from "../../modelPickerVisibility";
 import { sidebarProviderLabel } from "../../sidebarProviderGrouping";
 import { useEffect, useRef, useState } from "react";
-import { BookmarkIcon, XIcon } from "lucide-react";
+import { BookmarkIcon, ChevronDownIcon, ChevronRightIcon, XIcon } from "lucide-react";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import type { ScopedThreadRef } from "@t3tools/contracts";
 import type { SidebarThreadSummary } from "../../types";
@@ -34,6 +35,7 @@ import {
   resumableThreads,
   resumeVisits,
   shouldShowInboxRow,
+  inboxHoldsBackgroundWork,
 } from "../../workbenchInbox";
 import { useWorkbenchInboxStore } from "../../workbenchInboxStore";
 import {
@@ -46,6 +48,9 @@ import {
 } from "../../sidebarInboxPresentation";
 import { useInboxCountBounce, useInboxExitRows } from "~/lib/workbenchMotion";
 import { ActiveWorkOverview } from "./ActiveWorkOverview";
+import { InboxQuickActions, InboxStatusDot } from "./InboxQuickActions";
+import { useThreadActions } from "../../hooks/useThreadActions";
+import { cn } from "../../lib/utils";
 import { onOpenRecentWork } from "../../workbenchNavigation";
 import { threadEnvironment } from "../../state/threads";
 import { useAtomCommand } from "../../state/use-atom-command";
@@ -70,6 +75,7 @@ export function WorkbenchInbox({
 }) {
   const boardTasks = useTaskBoard((s) => (s.error ? null : s.data));
   const hidden = useResumeCardStore((state) => state.hidden);
+  const selected = useResumeCardStore((state) => state.selected);
   const hiddenUntil = useResumeCardStore((state) => state.hiddenUntil);
   const nowMinute = useNowMinute();
   const now = Date.parse(`${nowMinute}:00Z`);
@@ -91,6 +97,8 @@ export function WorkbenchInbox({
   const nextShortcut = shortcutLabelForCommand(keybindings, "inbox.next");
   const [view, setView] = useState<"resume" | null>(null);
   const [showAllAttention, setShowAllAttention] = useState(false);
+  const [showDoneToday, setShowDoneToday] = useState(false);
+  const { settleThread, unsettleThread, markThreadUnread } = useThreadActions();
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Subscribe to the command that opens the recent-work dialog.
   useEffect(() => onOpenRecentWork(() => setView("resume")), []);
   const visitThread = useAtomCommand(threadEnvironment.visit, { reportFailure: false });
@@ -122,7 +130,30 @@ export function WorkbenchInbox({
         inboxReason(thread, localVisits[inboxThreadKey(thread)]),
       ]),
     ))();
-  const attention = sortedAttentionThreads(threads, acknowledgedErrors, localVisits).filter(
+  // Opening a result updates the normal unread watermark, but only an explicit action
+  // resolves Needs you. Retain the exact observed turn, never an older or running turn.
+  const retained = threads.filter((thread) => {
+    const request = selected[inboxThreadKey(thread)];
+    return (
+      request?.reason === "有新结果" &&
+      !request.boardFolder &&
+      // Sub-agent results belong to the parent thread; also clears items recorded before this rule.
+      thread.lineage.relationshipToParent !== "subagent" &&
+      !thread.deletedAt &&
+      !thread.archivedAt &&
+      thread.latestRun?.status === "completed" &&
+      !inboxHoldsBackgroundWork(thread) &&
+      request.token === threadResumeToken(thread, request.reason)
+    );
+  });
+  for (const thread of retained) reasons.set(inboxThreadKey(thread), "有新结果");
+  const unread = sortedAttentionThreads(threads, acknowledgedErrors, localVisits);
+  const attention = [
+    ...unread,
+    ...retained.filter(
+      (thread) => !unread.some((item) => inboxThreadKey(item) === inboxThreadKey(thread)),
+    ),
+  ].filter(
     (thread) =>
       !effectiveSnoozed(thread, { now: `${nowMinute}:00Z` }) &&
       !resumeRequestHidden(
@@ -133,17 +164,35 @@ export function WorkbenchInbox({
         now,
       ),
   );
-  const openThread = (thread: SidebarThreadSummary) => {
-    const reason = reasons.get(inboxThreadKey(thread)) ?? "有新结果";
-    const ref = scopeThreadRef(thread.environmentId, thread.id);
-    useResumeCardStore.getState().open({
-      key: inboxThreadKey(thread),
+  const attentionKeys = new Set(attention.map(inboxThreadKey));
+  const today = new Date(now).toDateString();
+  const doneToday = threads
+    .filter(
+      (thread) =>
+        thread.settledOverride === "settled" &&
+        thread.settledAt !== null &&
+        new Date(thread.settledAt).toDateString() === today &&
+        !thread.archivedAt &&
+        !thread.deletedAt &&
+        thread.lineage.relationshipToParent !== "subagent" &&
+        !attentionKeys.has(inboxThreadKey(thread)),
+    )
+    .toSorted((a, b) => Date.parse(b.settledAt ?? "") - Date.parse(a.settledAt ?? ""));
+  const resumeRequest = (thread: SidebarThreadSummary) => {
+    const key = inboxThreadKey(thread);
+    const reason = reasons.get(key) ?? "有新结果";
+    return {
+      key,
       token: threadResumeToken(thread, reason),
-      ref,
+      ref: scopeThreadRef(thread.environmentId, thread.id),
       title: thread.title,
       reason,
-    });
-    navigate(ref);
+    };
+  };
+  const openThread = (thread: SidebarThreadSummary) => {
+    const request = resumeRequest(thread);
+    useResumeCardStore.getState().open(request);
+    navigate(request.ref);
   };
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Keep the inbox keyboard shortcut listener in sync with current actionable threads.
   useEffect(() => {
@@ -193,8 +242,13 @@ export function WorkbenchInbox({
       reason,
       place:
         label.detail ??
-        `${project?.displayName ?? "项目"} · ${project?.providerLabel ?? sidebarProviderLabel(thread.modelSelection.instanceId)}`,
-      dismissLabel: reason === "运行失败" ? "已知悉" : reason === "有新结果" ? "已看" : null,
+        `${project?.displayName ?? uiText("Project")} · ${project?.providerLabel ?? sidebarProviderLabel(thread.modelSelection.instanceId)}`,
+      dismissLabel:
+        reason === "运行失败"
+          ? uiText("Acknowledged")
+          : reason === "有新结果"
+            ? uiText("Seen")
+            : null,
       dismiss:
         reason === "运行失败"
           ? () => change("acknowledgedErrors", thread, thread.latestRun?.runId ?? null)
@@ -214,6 +268,7 @@ export function WorkbenchInbox({
     useTaskBoard.setState({ threadRequests: requests });
   });
   const markSeen = async (thread: SidebarThreadSummary) => {
+    const request = resumeRequest(thread);
     const visitedAt = visitTimestamp();
     const result = await visitThread({
       environmentId: thread.environmentId,
@@ -223,8 +278,23 @@ export function WorkbenchInbox({
       if (!isAtomCommandInterrupted(result)) setStorageError(true);
       return;
     }
-    useUiStateStore.getState().markThreadVisited(inboxThreadKey(thread), visitedAt);
-    setStorageError(!update("visits", inboxThreadKey(thread), visitedAt));
+    useUiStateStore.getState().markThreadVisited(request.key, visitedAt);
+    useResumeCardStore.getState().hide(request);
+    setStorageError(!update("visits", request.key, visitedAt));
+  };
+  // V14: "done" clears the row (seen / acknowledged) and settles the thread so it lists under
+  // "Done today"; a later run un-settles it on the server and it comes back on its own.
+  const completeThread = (thread: SidebarThreadSummary, failed: boolean) => {
+    if (failed) change("acknowledgedErrors", thread, thread.latestRun?.runId ?? null);
+    else void markSeen(thread);
+    void settleThread(scopeThreadRef(thread.environmentId, thread.id));
+  };
+  const reopenThread = (thread: SidebarThreadSummary) => {
+    const ref = scopeThreadRef(thread.environmentId, thread.id);
+    void (async () => {
+      await unsettleThread(ref);
+      markThreadUnread(ref);
+    })();
   };
   const visitHistory = (() => resumeVisits(threads, localVisits, visits))();
   const recent = (() => resumableThreads(threads, visitHistory, saved))();
@@ -250,15 +320,15 @@ export function WorkbenchInbox({
             }}
           >
             <span className="block break-words text-sm font-medium">
-              {thread.title || "未命名会话"}
+              {thread.title || uiText("Untitled thread")}
             </span>
             <span className="mt-1 block text-xs text-muted-foreground">
-              {project?.displayName ?? "项目"} ·{" "}
+              {project?.displayName ?? uiText("Project")} ·{" "}
               {project?.providerLabel ?? thread.modelSelection.instanceId}
-              {thread.lineage.relationshipToParent === "subagent" ? " · 子任务" : ""}
+              {thread.lineage.relationshipToParent === "subagent" ? uiText(" · Subtask") : ""}
             </span>
             <span className="mt-1 block text-xs text-muted-foreground">
-              {isSaved ? "留待继续" : "最近访问"} ·{" "}
+              {isSaved ? uiText("Saved for later") : uiText("Recently visited")} ·{" "}
               {sidebarRelativeTime(visitHistory[key] ?? saved[key] ?? thread.updatedAt)}
             </span>
           </button>
@@ -266,9 +336,9 @@ export function WorkbenchInbox({
             <Button
               size="icon"
               variant={isSaved ? "secondary" : "ghost"}
-              aria-label={isSaved ? "取消留待继续" : "留待继续"}
+              aria-label={isSaved ? uiText("Remove saved conversation") : uiText("Saved for later")}
               aria-pressed={isSaved}
-              title={isSaved ? "取消留待继续" : "留待继续"}
+              title={isSaved ? uiText("Remove saved conversation") : uiText("Saved for later")}
               onClick={() => change("saved", thread, isSaved ? null : visitTimestamp())}
             >
               <BookmarkIcon />
@@ -294,22 +364,26 @@ export function WorkbenchInbox({
       <div className="p-4">
         <div className="mb-3 border-b px-1 pb-3 pt-1">
           <div className="flex items-center justify-between gap-2">
-            <DialogTitle>最近访问与留待继续</DialogTitle>
-            <DialogClose render={<Button variant="ghost" size="icon" aria-label="关闭面板" />}>
+            <DialogTitle>{uiText("Recent and saved for later")}</DialogTitle>
+            <DialogClose
+              render={<Button variant="ghost" size="icon" aria-label={uiText("Close panel")} />}
+            >
               <XIcon />
             </DialogClose>
           </div>
-          <p className="mt-1 text-xs text-muted-foreground">找回最近访问或留待继续的会话。</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {uiText("Find recently visited or saved conversations.")}
+          </p>
         </div>
         <div className="max-h-[min(65vh,640px)] space-y-4 overflow-y-auto px-1 pb-2">
           {incomplete ? (
             <p role="status" className="rounded-md border p-3 text-sm">
-              部分连接尚未就绪，以下可能是上次同步的记录；数量不代表全部。
+              {uiText("Some connections are still starting. Cached results may be incomplete.")}
             </p>
           ) : null}
           {storageError ? (
             <p role="alert" className="text-sm text-destructive">
-              本机记录保存失败，请检查浏览器存储空间后重试。
+              {uiText("Couldn’t save locally. Check browser storage and try again.")}
             </p>
           ) : null}
 
@@ -322,21 +396,25 @@ export function WorkbenchInbox({
                   change("saved", current, saved[inboxThreadKey(current)] ? null : visitTimestamp())
                 }
               >
-                {saved[inboxThreadKey(current)] ? "取消当前会话的留存" : "把当前会话留待继续"}
+                {saved[inboxThreadKey(current)]
+                  ? uiText("Stop saving this conversation")
+                  : uiText("Save this conversation for later")}
               </Button>
             ) : null}
             {section(
-              "留待继续",
+              uiText("Saved for later"),
               recent.filter((thread) => saved[inboxThreadKey(thread)]),
-              "用书签保留暂时放下的任务，可随时取消。",
+              uiText("Bookmark work to return to it later. Remove the bookmark anytime."),
             )}
             {section(
-              "最近访问",
+              uiText("Recently visited"),
               recent.filter((thread) => !saved[inboxThreadKey(thread)]).slice(0, 20),
-              "打开会话后会记录在这里。",
+              uiText("Conversations you open appear here."),
             )}
             <p className="text-xs text-muted-foreground">
-              留存和访问记录保存在本机，不会改变任务完成状态。
+              {uiText(
+                "Bookmarks and visits are saved on this device and leave task completion unchanged.",
+              )}
             </p>
           </>
         </div>
@@ -405,32 +483,41 @@ export function WorkbenchInbox({
               className="group/inbox-cap flex items-center gap-1.5 px-2 pt-2 pb-1 text-2xs tracking-wider text-sidebar-muted-foreground"
               data-sidebar-cap=""
             >
-              <span>待我处理</span>
+              <span>{uiText("Needs my attention")}</span>
               {nextShortcut && attention.length > 0 ? (
                 <span className="tracking-normal opacity-0 transition-opacity group-hover/inbox-cap:opacity-70 motion-reduce:transition-none">
-                  下一条 {nextShortcut}
+                  {uiText("Next item ")}
+                  {nextShortcut}
                 </span>
               ) : null}
               <span
                 ref={badgeRef}
-                aria-label={`需要回答 ${requestCount} 条`}
+                aria-label={uiText("{requestCount} need answers", { requestCount })}
                 className={`ml-auto min-w-5 rounded-full px-1.5 text-center font-semibold tracking-normal tabular-nums ${requestCount ? "bg-warning text-background" : ""}`}
               >
                 {requestCount}
               </span>
             </div>
             {displayedRows.length > 0 ? (
-              <ul aria-label="待我处理的会话" className="space-y-px">
+              <ul
+                aria-label={uiText("Conversations that need my attention")}
+                className="space-y-px"
+              >
                 {displayedRows.map(
                   ({ key, thread, boardTask, reason, label, detail, timestamp }) => {
                     const failed = reason === "运行失败";
+                    // oxlint-disable-next-line t3code/no-hardcoded-ui-han -- inbox reason key shared with inboxReason(), not display copy
+                    const isResult = reason === "有新结果";
                     const leaving = !allKeys.has(key);
                     return (
                       <li
                         key={key}
                         inert={leaving}
                         aria-hidden={leaving || undefined}
-                        className={leaving ? "workbench-inbox-exit" : undefined}
+                        className={cn(
+                          "group/inbox-row relative",
+                          leaving && "workbench-inbox-exit",
+                        )}
                       >
                         <button
                           type="button"
@@ -443,15 +530,28 @@ export function WorkbenchInbox({
                           aria-current={activeKey === key ? "page" : undefined}
                           className="relative block w-full min-w-0 rounded-lg py-1.5 pr-2 pl-5.5 text-left outline-none hover:bg-sidebar-row-hover focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring aria-[current=page]:bg-sidebar-row-active"
                         >
+                          {thread && !boardTask ? null : (
+                            <span
+                              aria-hidden
+                              className={`absolute top-3.25 left-2.25 size-1.5 rounded-full ${failed ? "bg-destructive" : "bg-warning"}`}
+                            />
+                          )}
                           <span
-                            aria-hidden
-                            className={`absolute top-3.25 left-2.25 size-1.5 rounded-full ${failed ? "bg-destructive" : "bg-warning"}`}
-                          />
-                          <span className="flex min-w-0 items-baseline gap-2">
+                            className={cn(
+                              "flex min-w-0 items-baseline gap-2",
+                              // V14: the hover actions take this space instead of covering the title.
+                              thread && !boardTask && "group-hover/inbox-row:pe-18",
+                            )}
+                          >
                             <span className="min-w-0 flex-1 truncate text-sm text-sidebar-foreground">
                               {label.title}
                             </span>
-                            <span className="shrink-0 text-2xs tabular-nums text-sidebar-muted-foreground">
+                            <span
+                              className={cn(
+                                "shrink-0 text-2xs tabular-nums text-sidebar-muted-foreground transition-opacity",
+                                thread && !boardTask && "group-hover/inbox-row:hidden",
+                              )}
+                            >
                               {sidebarRelativeTime(timestamp)}
                             </span>
                           </span>
@@ -464,6 +564,27 @@ export function WorkbenchInbox({
                             />
                           ) : null}
                         </button>
+                        {thread && !boardTask && !leaving ? (
+                          <InboxStatusDot
+                            status={failed ? "failed" : isResult ? "result" : "needs-you"}
+                            threadRef={scopeThreadRef(thread.environmentId, thread.id)}
+                            onMarkDone={
+                              isResult || failed ? () => completeThread(thread, failed) : undefined
+                            }
+                          />
+                        ) : null}
+                        {thread && !boardTask && !leaving ? (
+                          <InboxQuickActions
+                            mode={isResult || failed ? "finished" : "needs-you"}
+                            threadRef={scopeThreadRef(thread.environmentId, thread.id)}
+                            title={label.title}
+                            doneLabel={failed ? uiText("Acknowledged") : uiText("Mark done")}
+                            onDone={
+                              isResult || failed ? () => completeThread(thread, failed) : undefined
+                            }
+                            onOpen={() => openThread(thread)}
+                          />
+                        ) : null}
                       </li>
                     );
                   },
@@ -476,7 +597,9 @@ export function WorkbenchInbox({
                       onClick={() => setShowAllAttention(!showAllAttention)}
                       className="w-full rounded-lg py-1 pr-2 pl-5.5 text-left text-xs text-sidebar-muted-foreground outline-none hover:bg-sidebar-row-hover hover:text-sidebar-foreground focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring"
                     >
-                      {showAllAttention ? "收起" : `更多 ${page.hidden}`}
+                      {showAllAttention
+                        ? uiText("Collapse recommendation")
+                        : uiText("{hidden} more", { hidden: page.hidden })}
                     </button>
                   </li>
                 ) : null}
@@ -484,8 +607,67 @@ export function WorkbenchInbox({
             ) : null}
             {storageError ? (
               <p role="alert" className="px-2 py-1 text-xs text-destructive">
-                本机记录保存失败，请检查浏览器存储空间后重试。
+                {uiText("Couldn’t save locally. Check browser storage and try again.")}
               </p>
+            ) : null}
+          </SidebarMenuItem>
+        ) : null}
+        {doneToday.length > 0 ? (
+          <SidebarMenuItem data-inbox-done-today="">
+            <button
+              type="button"
+              aria-expanded={showDoneToday}
+              onClick={() => setShowDoneToday(!showDoneToday)}
+              className="flex w-full items-center gap-1.5 rounded-md px-2 pt-2 pb-1 text-left text-2xs tracking-wider text-sidebar-muted-foreground outline-none hover:text-sidebar-foreground focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring"
+            >
+              <span>{uiText("Done today")}</span>
+              <span className="ml-auto inline-flex items-center gap-0.5 tracking-normal tabular-nums">
+                {doneToday.length}
+                {showDoneToday ? (
+                  <ChevronDownIcon aria-hidden className="size-3" />
+                ) : (
+                  <ChevronRightIcon aria-hidden className="size-3" />
+                )}
+              </span>
+            </button>
+            {showDoneToday ? (
+              <ul aria-label={uiText("Done today")} className="space-y-px">
+                {doneToday.map((thread) => {
+                  const ref = scopeThreadRef(thread.environmentId, thread.id);
+                  return (
+                    <li key={inboxThreadKey(thread)} className="group/inbox-row relative">
+                      <button
+                        type="button"
+                        data-inbox-done-thread={thread.id}
+                        onClick={() => navigate(ref)}
+                        aria-current={activeKey === inboxThreadKey(thread) ? "page" : undefined}
+                        className="relative block w-full min-w-0 rounded-lg py-1.5 pr-2 pl-5.5 text-left opacity-65 outline-none hover:bg-sidebar-row-hover hover:opacity-100 focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring aria-[current=page]:bg-sidebar-row-active aria-[current=page]:opacity-100"
+                      >
+                        <span className="flex min-w-0 items-baseline gap-2 group-hover/inbox-row:pe-18">
+                          <span className="min-w-0 flex-1 truncate text-sm text-sidebar-foreground">
+                            {thread.title || uiText("Untitled thread")}
+                          </span>
+                          <span className="shrink-0 text-2xs tabular-nums text-sidebar-muted-foreground group-hover/inbox-row:hidden">
+                            {sidebarRelativeTime(thread.settledAt ?? thread.updatedAt)}
+                          </span>
+                        </span>
+                      </button>
+                      <InboxStatusDot
+                        status="done"
+                        threadRef={ref}
+                        onMarkTodo={() => reopenThread(thread)}
+                      />
+                      <InboxQuickActions
+                        mode="done"
+                        threadRef={ref}
+                        title={thread.title}
+                        onRestore={() => reopenThread(thread)}
+                        onOpen={() => navigate(ref)}
+                      />
+                    </li>
+                  );
+                })}
+              </ul>
             ) : null}
           </SidebarMenuItem>
         ) : null}

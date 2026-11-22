@@ -1,3 +1,4 @@
+import * as Config from "effect/Config";
 // @effect-diagnostics nodeBuiltinImport:off - statfs has no Effect equivalent.
 import {
   DiskSpaceSample,
@@ -39,6 +40,11 @@ const MEASURE_TIMEOUT_PER_TARGET = Duration.minutes(3);
 const MEASUREMENT_MAX_DURATION = Duration.minutes(6);
 const AWAIT_MEASUREMENT_MAX = Duration.minutes(5);
 const HISTORY_FILE_NAME = "disk-space-history.json";
+
+class VolumeStatisticsError extends Schema.TaggedError<VolumeStatisticsError>()(
+  "VolumeStatisticsError",
+  { cause: Schema.Unknown },
+) {}
 
 const HistoryJson = Schema.fromJsonString(Schema.Array(DiskSpaceSample));
 const decodeHistory = Schema.decodeUnknownOption(HistoryJson);
@@ -97,10 +103,9 @@ const make = Effect.gen(function* () {
   const runner = yield* ProcessRunner.ProcessRunner;
 
   const historyPath = path.join(config.stateDir, HISTORY_FILE_NAME);
+  const codexHome = yield* Config.String("CODEX_HOME").pipe(Config.withDefault(""));
   const codexSessionsDir = path.join(
-    process.env.CODEX_HOME && process.env.CODEX_HOME.length > 0
-      ? process.env.CODEX_HOME
-      : path.join(NodeOS.homedir(), ".codex"),
+    codexHome.length > 0 ? codexHome : path.join(NodeOS.homedir(), ".codex"),
     "sessions",
   );
   const backupsDir = path.join(config.baseDir, "backups");
@@ -210,7 +215,10 @@ const make = Effect.gen(function* () {
     allocatedBytes(target).pipe(Effect.map((bytes) => category(kind, target, bytes)));
 
   const volumeOf = (target: string) =>
-    Effect.tryPromise(() => NodeFSP.statfs(target)).pipe(
+    Effect.tryPromise({
+      try: () => NodeFSP.statfs(target),
+      catch: (cause) => new VolumeStatisticsError({ cause }),
+    }).pipe(
       Effect.map((stats) => ({
         freeBytes: Number(stats.bavail) * Number(stats.bsize),
         totalBytes: Number(stats.blocks) * Number(stats.bsize),

@@ -1,4 +1,4 @@
-import { uiText } from "~/i18n";
+import { useGT } from "gt-react";
 import { useEffect, useRef } from "react";
 import type { DuoViewer } from "@t3tools/client-runtime/device/duo-viewer";
 import type { DeviceModelSource } from "@t3tools/client-runtime/device/model";
@@ -7,7 +7,9 @@ import { createCanvasFrameSink } from "@t3tools/client-runtime/device/frame";
 import type { DeviceScreenSize, DeviceStreamClient } from "@t3tools/client-runtime/device/stream";
 import { createDuoPinch } from "@t3tools/client-runtime/device/duo-control";
 import { mountDeviceViewer } from "./mountDeviceViewer";
+
 const loadDuoViewer = () => import("@t3tools/client-runtime/device/duo-viewer");
+
 export function DeviceDuoViewport(props: {
   readonly model: DeviceModelSource;
   readonly source: HTMLCanvasElement;
@@ -20,11 +22,9 @@ export function DeviceDuoViewport(props: {
   readonly onControlRejectedListener: (listener: (() => void) | null) => void;
   readonly onUnavailable: () => void;
 }) {
+  const gt = useGT();
   const viewerRef = useRef<
-    | (DuoViewer & {
-        readonly sources: Record<1 | 3, HTMLCanvasElement>;
-      })
-    | null
+    (DuoViewer & { readonly sources: Record<1 | 3, HTMLCanvasElement> }) | null
   >(null);
   const interactionRef = useRef<ReturnType<typeof createPhoneInteraction> | null>(null);
   const pinchRef = useRef<ReturnType<typeof createDuoPinch> | null>(null);
@@ -54,6 +54,7 @@ export function DeviceDuoViewport(props: {
     previewRef.current = props.hingePreview;
     if (!pinchRef.current?.active) viewerRef.current?.setHingePreview(props.hingePreview);
   }, [props.hingePreview]);
+
   // The 3D viewer lives as long as its canvas; later prop changes are pushed into it above.
   const mountViewer = (canvas: HTMLCanvasElement | null) => {
     const host = canvas?.parentElement;
@@ -138,6 +139,7 @@ export function DeviceDuoViewport(props: {
       },
     });
   };
+
   const point = (event: React.PointerEvent<HTMLCanvasElement>) => {
     const rect = event.currentTarget.getBoundingClientRect();
     return {
@@ -154,7 +156,7 @@ export function DeviceDuoViewport(props: {
         />
         <canvas
           ref={mountViewer}
-          aria-label={uiText(
+          aria-label={gt(
             "Interactive 3D iPhone Duo. Drag the screen to interact. Drag outside it or swipe with two fingers to turn. Pinch over the device to open or close its hinge.",
           )}
           className="size-full touch-none"

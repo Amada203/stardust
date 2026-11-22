@@ -1,3 +1,4 @@
+import { uiText } from "../../i18n";
 import { InboxStatusMark } from "./InboxStatusMark";
 import { useThreadShells } from "../../state/entities";
 import { useWorkbenchInboxStore } from "../../workbenchInboxStore";
@@ -27,7 +28,9 @@ export function InboxGroupBadge({
       {counts.requests ? (
         <span
           className="inline-flex items-center gap-1 text-primary"
-          aria-label={`待授权或待回答 ${counts.requests}`}
+          aria-label={uiText("{requests} need approval or an answer", {
+            requests: counts.requests,
+          })}
         >
           <InboxStatusMark reason="待授权" /> {counts.requests}
         </span>
@@ -35,7 +38,7 @@ export function InboxGroupBadge({
       {counts.errors ? (
         <span
           className="inline-flex items-center gap-1 text-destructive"
-          aria-label={`未知悉失败 ${counts.errors}`}
+          aria-label={uiText("{errors} unacknowledged failures", { errors: counts.errors })}
         >
           <InboxStatusMark reason="运行失败" /> {counts.errors}
         </span>

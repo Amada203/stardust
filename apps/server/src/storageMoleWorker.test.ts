@@ -88,7 +88,7 @@ from pathlib import Path as RealPath
 source=json.load(sys.stdin);tree=ast.parse(source)
 code=ast.Module(body=[n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='cleanup_candidate'],type_ignores=[])
 root=RealPath(tempfile.mkdtemp(prefix='c60-backup-policy-')).resolve();stage=root/'staging';home=root/'home';home.mkdir()
-def Path(s):return stage if str(s)==str(home/'.t3/build-staging') else RealPath(s)
+def Path(s):return RealPath(s)
 Path.home=lambda:home
 load=lambda p,default:json.loads(p.read_text()) if p.exists() else default
 digest=lambda p:hashlib.sha256(p.read_bytes()).hexdigest()
@@ -103,7 +103,7 @@ for i in [1,2,3]:
  p=stage/f'c{i}'/'installation'/'cold-backup.tar.zst';p.parent.mkdir(parents=True);p.write_bytes(b'fixture'+bytes([i]));os.utime(p,(i*86400,i*86400));archives.append(p)
  receipt={'archive':str(p),'archiveBytes':p.stat().st_size,'sha256':digest(p),'contentReadbackVerified':True,'restoreVerified':True,'sourceGroupUnchanged':True,'quickCheck':'ok'}
  p.with_name('cold-backup.json').write_text(json.dumps(receipt))
-req={'cleanupCandidate':{'path':str(archives[0]),'locked':False,'canRelease':True,'destination':'trash','category':'cold-backups'}}
+req={'staging':str(stage),'cleanupCandidate':{'path':str(archives[0]),'locked':False,'canRelease':True,'destination':'trash','category':'cold-backups'}}
 exec(compile(code,'worker','exec'),globals())
 assert cleanup_candidate()[1]==archives[0] and len(calls)==2
 req['cleanupCandidate']['path']=str(archives[2])
@@ -170,7 +170,6 @@ code=ast.Module(body=[n for n in tree.body if isinstance(n,ast.FunctionDef) and 
 root=RealPath(tempfile.mkdtemp(prefix='c63-worker-policy-')).resolve();stage=root/'staging';home=root/'home';apps=root/'Applications';home.mkdir();apps.mkdir()
 def Path(s):
  s=str(s)
- if s.startswith(str(home/'.t3/build-staging')):return stage/s.removeprefix(str(home/'.t3/build-staging')).lstrip('/')
  if s.startswith('/Applications/'):return apps/s.removeprefix('/Applications/')
  return RealPath(s)
 Path.home=lambda:home
@@ -180,7 +179,7 @@ inside=lambda p,r:p!=r and p.is_relative_to(r)
 def file(p,data):p.parent.mkdir(parents=True,exist_ok=True);p.write_bytes(data)
 def document(p,data):file(p,json.dumps(data).encode());return {'path':str(p),'sha256':digest(p)}
 cache=home/'Library/Caches/Homebrew';file(cache/'item',b'cache')
-req={'cleanupCandidate':dict(path=str(cache),locked=False,canRelease=True,destination='delete-rebuildable',rebuildable=True,category='developer-cache')}
+req={'staging':str(stage),'cleanupCandidate':dict(path=str(cache),locked=False,canRelease=True,destination='delete-rebuildable',rebuildable=True,category='developer-cache')}
 exec(compile(code,'worker','exec'),globals());assert cleanup_candidate()[1]==cache
 req['cleanupCandidate']['path']=str(cache.parent)
 try:cleanup_candidate();raise AssertionError('cache parent allowed')
@@ -217,4 +216,39 @@ print('10 checks; all originals kept')
       encoding: "utf8",
     }).trim(),
   ).toBe("10 checks; all originals kept");
+});
+
+it("rechecks preview capacity, content, identity and occupancy before accepting a cleanup queue", () => {
+  const program = String.raw`
+import ast,json,sys,types
+from pathlib import Path
+module=ast.parse(json.load(sys.stdin))
+code=ast.Module(body=[n for n in module.body if isinstance(n,ast.FunctionDef) and n.name=='recheck_preview'],type_ignores=[])
+plan={'type':'mole-cleanup','spacePath':'/source','source':'/source','freeBefore':10000,'sourceBytes':1000,'measuredBytes':1000,'digest':'ok','sourceIdentity':[1,2],'sourceParentIdentity':[1,1],'cleanupObjectId':'x','cleanupDestination':'trash'}
+free=10000;measured=1000;digest='ok';busy=False;low=False;exists=True
+shutil=types.SimpleNamespace(disk_usage=lambda p:types.SimpleNamespace(free=free))
+def cleanup_volumes_check():
+ if low:raise ValueError('reserve')
+def cleanup_candidate():
+ if not exists:raise ValueError('missing')
+ return {'id':'x','destination':'trash'},Path('/source')
+def cleanup_not_open(p):
+ if busy:raise ValueError('busy')
+def cleanup_snapshot(p):return [],measured,digest
+def ident(p):return [1,2] if str(p)=='/source' else [1,1]
+exec(compile(code,'preview','exec'))
+recheck_preview(plan)
+for key,value in [('free',9899),('free',10101),('measured',1011),('digest','changed'),('busy',True),('low',True),('exists',False)]:
+ old=globals()[key];globals()[key]=value
+ try:recheck_preview(plan);raise AssertionError('accepted '+key)
+ except ValueError:pass
+ globals()[key]=old
+print('passed')
+`;
+  expect(
+    NodeChildProcess.execFileSync("/usr/bin/python3", ["-c", program], {
+      input: JSON.stringify(STORAGE_ARCHIVE_PROGRAM),
+      encoding: "utf8",
+    }).trim(),
+  ).toBe("passed");
 });

@@ -6,6 +6,8 @@ import * as NodeOS from "node:os";
 import { expect, it } from "vite-plus/test";
 import {
   assertVolumeBudget,
+  cleanupRoots,
+  cleanupStagingDir,
   scanCleanup,
   inspectCleanupTree,
   type CleanupRoots,
@@ -178,4 +180,24 @@ it("unlocks only a sealed superseded candidate with matching installed receipts 
   await NodeFSP.writeFile(oldAsar, "fixture");
   await file(NodePath.join(generation, "installation/cold-backup.tar.zst"));
   expect((await scan()).entries.find((e) => e.name === "candidate")?.locked).toBe(true);
+});
+
+it("has no staging directory unless T3_CLEANUP_STAGING_DIR names an absolute one", () => {
+  expect(cleanupStagingDir({})).toBe("");
+  expect(cleanupStagingDir({ T3_CLEANUP_STAGING_DIR: "  " })).toBe("");
+  expect(cleanupStagingDir({ T3_CLEANUP_STAGING_DIR: "relative/dir" })).toBe("");
+  expect(cleanupStagingDir({ T3_CLEANUP_STAGING_DIR: "/tmp/t3-staging/../t3-staging" })).toBe(
+    NodePath.resolve("/tmp/t3-staging"),
+  );
+  // The default roots carry no author-specific location.
+  expect(cleanupRoots().staging).toBe(cleanupStagingDir());
+});
+it("scans without a staging directory and offers no staging-based cleanup", async () => {
+  const { roots, dir } = await fixture();
+  await file(NodePath.join(roots.home, "Library/Caches/Homebrew/old.zip"));
+  const result = await scanCleanup({ ...roots, staging: "" }, [volume(dir)]);
+  expect(result.entries.some((entry) => entry.name === "Homebrew 下载缓存")).toBe(true);
+  expect(result.entries.some((entry) => /c\d+\.tar\.zst|old-candidate/.test(entry.path))).toBe(
+    false,
+  );
 });

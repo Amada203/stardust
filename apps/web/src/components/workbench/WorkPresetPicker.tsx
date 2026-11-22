@@ -1,8 +1,9 @@
+import { useUiText } from "~/i18n/useUiText";
 import { randomUUID } from "../../lib/utils";
 import { accountAlias } from "../chat/runInspectorModel";
 import { useState } from "react";
 import type { EnvironmentId, ModelSelection, ServerProvider } from "@t3tools/contracts";
-import { uiText } from "~/i18n";
+
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { useWorkPresets } from "./useWorkPresets";
@@ -17,6 +18,7 @@ export function WorkPresetPicker({
   currentSelection: ModelSelection;
   providers: readonly ServerProvider[];
 }) {
+  const uiText = useUiText();
   const state = useWorkPresets();
   const scope = state.scopes[environmentId] ?? EMPTY_PRESET_SCOPE;
   const [open, setOpen] = useState(false);

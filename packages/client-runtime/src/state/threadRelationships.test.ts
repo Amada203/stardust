@@ -6,7 +6,6 @@ import {
   deriveThreadRelationshipGraph,
   immediateThreadRelationships,
   orderWebThreadLineageRows,
-  relatedThreadIds,
   resolveMergeBackTargetThreadId,
   threadRelationshipRowStatus,
 } from "./threadRelationships.ts";
@@ -439,33 +438,4 @@ describe("web thread lineage ordering", () => {
       }),
     ).toEqual([dated, missingTransfer, undated]);
   });
-});
-it("keeps continuation links bidirectional without offering native fork merge-back", () => {
-  const source = ThreadId.make("handoff-source");
-  const target = ThreadId.make("handoff-target");
-  const graph = deriveThreadRelationshipGraph({
-    threads: [
-      { id: source, lineage: { parentThreadId: null } },
-      {
-        id: target,
-        lineage: { parentThreadId: null, rootThreadId: target, relationshipToParent: null },
-        continuedFromThreadId: source,
-      },
-    ] as never,
-    projection: null,
-  });
-  expect(graph.edges).toEqual([
-    { sourceThreadId: source, targetThreadId: target, kind: "transfer", status: undefined },
-  ]);
-  expect(relatedThreadIds(graph, source)).toEqual([target]);
-  expect(relatedThreadIds(graph, target)).toEqual([source]);
-  expect(
-    resolveMergeBackTargetThreadId({
-      thread: {
-        lineage: { parentThreadId: null, relationshipToParent: null },
-        continuedFromThreadId: source,
-        forkedFrom: null,
-      },
-    } as never),
-  ).toBeNull();
 });

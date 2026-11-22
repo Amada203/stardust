@@ -1,3 +1,7 @@
+import { InboxQuickActions } from "./InboxQuickActions";
+import { inboxLabel } from "~/i18n/inboxLabel";
+import { uiText } from "../../i18n";
+import { useUiText } from "~/i18n/useUiText";
 import { useState } from "react";
 import { ChevronDownIcon, ChevronRightIcon } from "lucide-react";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
@@ -20,7 +24,7 @@ import { Popover, PopoverTrigger, PopoverPopup, PopoverTitle } from "../ui/popov
 import { useQuietThreadProjection, useThreadShell } from "../../state/entities";
 import { useEnvironment } from "../../state/environments";
 import { taskProgressSnapshot } from "../../taskProgress";
-import { uiText } from "../../i18n";
+
 import { cn } from "~/lib/utils";
 import { progressTone, taskProgressStateLabels } from "../chat/TaskProgressSteps";
 
@@ -35,6 +39,7 @@ function ActiveWorkProgress({
   thread: SidebarThreadSummary;
   fallback: string;
 }) {
+  const uiText = useUiText();
   const threadRef = scopeThreadRef(thread.environmentId, thread.id);
   const projection = useQuietThreadProjection(threadRef)?.projection ?? null;
   const shell = useThreadShell(threadRef);
@@ -94,6 +99,7 @@ export function ActiveWorkOverview({
   navigate: (ref: ScopedThreadRef) => void;
   incomplete?: boolean;
 }) {
+  const text = useUiText();
   const groups = collectActiveWork(threads);
   // The shared minute clock; it only ticks while something subscribes and adds no timer here.
   const nowMs = Date.parse(`${useNowMinute()}:00Z`);
@@ -118,52 +124,77 @@ export function ActiveWorkOverview({
       thread.runtime?.providerInstanceId ?? thread.modelSelection.instanceId,
     );
     // Second line, as in the mockup: state first, then how long it has been running.
-    const detail = [status, startedAt ? activeWorkElapsed(startedAt, nowMs) : null, provider]
+    const detail = [
+      status ? inboxLabel(status) : status,
+      startedAt ? activeWorkElapsed(startedAt, nowMs) : null,
+      provider,
+    ]
       .filter(Boolean)
       .join(" · ");
-    const tooltip = [provider, projectByThread.get(key), status].filter(Boolean).join(" · ");
+    const tooltip = [provider, projectByThread.get(key), status ? inboxLabel(status) : status]
+      .filter(Boolean)
+      .join(" · ");
     return (
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <button
-              type="button"
-              onClick={() => go(thread)}
-              aria-current={activeKey === key ? "page" : undefined}
-              className="min-w-0 flex-1 rounded-md px-1.5 py-1 text-left outline-none hover:bg-accent focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring aria-[current=page]:bg-accent"
-            >
-              <span className="flex min-w-0 items-center gap-1.5 text-xs">
+      <span className="group/inbox-row relative flex min-w-0 flex-1">
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <button
+                type="button"
+                onClick={() => go(thread)}
+                aria-current={activeKey === key ? "page" : undefined}
+                className="min-w-0 flex-1 rounded-md px-1.5 py-1 text-left outline-none hover:bg-accent focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring aria-[current=page]:bg-accent"
+              >
                 <span
-                  aria-hidden="true"
-                  className={`size-1.5 shrink-0 rounded-full ${attention ? "bg-warning" : "bg-primary"}`}
-                />
-                <span className="min-w-0 flex-1 truncate text-sm">
-                  {thread.title || "未命名会话"}
+                  className={cn(
+                    "flex min-w-0 items-center gap-1.5 text-xs",
+                    // V14: the hover actions take this space instead of covering the title.
+                    attention
+                      ? "group-hover/inbox-row:pe-18"
+                      : "group-hover/inbox-row:pe-12.5",
+                  )}
+                >
+                  <span
+                    aria-hidden="true"
+                    className={`size-1.5 shrink-0 rounded-full ${attention ? "bg-warning" : "bg-primary"}`}
+                  />
+                  <span className="min-w-0 flex-1 truncate text-sm">
+                    {thread.title || uiText("Untitled thread")}
+                  </span>
+                  <span className="shrink-0 text-2xs tabular-nums text-sidebar-muted-foreground group-hover/inbox-row:hidden">
+                    {sidebarRelativeTime(thread.runtime?.activityStartedAt ?? thread.updatedAt)}
+                  </span>
                 </span>
-                <span className="shrink-0 text-2xs tabular-nums text-sidebar-muted-foreground">
-                  {sidebarRelativeTime(thread.runtime?.activityStartedAt ?? thread.updatedAt)}
-                </span>
-              </span>
-              {activeKey === key ? (
-                <ActiveWorkProgress thread={thread} fallback={detail} />
-              ) : (
-                <span className="block truncate pl-3 text-2xs text-sidebar-muted-foreground">
-                  {detail}
-                </span>
-              )}
-            </button>
-          }
+                {activeKey === key ? (
+                  <ActiveWorkProgress thread={thread} fallback={detail} />
+                ) : (
+                  <span className="block truncate pl-3 text-2xs text-sidebar-muted-foreground">
+                    {detail}
+                  </span>
+                )}
+              </button>
+            }
+          />
+          <TooltipPopup side="right">
+            {thread.title || uiText("Untitled thread")}
+            <br />
+            {tooltip}
+          </TooltipPopup>
+        </Tooltip>
+        <InboxQuickActions
+          mode={attention ? "needs-you" : "running"}
+          threadRef={scopeThreadRef(thread.environmentId, thread.id)}
+          title={thread.title}
+          onOpen={() => go(thread)}
         />
-        <TooltipPopup side="right">
-          {thread.title || "未命名会话"}
-          <br />
-          {tooltip}
-        </TooltipPopup>
-      </Tooltip>
+      </span>
     );
   };
   const renderGroups = (all: boolean) => (
-    <ul aria-label={all ? "全部正在进行的任务" : "正在进行的任务"} className="space-y-0.5">
+    <ul
+      aria-label={all ? uiText("All active tasks") : uiText("Active tasks")}
+      className="space-y-0.5"
+    >
       {(all ? groups : preview).map(({ root, children }) => {
         const key = subtaskThreadKey(root);
         const expanded = all || !collapsed.has(key);
@@ -173,7 +204,10 @@ export function ActiveWorkOverview({
               {children.length && !all ? (
                 <button
                   type="button"
-                  aria-label={`${expanded ? "收起" : "展开"}${root.title}的子任务`}
+                  aria-label={uiText("{action} subtasks for {title}", {
+                    action: expanded ? uiText("Collapse recommendation") : uiText("Expand"),
+                    title: root.title,
+                  })}
                   aria-expanded={expanded}
                   onClick={() =>
                     setCollapsed((previous) => {
@@ -192,12 +226,19 @@ export function ActiveWorkOverview({
                   )}
                 </button>
               ) : null}
-              {row(root, children.length ? `等待 ${children.length} 个子任务` : undefined)}
+              {row(
+                root,
+                children.length
+                  ? children.length === 1
+                    ? uiText("Waiting for {count} subtask", { count: children.length })
+                    : uiText("Waiting for {count} subtasks", { count: children.length })
+                  : undefined,
+              )}
             </div>
             {expanded && children.length ? (
               <ul
                 className="ml-3 border-l border-sidebar-border pl-1"
-                aria-label={`${root.title}的运行子任务`}
+                aria-label={uiText("{title}’s active subtasks", { title: root.title })}
               >
                 {children.map((child) => (
                   <li key={subtaskThreadKey(child)} className="flex min-w-0">
@@ -212,36 +253,46 @@ export function ActiveWorkOverview({
     </ul>
   );
   return (
-    <section aria-label="跨模型运行概览" className="pb-1.5" data-sidebar-cap-section="">
+    <section
+      aria-label={text("Running tasks overview")}
+      className="pb-1.5"
+      data-sidebar-cap-section=""
+    >
       <div
         className="flex items-center gap-1.5 px-2 pt-2 pb-1 text-2xs tracking-wider text-sidebar-muted-foreground"
         data-sidebar-cap=""
       >
-        <span>正在进行</span>
+        <span>{text("Running")}</span>
         {groups.length === 0 ? (
           <span className="tracking-normal">
             <span aria-hidden>· </span>
-            <span>暂无运行任务</span>
+            <span>{text("No active tasks")}</span>
           </span>
         ) : childCount ? (
-          <span className="tracking-normal">· 含 {childCount} 个子任务</span>
+          <span className="tracking-normal">
+            {uiText("· Includes ")}
+            {childCount} {uiText(" subtasks")}
+          </span>
         ) : null}
         <span className="ml-auto tracking-normal tabular-nums">{groups.length}</span>
       </div>
       {incomplete ? (
         <p role="status" className="px-2 text-3xs text-sidebar-muted-foreground">
-          连接未就绪，状态可能尚未更新。
+          {uiText("Connection pending. Some statuses may be out of date.")}
         </p>
       ) : null}
       {groups.length === 0 ? null : renderGroups(false)}
       {truncated ? (
         <Popover open={open} onOpenChange={setOpen}>
           <PopoverTrigger render={<Button variant="ghost" size="xs" />}>
-            查看全部 {groups.length + childCount} 项
+            {uiText("View all ")}
+            {groups.length + childCount} {uiText(" items")}
           </PopoverTrigger>
           <PopoverPopup side="right" align="start" width="lg" padding="compact">
             <PopoverTitle>
-              正在进行 · {groups.length} 个主任务，{childCount} 个子任务
+              {uiText("In progress · ")}
+              {groups.length} {uiText(" main tasks, ")}
+              {childCount} {uiText(" subtasks")}
             </PopoverTitle>
             <div className="mt-2 max-h-[min(65vh,640px)] overflow-y-auto">{renderGroups(true)}</div>
           </PopoverPopup>

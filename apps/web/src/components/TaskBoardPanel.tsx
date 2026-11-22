@@ -1,3 +1,4 @@
+import { uiText } from "../i18n";
 import {
   resolveSnoozePresets as defaultPresets,
   pickSnoozePreset as pickDefaultPreset,
@@ -84,7 +85,9 @@ export function TaskBoardSnooze({
           );
       }}
     >
-      <MenuTrigger render={<Button size="xs" variant="outline" />}>稍后提醒</MenuTrigger>
+      <MenuTrigger render={<Button size="xs" variant="outline" />}>
+        {uiText("Remind me later")}
+      </MenuTrigger>
       <MenuPopup>
         {presets.map((preset) => (
           <MenuItem
@@ -105,9 +108,11 @@ export function TaskBoardSnooze({
             if (choice) await save(choice.snoozedUntil);
           }}
         >
-          自定义…
+          {uiText("Custom…")}
         </MenuItem>
-        {task.snoozed ? <MenuItem onClick={() => void save("")}>取消稍后提醒</MenuItem> : null}
+        {task.snoozed ? (
+          <MenuItem onClick={() => void save("")}>{uiText("Cancel reminder")}</MenuItem>
+        ) : null}
       </MenuPopup>
     </Menu>
   );
@@ -134,7 +139,7 @@ export function TaskBoardDot({ cwd, threadId }: { cwd: string | null; threadId: 
   if (!state || state === "done") return null;
   return (
     <span
-      aria-label={`项目任务：${boardStateLabel[state]}`}
+      aria-label={uiText("Project tasks: {count}", { count: boardStateLabel[state] })}
       className={`size-1.5 shrink-0 rounded-full ${state === "user" ? "bg-warning" : state === "blocked" ? "bg-destructive" : "bg-primary"}`}
     />
   );
@@ -155,7 +160,11 @@ function TaskProgress({
     <div className={mini ? "w-24 shrink-0" : "min-w-0"}>
       <div
         role="img"
-        aria-label={`${task.done_count}/${task.total} 步通过${step ? `，当前：${step.name}` : ""}`}
+        aria-label={uiText("{done}/{total} steps passed{current}", {
+          done: task.done_count,
+          total: task.total,
+          current: step ? uiText(", current: {name}", { name: step.name }) : "",
+        })}
         className={`flex items-center ${mini ? "h-4" : "h-5"}`}
       >
         {task.steps.map((s, index) => (
@@ -170,13 +179,16 @@ function TaskProgress({
               <span
                 data-task-station={s.id}
                 data-current-station={task.state}
-                aria-label={`${s.name}：${boardStateLabel[task.state]}`}
+                aria-label={uiText("{label}: {value}", {
+                  label: s.name,
+                  value: boardStateLabel[task.state],
+                })}
                 className={`grid shrink-0 place-items-center rounded-full font-bold text-primary-foreground ${mini ? "size-3.5 text-4xs" : "size-5 text-3xs ring-3"} ${task.state === "blocked" ? "bg-destructive ring-destructive/10" : task.state === "user" ? "bg-warning ring-warning/10" : "bg-primary ring-primary/10"}`}
               >
                 {task.state === "blocked" ? (
                   <LockKeyhole className={mini ? "size-2" : "size-3"} />
                 ) : task.state === "user" ? (
-                  "你"
+                  uiText("You")
                 ) : (
                   "AI"
                 )}
@@ -185,7 +197,7 @@ function TaskProgress({
               <span
                 data-task-station={s.id}
                 data-task-gate={s.required === "user" || undefined}
-                aria-label={`${s.name}${s.required === "user" ? "：你把关" : ""}${s.done ? "，已通过" : ""}`}
+                aria-label={`${s.name}${s.required === "user" ? uiText(": your approval") : ""}${s.done ? uiText(", passed") : ""}`}
                 className={`shrink-0 border-2 ${mini ? "size-1.5" : "size-2"} ${s.done ? "border-success bg-success" : "border-border bg-background"} ${s.required === "user" ? "rotate-45 rounded-xs" : "rounded-full"}`}
               />
             )}
@@ -195,11 +207,13 @@ function TaskProgress({
       {!mini && caption ? (
         <div className="mt-1 flex flex-wrap items-start justify-between gap-x-2 gap-y-0.5 text-3xs text-muted-foreground">
           <span className="min-w-0 break-words">
-            {step ? `当前：${step.name}` : "所有步骤已通过"}
+            {step ? uiText("Current: {name}", { name: step.name }) : uiText("All steps passed")}
           </span>
           <span>
             {task.done_count}/{task.total}
-            {nextGateDistance !== null ? ` · 下个关卡还有 ${nextGateDistance} 站` : ""}
+            {nextGateDistance !== null
+              ? uiText(" · Next review in {nextGateDistance} steps", { nextGateDistance })
+              : ""}
           </span>
         </div>
       ) : null}
@@ -209,9 +223,9 @@ function TaskProgress({
 function TaskSteps({ task }: { task: BoardTask }) {
   const current = boardCurrentStep(task);
   const levels = ["self", "review", "user"] as const;
-  const labels = ["自检", "评审", "你确认"];
+  const labels = [uiText("Self-check"), uiText("Review"), uiText("Your confirmation")];
   return (
-    <ol aria-label={`${task.title}完整步骤`} className="space-y-1">
+    <ol aria-label={uiText("{title}all steps", { title: task.title })} className="space-y-1">
       {task.steps.map((step) => (
         <li
           key={step.id}
@@ -227,22 +241,32 @@ function TaskSteps({ task }: { task: BoardTask }) {
             {step.id === current?.id
               ? task.state === "user"
                 ? step.pending_review
-                  ? " · 等你判断"
-                  : " · 你来做"
+                  ? uiText(" · Needs your decision")
+                  : uiText(" · Your action needed")
                 : task.state === "blocked"
-                  ? " · 卡住了"
-                  : " · Agent 在做"
+                  ? uiText(" · Blocked")
+                  : uiText(" · Agent working")
               : ""}
           </span>
           {step.done || step.id === current?.id || boardLevelRank(step) > 0 ? (
             <span
               className="flex shrink-0 gap-0.5"
-              aria-label={`验收等级：${labels[boardLevelRank(step) - 1] ?? "未完成"}`}
+              aria-label={uiText("Verification level: {level}", {
+                level: labels[boardLevelRank(step) - 1] ?? uiText("Incomplete"),
+              })}
             >
               {levels.map((level, index) => (
                 <span
                   key={level}
-                  aria-label={`${labels[index]}：${boardLevelRank(step) > index ? "已通过" : step.required === level ? "还需验收" : "未通过"}`}
+                  aria-label={uiText("{label}: {value}", {
+                    label: labels[index],
+                    value:
+                      boardLevelRank(step) > index
+                        ? uiText("Passed")
+                        : step.required === level
+                          ? uiText("Needs verification")
+                          : uiText("Did not pass"),
+                  })}
                   className={`h-1 w-2.5 rounded-xs ${boardLevelRank(step) > index ? "bg-success" : step.required === level ? "border border-dashed border-warning" : "bg-border"}`}
                 />
               ))}
@@ -346,19 +370,23 @@ export function TaskBoardPanel({
     attention.filter((task) => boardTaskGroup(task) === group),
   )[0]?.folder;
   const approvals = boardApprovalsToday(tasks, new Date(now));
-  const linkedThreads = (task: BoardTask) =>
-    threads
+  const projectsByKey = new Map(projects.map((p) => [`${p.environmentId}:${p.id}`, p] as const));
+  const linkedThreadsByFolder = new Map<string, typeof threads>();
+  for (const task of tasks) {
+    const matched = threads
       .filter(
         (thread) =>
           task.sessions.includes(thread.id) ||
-          (() => {
-            const project = projects.find(
-              (p) => p.id === thread.projectId && p.environmentId === thread.environmentId,
-            );
-            return matchBoardTask([task], thread.worktreePath ?? project?.workspaceRoot) !== null;
-          })(),
+          matchBoardTask(
+            [task],
+            thread.worktreePath ??
+              projectsByKey.get(`${thread.environmentId}:${thread.projectId}`)?.workspaceRoot,
+          ) !== null,
       )
-      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+      .toSorted((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    linkedThreadsByFolder.set(task.folder, matched);
+  }
+  const linkedThreads = (task: BoardTask) => linkedThreadsByFolder.get(task.folder) ?? [];
   const openThread = (ref: ScopedThreadRef) => {
     requestTaskBoardCurrent(ref);
     useRightPanelStore.getState().open(ref, "tasks");
@@ -367,14 +395,15 @@ export function TaskBoardPanel({
   const openProject = async (task: BoardTask) => {
     toastManager.add({
       type: "info",
-      title: "这个项目还没关联会话",
-      description: "正在打开项目文件夹。",
+      title: uiText("This project has no linked conversation."),
+      description: uiText("Opening the project folder."),
     });
     const result = await openInEditor({
       environmentId: threadRef.environmentId,
       input: { cwd: task.folder, editor: "file-manager" },
     });
-    if (result._tag === "Failure") setMutationError(`无法打开项目文件夹：${task.folder}`);
+    if (result._tag === "Failure")
+      setMutationError(uiText("Couldn’t open project folder: {folder}", { folder: task.folder }));
   };
   const openTask = (task: BoardTask) => {
     const thread = linkedThreads(task)[0];
@@ -390,7 +419,7 @@ export function TaskBoardPanel({
         ? threadRef
         : null;
     if (!target || target.kind !== "file" || !ref) {
-      setMutationError("没有可预览此证据的关联会话，请先打开项目会话。");
+      setMutationError(uiText("Open a conversation for this project to preview the evidence."));
       return;
     }
     useRightPanelStore.getState().openFile(ref, target.value);
@@ -400,7 +429,7 @@ export function TaskBoardPanel({
     const step = boardCurrentStep(task);
     if (!step || pending) return;
     if (decision === "reject" && !reason.trim()) {
-      setMutationError("请写一句打回原因。");
+      setMutationError(uiText("Add a short reason for requesting changes."));
       return;
     }
     setPending(task.folder);
@@ -419,9 +448,8 @@ export function TaskBoardPanel({
       setReason("");
     } catch (error) {
       setMutationError(String(error));
-    } finally {
-      setPending(null);
     }
+    setPending(null);
   };
   const linkSession = async (
     task: BoardTask,
@@ -441,13 +469,15 @@ export function TaskBoardPanel({
       setMutationError(String(error));
     }
   };
-  const links = (task: BoardTask, label = "打开会话") => {
+  const links = (task: BoardTask, label = uiText("Open thread")) => {
     const linked = linkedThreads(task);
     if (!linked.length)
       return (
         <div className="flex flex-wrap gap-1.5">
           <Menu>
-            <MenuTrigger render={<Button size="xs" variant="outline" />}>关联会话</MenuTrigger>
+            <MenuTrigger render={<Button size="xs" variant="outline" />}>
+              {uiText("Link conversation")}
+            </MenuTrigger>
             <MenuPopup>
               {[...threads]
                 .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
@@ -463,7 +493,7 @@ export function TaskBoardPanel({
             </MenuPopup>
           </Menu>
           <Button size="xs" variant="outline" onClick={() => void openProject(task)}>
-            打开项目文件夹
+            {uiText("Open project folder")}
           </Button>
         </div>
       );
@@ -492,7 +522,7 @@ export function TaskBoardPanel({
                 {thread.title} · {thread.updatedAt.slice(0, 10)}
               </MenuItem>
               <MenuItem onClick={() => void linkSession(task, thread.id, thread.title, "unlink")}>
-                取消关联
+                {uiText("Unlink")}
               </MenuItem>
             </Fragment>
           ))}
@@ -545,16 +575,16 @@ export function TaskBoardPanel({
     const isOpen = expanded[task.folder] ?? (view === "waiting" && first);
     const kindLabel =
       task.state === "done"
-        ? "已完成"
+        ? uiText("Completed")
         : task.state === "agent"
-          ? "推进中"
+          ? uiText("Underway")
           : kind === "review"
-            ? "验收"
+            ? uiText("Review outcome")
             : kind === "decide"
-              ? "决定"
+              ? uiText("Decide")
               : kind === "unlock" || kind === "blocked"
-                ? "解锁"
-                : (step?.name.match(/口播|录音|拍摄|上传|补充|填写/)?.[0] ?? "动手");
+                ? uiText("Unlock")
+                : (step?.name.match(/口播|录音|拍摄|上传|补充|填写/)?.[0] ?? uiText("Take action"));
     const actionable = task.state === "user" || task.state === "blocked";
     return (
       <article
@@ -568,7 +598,10 @@ export function TaskBoardPanel({
         {!forceCurrent ? (
           <button
             type="button"
-            aria-label={`${isOpen ? "收起" : "展开"}${task.title}步骤`}
+            aria-label={uiText("{action} steps for {title}", {
+              action: isOpen ? uiText("Collapse recommendation") : uiText("Expand"),
+              title: task.title,
+            })}
             aria-expanded={isOpen}
             onClick={() => setExpanded((previous) => ({ ...previous, [task.folder]: !isOpen }))}
             className="absolute inset-0 rounded-[inherit] outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
@@ -584,29 +617,32 @@ export function TaskBoardPanel({
             <span className="min-w-0 flex-1 truncate">
               {forceCurrent
                 ? task.state === "user"
-                  ? "轮到你"
+                  ? uiText("Your turn")
                   : boardStateLabel[task.state]
                 : task.title}
             </span>
             <span className="shrink-0">
               {task.snoozed
-                ? "稍后提醒"
+                ? uiText("Remind me later")
                 : waitingDays === null
                   ? ""
                   : waitingDays === 0
-                    ? "今天"
-                    : `等 ${waitingDays} 天`}
+                    ? uiText("Today")
+                    : waitingDays === 1
+                      ? uiText("Waiting {waitingDays} day", { waitingDays })
+                      : uiText("Waiting {waitingDays} days", { waitingDays })}
             </span>
           </div>
           <h3 className="mt-1.5 break-words text-sm leading-snug font-semibold">
             {task.state === "agent"
-              ? task.next || step?.name || "Agent 在推进"
+              ? task.next || step?.name || uiText("Agent making progress")
               : boardTaskHeading(task)}
           </h3>
           {evidenceTags(task)}
           {task.missing.length ? (
             <p className="mt-1 break-words text-xs text-muted-foreground">
-              缺：{task.missing.join(" · ")}
+              {uiText("Missing:")}
+              {task.missing.join(" · ")}
             </p>
           ) : null}
           {!forceCurrent ? (
@@ -623,7 +659,7 @@ export function TaskBoardPanel({
             {actionable && (kind === "unlock" || kind === "blocked") ? (
               <TaskPrimaryButton onClick={() => openTask(task)}>
                 <ExternalLink className="size-3" />
-                去处理
+                {uiText("Open task")}
               </TaskPrimaryButton>
             ) : actionable && kind === "review" ? (
               <>
@@ -632,7 +668,7 @@ export function TaskBoardPanel({
                   onClick={() => void save(task, "approve")}
                 >
                   <Check className="size-3" />
-                  通过
+                  {uiText("Pass review")}
                 </TaskPrimaryButton>
                 <Button
                   size="xs"
@@ -644,7 +680,7 @@ export function TaskBoardPanel({
                     setMutationError(null);
                   }}
                 >
-                  打回…
+                  {uiText("Request changes…")}
                 </Button>
               </>
             ) : actionable && kind === "decide" ? (
@@ -652,7 +688,7 @@ export function TaskBoardPanel({
                 disabled={pending !== null || !step}
                 onClick={() => void save(task, "approve")}
               >
-                我决定了
+                {uiText("I’ve decided")}
               </TaskPrimaryButton>
             ) : actionable ? (
               <>
@@ -660,7 +696,7 @@ export function TaskBoardPanel({
                   disabled={pending !== null || !step}
                   onClick={() => void save(task, "toggle")}
                 >
-                  我做完了
+                  {uiText("I’m done")}
                 </TaskPrimaryButton>
                 <TaskBoardSnooze task={task} environmentId={threadRef.environmentId} />
               </>
@@ -679,8 +715,8 @@ export function TaskBoardPanel({
               }}
             >
               <input
-                aria-label="打回原因"
-                placeholder="一句话说明哪里需要改"
+                aria-label={uiText("Reason for changes")}
+                placeholder={uiText("Describe what needs to change")}
                 value={reason}
                 onChange={(event) => setReason(event.target.value)}
                 className="h-7 min-w-0 flex-1 rounded-md border bg-background px-2 text-xs outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring"
@@ -691,7 +727,7 @@ export function TaskBoardPanel({
                 variant="outline"
                 disabled={!reason.trim() || pending !== null}
               >
-                确认打回
+                {uiText("Confirm request for changes")}
               </Button>
             </form>
           ) : null}
@@ -703,7 +739,7 @@ export function TaskBoardPanel({
   const complete = tasks.filter((task) => boardTaskMatchesFilter(task, "done_week", now));
   return (
     <section
-      aria-label="任务看板"
+      aria-label={uiText("Task board")}
       className="flex min-h-0 min-w-0 flex-1 flex-col bg-background text-foreground"
     >
       {error ? (
@@ -711,8 +747,12 @@ export function TaskBoardPanel({
           <div className="mx-auto mb-3 grid size-11 place-items-center rounded-xl bg-accent">
             <Unplug className="size-5" />
           </div>
-          <h2 className="mb-1 text-sm font-semibold text-foreground">看板服务没开</h2>
-          <p>任务数据暂时读不到，T3 其他功能不受影响。</p>
+          <h2 className="mb-1 text-sm font-semibold text-foreground">
+            {uiText("Task board service is offline")}
+          </h2>
+          <p>
+            {uiText("Task data is temporarily unavailable. Other T3 features are still available.")}
+          </p>
           <code className="my-3 block break-all rounded-md bg-accent px-2 py-1.5 text-left text-3xs">
             {TASK_BOARD_START_COMMAND}
           </code>
@@ -723,14 +763,16 @@ export function TaskBoardPanel({
               void navigator.clipboard
                 .writeText(TASK_BOARD_START_COMMAND)
                 .then(() => setCopied(true))
-                .catch(() => setMutationError("复制失败，请手动复制上方命令"))
+                .catch(() =>
+                  setMutationError(uiText("Couldn’t copy. Copy the command above manually.")),
+                )
             }
           >
             <Copy />
-            {copied ? "已复制" : "复制命令"}
+            {copied ? uiText("Copied") : uiText("Copy command")}
           </Button>
           <Button size="xs" variant="ghost" onClick={() => void refreshTaskBoard()}>
-            重试
+            {uiText("Retry message")}
           </Button>
           {mutationError ? (
             <p role="alert" className="mt-2 text-destructive">
@@ -740,27 +782,31 @@ export function TaskBoardPanel({
         </div>
       ) : loading || !data ? (
         <p role="status" className="p-4 text-sm text-muted-foreground">
-          正在读取任务…
+          {uiText("Loading tasks…")}
         </p>
       ) : (
         <>
           <header className="px-3.5 pt-3.5 pb-1">
             {view === "waiting" ? (
               <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-                <h2 className="text-xl font-semibold tracking-tight">待我处理</h2>
-                <span className="text-xs text-muted-foreground">只列现在需要你回复的事</span>
+                <h2 className="text-xl font-semibold tracking-tight">
+                  {uiText("Needs my attention")}
+                </h2>
+                <span className="text-xs text-muted-foreground">
+                  {uiText("Items that need your response now")}
+                </span>
               </div>
             ) : null}
             <div
               role="group"
-              aria-label="任务视图"
+              aria-label={uiText("Task view")}
               className={`inline-flex max-w-full gap-0.5 rounded-lg bg-accent p-0.5 ${view === "waiting" ? "mt-2.5" : ""}`}
             >
               {(
                 [
-                  ["waiting", "待办"],
-                  ["current", "本会话"],
-                  ["all", `全部项目 ${allTasks.length}`],
+                  ["waiting", uiText("To do")],
+                  ["current", uiText("This conversation")],
+                  ["all", uiText("All projects ({count})", { count: allTasks.length })],
                 ] as const
               ).map(([id, label]) => (
                 <button
@@ -779,7 +825,7 @@ export function TaskBoardPanel({
             </div>
             {!current && view === "current" ? (
               <p id="task-board-no-current" className="mt-1 text-3xs text-muted-foreground">
-                这个会话还没关联任务
+                {uiText("No tasks are linked to this conversation")}
               </p>
             ) : null}
           </header>
@@ -793,7 +839,7 @@ export function TaskBoardPanel({
               <TaskInbox threadRef={threadRef} />
             ) : view === "current" && !current ? (
               <div className="space-y-2 p-3.5">
-                <p>这个会话还没关联任务</p>
+                <p>{uiText("No tasks are linked to this conversation")}</p>
                 {attention.map((task) => (
                   <Button
                     key={task.folder}
@@ -803,7 +849,8 @@ export function TaskBoardPanel({
                       void linkSession(
                         task,
                         threadRef.threadId,
-                        threads.find((t) => t.id === threadRef.threadId)?.title ?? "当前会话",
+                        threads.find((t) => t.id === threadRef.threadId)?.title ??
+                          uiText("Current thread"),
                       )
                     }
                   >
@@ -836,7 +883,7 @@ export function TaskBoardPanel({
                     <FileText />
                     HANDOFF
                   </Button>
-                  {links(current, "关联会话")}
+                  {links(current, uiText("Link conversation"))}
                 </div>
               </>
             ) : (
@@ -855,14 +902,14 @@ export function TaskBoardPanel({
                           : Bot;
                   const label =
                     group === "judge"
-                      ? "要你判断"
+                      ? uiText("Your decision")
                       : group === "do"
-                        ? "要你动手"
+                        ? uiText("Your action")
                         : group === "blocked"
-                          ? "卡住了"
+                          ? uiText("Blocked")
                           : group === "user"
-                            ? "等你"
-                            : "Agent 在做";
+                            ? uiText("Waiting for you")
+                            : uiText("Agent working");
                   return list.length ? (
                     <section key={group}>
                       <h3 className="flex items-center gap-1.5 px-3.5 pt-3 pb-1.5 text-3xs font-semibold text-muted-foreground">
@@ -886,7 +933,8 @@ export function TaskBoardPanel({
                       ) : (
                         <ChevronRight className="size-3" />
                       )}
-                      本周完成 · {complete.length}
+                      {uiText("Completed this week · ")}
+                      {complete.length}
                     </button>
                     {completedOpen ? complete.map((task) => card(task)) : null}
                   </section>
@@ -895,8 +943,15 @@ export function TaskBoardPanel({
             )}
           </div>
           <footer className="flex flex-wrap justify-between gap-1 border-t px-3.5 py-2 text-3xs text-muted-foreground">
-            {approvals !== null ? <span>今天你放行了 {approvals} 步</span> : <span />}
-            <span>23:00–9:00 不弹提醒</span>
+            {approvals !== null ? (
+              <span>
+                {uiText("You approved ")}
+                {approvals} {uiText(" steps today")}
+              </span>
+            ) : (
+              <span />
+            )}
+            <span>{uiText("Notifications paused 23:00–9:00")}</span>
           </footer>
         </>
       )}

@@ -1,3 +1,5 @@
+import { secondaryCollectionRank } from "./workspaceCollections";
+import { uiText } from "./i18n";
 import { useSyncExternalStore } from "react";
 import type { SidebarProjectSnapshot } from "./sidebarProjectGrouping";
 
@@ -11,7 +13,7 @@ export interface PinnedProject {
 const SIDEBAR_GROUPING_STORAGE_KEY = "t3code:sidebar-grouping:v2";
 const SIDEBAR_PINNED_STORAGE_KEY = "t3code:sidebar-pinned-projects:v1";
 /** Marks a merged project row: threads from every model, instead of one model's slice. */
-export const PROJECT_FIRST_LABEL = "项目";
+export const PROJECT_FIRST_LABEL = uiText("Project", undefined, "zh-CN");
 const RECENT_PROJECT_WINDOW_MS = 14 * 24 * 60 * 60 * 1000;
 
 export function isProjectFirst(project: Pick<SidebarProjectSnapshot, "providerLabel">): boolean {
@@ -101,7 +103,7 @@ export function projectPinKey(project: SidebarProjectSnapshot): string {
 
 // Catch-all collections stay last in their section, as in the model view.
 const isSecondaryProject = (project: Pick<SidebarProjectSnapshot, "displayName">) =>
-  project.displayName === "自动化与测试" || project.displayName === "其他项目";
+  secondaryCollectionRank(project.displayName) > 0;
 
 export interface ProjectSections {
   readonly pinned: SidebarProjectSnapshot[];

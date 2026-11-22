@@ -1,8 +1,15 @@
+import { afterPinLayoutSettles, pinSelectorChain, findPinElement, pinText } from "./PinAnchor.ts";
+import { previewPinKey, filterPreviewPins, previewPinsPayload } from "@t3tools/shared/previewPins";
 // @effect-diagnostics globalDate:off globalTimers:off - This isolated Electron preload does not run inside an Effect runtime.
 import { ipcRenderer } from "electron";
 import { getElementContext } from "react-grab/primitives";
+import { matchesKeybindingShortcut } from "@t3tools/shared/keybindingMatching";
 import type {
+  PreviewPin,
   DesktopPreviewAnnotationTheme,
+  DesktopPreviewAnnotationVoiceConfig,
+  DesktopPreviewAnnotationVoiceEvent,
+  DesktopPreviewAnnotationVoiceState,
   PickedElementPayload,
   PickedElementStackFrame,
   PreviewAnnotationPayload,
@@ -16,33 +23,57 @@ import type {
 
 import { createAnnotationIdSource } from "./AnnotationIds.ts";
 import { resolveAnnotationSubmission } from "./AnnotationKeyboard.ts";
+import {
+  addStrokePoint,
+  openStrokePath,
+  startStroke,
+  strokeBounds,
+  type StrokeGeometry,
+} from "./AnnotationStroke.ts";
 import { previewAnnotationStyles } from "./AnnotationStyles.generated.ts";
 import { installRecordingCursor } from "./RecordingCursor.ts";
 import { DEFAULT_RECORDING_INPUT_OPTIONS } from "./RecordingInput.ts";
 import {
+  PIN_REQUEST_CHANNEL,
+  PIN_COMMAND_CHANNEL,
+  PIN_STATE_CHANNEL,
   ANNOTATION_CAPTURED_CHANNEL,
   ANNOTATION_SEND_ENABLED_CHANNEL,
   ANNOTATION_THEME_CHANNEL,
+  ANNOTATION_VOICE_EVENT_CHANNEL,
+  ANNOTATION_VOICE_STATE_CHANNEL,
   CANCEL_PICK_CHANNEL,
   ELEMENT_PICKED_CHANNEL,
   HUMAN_INPUT_CHANNEL,
-  MOUSE_NAVIGATE_CHANNEL,
+  POINTER_DOWN_HOST_CHANNEL,
+  PAGE_UNHANDLED_SHORTCUT_CHANNEL,
   RECORDING_CURSOR_CHANNEL,
   RECORDING_POINTER_CHANNEL,
   RECORDING_KEY_CHANNEL,
   RECORDING_INPUT_CHANNEL,
   RECORDING_CONTROLLER_CHANNEL,
   START_PICK_CHANNEL,
+  THUMB_PRESS_CHANNEL,
 } from "./GuestProtocol.ts";
 const OVERLAY_ATTRIBUTE = "data-t3code-annotation-ui";
 const INPUT_LAYER_ATTRIBUTE = "data-t3code-annotation-input";
-const Z_INDEX_OVERLAY = 2147483646;
+const Z_INDEX_OVERLAY = 800;
 const PRIMARY = "var(--t3-primary)";
 const PRIMARY_FILL = "color-mix(in srgb, var(--t3-primary) 10%, transparent)";
 const MAX_MARQUEE_ELEMENTS = 20;
 const ELEMENT_CONTEXT_TIMEOUT_MS = 5_000;
 const CONTENT_LAYER_Z_INDEX = 1;
 const CHROME_LAYER_Z_INDEX = 10;
+// Page dialogs (Radix, react-remove-scroll) dismiss, refocus or block scrolling on document events
+// that shadow retargeting attributes to the overlay host.
+const PAGE_ISOLATED_EVENTS = [
+  "pointerdown",
+  "focusin",
+  "focusout",
+  "wheel",
+  "touchstart",
+  "touchmove",
+] as const;
 
 let recordingCursor: ReturnType<typeof installRecordingCursor> | null = null;
 ipcRenderer.on(
@@ -126,12 +157,15 @@ interface SelectedElement {
   outline: HTMLDivElement;
   label: HTMLDivElement;
   baselineStyles: Map<string, string>;
+  // Last rect measured while connected; a detached node reports 0x0.
+  rect: PreviewAnnotationRect;
 }
 
 interface AnnotationSession {
   teardown: (notifyMain: boolean) => void;
   applyTheme: (theme: DesktopPreviewAnnotationTheme) => void;
   setSendEnabled: (enabled: boolean) => void;
+  handleOverlayKey: (event: KeyboardEvent) => void;
 }
 
 let activeSession: AnnotationSession | null = null;
@@ -168,6 +202,9 @@ const applyAnnotationTheme = (
 
 const reportHumanPointerInput = (event: PointerEvent): void => {
   if (!event.isTrusted) return;
+  // The guest does not always take focus on a click, so the host's webview
+  // `focus` event can't be relied on to dismiss open menus and popovers.
+  ipcRenderer.sendToHost(POINTER_DOWN_HOST_CHANNEL);
   ipcRenderer.send(HUMAN_INPUT_CHANNEL, {
     kind: "pointer",
     x: event.clientX,
@@ -188,34 +225,60 @@ const reportHumanKeyInput = (event: KeyboardEvent): void => {
 window.addEventListener("pointerdown", reportHumanPointerInput, true);
 window.addEventListener("keydown", reportHumanKeyInput, true);
 
-const MOUSE_BUTTON_BACK = 3;
-const MOUSE_BUTTON_FORWARD = 4;
-
-const navigationDirectionForButton = (button: number): "back" | "forward" | null => {
-  if (button === MOUSE_BUTTON_BACK) return "back";
-  if (button === MOUSE_BUTTON_FORWARD) return "forward";
-  return null;
+// Capture runs before a page can stop the event; the task delay lets every page
+// listener call preventDefault before the host is told the key went unhandled.
+const reportUnhandledShortcut = (event: KeyboardEvent): void => {
+  if (!event.isTrusted || event.repeat || event.isComposing) return;
+  if (!event.metaKey && !event.ctrlKey && !event.altKey && !/^F\d{1,2}$/u.test(event.key)) return;
+  setTimeout(() => {
+    if (event.defaultPrevented) return;
+    ipcRenderer.send(PAGE_UNHANDLED_SHORTCUT_CHANNEL, {
+      key: event.key,
+      code: event.code,
+      metaKey: event.metaKey,
+      ctrlKey: event.ctrlKey,
+      shiftKey: event.shiftKey,
+      altKey: event.altKey,
+    });
+  }, 0);
 };
 
-// Chromium routes thumb-button navigation to the focused WebContents; navigate this hovered guest explicitly.
-const suppressNavigationButton = (event: MouseEvent): void => {
-  if (!event.isTrusted || navigationDirectionForButton(event.button) === null) return;
-  event.preventDefault();
+window.addEventListener("keydown", reportUnhandledShortcut, true);
+
+// Registered before page scripts so their capture listeners never see keys typed into the
+// overlay; the closed shadow root retargets those to the host, hiding that they edit text.
+const isolateOverlayKey = (event: KeyboardEvent): void => {
+  if (!activeSession || !(event.target instanceof Element) || !isAnnotationNode(event.target))
+    return;
+  activeSession.handleOverlayKey(event);
   event.stopImmediatePropagation();
 };
 
-const requestNavigationForButton = (event: MouseEvent): void => {
-  if (!event.isTrusted) return;
-  const direction = navigationDirectionForButton(event.button);
-  if (direction === null) return;
-  event.preventDefault();
-  event.stopImmediatePropagation();
-  ipcRenderer.send(MOUSE_NAVIGATE_CHANNEL, { direction });
-};
+for (const type of ["keydown", "keypress", "keyup"] as const)
+  window.addEventListener(type, isolateOverlayKey, true);
 
-window.addEventListener("mousedown", suppressNavigationButton, true);
-window.addEventListener("mouseup", requestNavigationForButton, true);
-window.addEventListener("auxclick", suppressNavigationButton, true);
+let replayedThumbPress: { readonly x: number; readonly y: number } | null = null;
+ipcRenderer.on(
+  THUMB_PRESS_CHANNEL,
+  (_event, phase: unknown, x: unknown, y: unknown, button: unknown) => {
+    if (phase !== "down" && phase !== "up") return;
+    if (typeof x !== "number" || typeof y !== "number" || typeof button !== "number") return;
+    // Main reports presses inside a frame in that frame's coordinates.
+    const inFrame = document.querySelector("iframe:hover, frame:hover, object:hover, embed:hover");
+    if (phase === "up") {
+      const pressed = replayedThumbPress;
+      replayedThumbPress = null;
+      // A replayed press is always released, at its own point if the release lands in a frame.
+      if (pressed) recordingCursor?.press(inFrame ? pressed : { x, y }, "up");
+      return;
+    }
+    if (inFrame) return;
+    replayedThumbPress = { x, y };
+    ipcRenderer.sendToHost(POINTER_DOWN_HOST_CHANNEL);
+    ipcRenderer.send(HUMAN_INPUT_CHANNEL, { kind: "pointer", x, y, button });
+    recordingCursor?.press({ x, y }, "down");
+  },
+);
 
 const nextId = createAnnotationIdSource();
 
@@ -362,6 +425,7 @@ function updateSelectedVisual(target: SelectedElement): void {
     target.label.style.display = "none";
     return;
   }
+  target.rect = rectFromDomRect(target.element.getBoundingClientRect());
   const rect = visibleElementRect(target.element);
   positionBox(target.outline, rect);
   if (rect.width === 0 || rect.height === 0) {
@@ -496,41 +560,18 @@ function createUnitInput(unit: string, placeholder = "0"): HTMLInputElement {
   return input;
 }
 
-function pathFromPoints(points: ReadonlyArray<PreviewAnnotationPoint>): string {
-  if (points.length === 0) return "";
-  if (points.length === 1) return `M ${points[0]!.x} ${points[0]!.y} l 0.01 0.01`;
-  let path = `M ${points[0]!.x} ${points[0]!.y}`;
-  for (let index = 1; index < points.length - 1; index += 1) {
-    const current = points[index]!;
-    const next = points[index + 1]!;
-    path += ` Q ${current.x} ${current.y} ${(current.x + next.x) / 2} ${(current.y + next.y) / 2}`;
-  }
-  const last = points[points.length - 1]!;
-  path += ` L ${last.x} ${last.y}`;
-  return path;
-}
-
-function strokeBounds(
-  points: ReadonlyArray<PreviewAnnotationPoint>,
-  width: number,
-): PreviewAnnotationRect {
-  const xs = points.map((point) => point.x);
-  const ys = points.map((point) => point.y);
-  const padding = width + 3;
-  const left = Math.min(...xs) - padding;
-  const top = Math.min(...ys) - padding;
-  const right = Math.max(...xs) + padding;
-  const bottom = Math.max(...ys) + padding;
-  return { x: left, y: top, width: right - left, height: bottom - top };
-}
-
-function startAnnotation(sendEnabled: boolean): void {
+function startAnnotation(
+  sendEnabled: boolean,
+  voice: DesktopPreviewAnnotationVoiceConfig | undefined,
+): void {
   activeSession?.teardown(false);
   let finished = false;
   const host = document.createElement("div");
   host.setAttribute(OVERLAY_ATTRIBUTE, "");
   host.setAttribute("dir", "ltr");
-  host.style.cssText = `position:fixed;inset:0;z-index:${Z_INDEX_OVERLAY};pointer-events:none`;
+  host.popover = "manual";
+  // Resets the UA popover box (fit-content size, auto margin, border, padding, Canvas background).
+  host.style.cssText = `position:fixed;inset:0;width:auto;height:auto;margin:0;border:0;padding:0;overflow:visible;background:transparent;color:inherit;z-index:${Z_INDEX_OVERLAY};pointer-events:none`;
   applyAnnotationTheme(host, annotationTheme);
   const shadowRoot = host.attachShadow({ mode: "closed" });
   const themeStyle = document.createElement("style");
@@ -544,7 +585,7 @@ function startAnnotation(sendEnabled: boolean): void {
   root.style.cssText = "pointer-events:none";
   const cursorStyle = document.createElement("style");
   cursorStyle.setAttribute(OVERLAY_ATTRIBUTE, "");
-  cursorStyle.textContent = `html[data-t3code-annotation-tool] body, html[data-t3code-annotation-tool] body * { cursor: crosshair !important; } [${OVERLAY_ATTRIBUTE}], [${OVERLAY_ATTRIBUTE}] * { cursor: default !important; } [${OVERLAY_ATTRIBUTE}] input[type=number]::-webkit-inner-spin-button, [${OVERLAY_ATTRIBUTE}] input[type=number]::-webkit-outer-spin-button { appearance:none; margin:0; }`;
+  cursorStyle.textContent = `[${OVERLAY_ATTRIBUTE}]::backdrop { display:none !important; } html[data-t3code-annotation-tool] body, html[data-t3code-annotation-tool] body * { cursor: crosshair !important; } [${OVERLAY_ATTRIBUTE}], [${OVERLAY_ATTRIBUTE}] * { cursor: default !important; } [${OVERLAY_ATTRIBUTE}] input[type=number]::-webkit-inner-spin-button, [${OVERLAY_ATTRIBUTE}] input[type=number]::-webkit-outer-spin-button { appearance:none; margin:0; }`;
   document.documentElement.appendChild(cursorStyle);
   shadowRoot.appendChild(root);
 
@@ -595,6 +636,225 @@ function startAnnotation(sendEnabled: boolean): void {
     "min-h-8 max-h-24 min-w-0 flex-1 resize-none overflow-y-hidden border-0 border-b border-b-transparent bg-transparent px-0 py-1.5 font-sans text-sm leading-5 text-foreground outline-none ring-0 placeholder:text-muted-foreground focus:border-b-primary focus:outline-none focus:ring-0";
   composerRow.appendChild(comment);
 
+  // Recording happens in the application renderer, which owns the microphone consent.
+  // This guest only draws the controls, forwards trusted gestures, and mirrors state.
+  let voicePhase: DesktopPreviewAnnotationVoiceState["phase"] = "idle";
+  let voiceSettings = false;
+  let voiceBusy = false;
+  let voiceAvailable = false;
+  let voiceKeyCode: string | null = null;
+  let pendingVoiceSubmission: PreviewAnnotationSubmission | null = null;
+  let voiceSubmissionReady = false;
+  const voiceButton = createButton("", "Start voice input");
+  voiceButton.innerHTML =
+    '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19v3"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><rect x="9" y="2" width="6" height="13" rx="3"/></svg>';
+  voiceButton.className += " h-8 w-8 shrink-0 p-0 text-muted-foreground";
+  voiceButton.hidden = true;
+  voiceButton.setAttribute("aria-label", "Start voice input");
+  composerRow.appendChild(voiceButton);
+  const voiceRow = document.createElement("div");
+  voiceRow.className = "flex min-w-0 items-center justify-end gap-1 px-2 pb-2";
+  voiceRow.hidden = true;
+  const voicePill = document.createElement("div");
+  const voiceCancel = createButton("", "Cancel voice input");
+  voiceCancel.innerHTML =
+    '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="m18 6-12 12M6 6l12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
+  voiceCancel.className += " h-7 w-7 shrink-0 rounded-full p-0";
+  const voiceFinish = createButton("", "Finish voice input");
+  voiceFinish.className +=
+    " h-7 w-7 shrink-0 rounded-full border-primary bg-primary p-0 text-primary-foreground hover:bg-primary/90";
+  const voiceSkip = createButton("Skip", "Skip transcript cleanup");
+  voiceSkip.className += " h-7 shrink-0 rounded-full px-2.5";
+  // createButton's rounded-md sorts after rounded-full in the generated CSS, so it would win.
+  for (const button of [voiceCancel, voiceFinish, voiceSkip]) button.classList.remove("rounded-md");
+  const voiceStatus = document.createElement("div");
+  voiceStatus.className = "flex h-7 min-w-0 flex-1 items-center gap-2";
+  voiceStatus.setAttribute("role", "status");
+  const voiceStatusText = document.createElement("span");
+  voiceStatusText.className = "min-w-0 flex-1 truncate text-right text-sm text-muted-foreground";
+  const waveform = document.createElement("div");
+  waveform.className =
+    "flex h-5 min-w-0 flex-1 items-center justify-between gap-px overflow-hidden";
+  waveform.setAttribute("aria-hidden", "true");
+  const waveformLevels = Array<number>(24).fill(0);
+  const waveformBars = waveformLevels.map(() => {
+    const bar = document.createElement("span");
+    bar.className = "h-full w-0.5 shrink-0 origin-center rounded-full bg-primary";
+    bar.style.transform = "scaleY(0.08)";
+    bar.style.opacity = "0.25";
+    waveform.appendChild(bar);
+    return bar;
+  });
+  const voiceElapsed = document.createElement("span");
+  voiceElapsed.className = "shrink-0 text-xs tabular-nums text-muted-foreground";
+  let recordingStartedAt = 0;
+  let elapsedTimer: ReturnType<typeof setInterval> | null = null;
+  const updateElapsed = () => {
+    const seconds = Math.floor((Date.now() - recordingStartedAt) / 1_000);
+    voiceElapsed.textContent = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+  };
+  voiceStatus.append(voiceStatusText, waveform, voiceElapsed);
+  voicePill.append(voiceCancel, voiceStatus, voiceSkip, voiceFinish);
+  voiceRow.appendChild(voicePill);
+  const voicePreview = document.createElement("p");
+  voicePreview.className = "px-2 pb-2 text-sm text-muted-foreground";
+  voicePreview.setAttribute("role", "status");
+  voicePreview.hidden = true;
+  const sendVoice = (
+    action: DesktopPreviewAnnotationVoiceEvent["action"],
+    keyboard?: KeyboardEvent,
+  ) => {
+    if (!voice || finished) return;
+    const event: DesktopPreviewAnnotationVoiceEvent = {
+      sessionId: voice.sessionId,
+      text: comment.value,
+      cursor: comment.selectionStart,
+      selectionEnd: comment.selectionEnd,
+      action,
+      ...(keyboard
+        ? {
+            keyboard: {
+              type: keyboard.type === "keyup" ? ("keyup" as const) : ("keydown" as const),
+              key: keyboard.key,
+              code: keyboard.code,
+              metaKey: keyboard.metaKey,
+              ctrlKey: keyboard.ctrlKey,
+              shiftKey: keyboard.shiftKey,
+              altKey: keyboard.altKey,
+              repeat: keyboard.repeat,
+            },
+          }
+        : {}),
+    };
+    ipcRenderer.send(ANNOTATION_VOICE_EVENT_CHANNEL, event);
+  };
+  const isDictationChord = (event: KeyboardEvent) =>
+    voice !== undefined &&
+    voice.shortcuts.some((shortcut) =>
+      matchesKeybindingShortcut(event, shortcut, navigator.platform),
+    );
+  for (const button of [voiceButton, voiceFinish, voiceCancel, voiceSkip]) {
+    button.addEventListener("pointerdown", (event) => event.preventDefault());
+  }
+  // Page scripts cannot reach the closed shadow root, and a synthetic click never counts.
+  voiceButton.addEventListener("click", (event) => {
+    if (!event.isTrusted) return;
+    if (voiceSettings) {
+      sendVoice("settings");
+      return;
+    }
+    if (!voiceAvailable || (voiceBusy && voicePhase !== "recording")) return;
+    sendVoice(voicePhase === "recording" ? "stop" : "start");
+  });
+  voiceFinish.addEventListener("click", (event) => {
+    if (event.isTrusted) sendVoice("stop");
+  });
+  voiceCancel.addEventListener("click", (event) => {
+    if (!event.isTrusted) return;
+    pendingVoiceSubmission = null;
+    sendVoice("cancel");
+  });
+  voiceSkip.addEventListener("click", (event) => {
+    if (event.isTrusted) sendVoice("skip");
+  });
+  const onVoiceState = (
+    _event: Electron.IpcRendererEvent,
+    state: DesktopPreviewAnnotationVoiceState,
+  ) => {
+    if (finished || state.sessionId !== voice?.sessionId) return;
+    const phaseChanged = voicePhase !== state.phase;
+    const submissionChanged = voiceBusy !== state.blocksSubmission;
+    const previewChanged = voicePreview.textContent !== (state.preview ?? "");
+    voicePhase = state.phase;
+    voiceSettings = state.errorAction === "settings";
+    voiceBusy = state.blocksSubmission;
+    voiceAvailable = state.available;
+    comment.readOnly = state.freezesEditor;
+    if (state.draft) {
+      voiceSubmissionReady = pendingVoiceSubmission !== null;
+      comment.value = state.draft.text;
+      comment.setSelectionRange(state.draft.cursor, state.draft.cursor);
+      resizeComment();
+    }
+    const recording = state.phase === "recording";
+    const active = state.phase !== "idle" && state.phase !== "error";
+    const wasActive = voicePill.parentElement === composerRow;
+    voiceButton.hidden = !state.available || active;
+    voiceButton.disabled = voiceBusy;
+    const label = voiceSettings ? "Open voice settings" : "Start voice input";
+    voiceButton.title =
+      !voiceSettings && state.shortcutLabel ? `${label} (${state.shortcutLabel})` : label;
+    voiceButton.setAttribute("aria-label", label);
+    // An active dictation takes the textarea's place; it takes focus once (sr-only) so Enter still attaches.
+    voiceRow.hidden = state.phase === "idle" || active;
+    comment.classList.toggle("sr-only", active);
+    if (active && !wasActive) comment.focus({ preventScroll: true });
+    submit.hidden = active;
+    // Re-inserting on every level update would blur a focused Finish or Cancel.
+    if (active && voicePill.parentElement !== composerRow) comment.after(voicePill);
+    else if (!active && voicePill.parentElement !== voiceRow) voiceRow.appendChild(voicePill);
+    voicePill.className = active
+      ? "flex h-8 min-w-0 flex-1 items-center gap-2"
+      : "flex min-w-0 items-center gap-1";
+    // A draft that arrived while the textarea was sr-only was measured at 1px wide.
+    if (wasActive && !active) resizeComment();
+    else if (phaseChanged) queueEditorLayout();
+    voiceCancel.title =
+      state.phase === "error" ? "Dismiss voice input error" : "Cancel voice input";
+    voiceCancel.setAttribute("aria-label", voiceCancel.title);
+    voiceStatus.setAttribute("aria-label", state.status ?? "Voice input");
+    voiceStatus.setAttribute("aria-live", recording ? "off" : "polite");
+    voiceStatusText.textContent = state.status;
+    voiceStatusText.style.color = state.phase === "error" ? "var(--t3-destructive)" : "";
+    voiceStatusText.hidden = recording;
+    waveform.hidden = !recording;
+    voiceElapsed.hidden = !recording;
+    if (recording && elapsedTimer === null) {
+      recordingStartedAt = Date.now();
+      waveformLevels.fill(0);
+      updateElapsed();
+      elapsedTimer = setInterval(updateElapsed, 250);
+    } else if (!recording && elapsedTimer !== null) {
+      clearInterval(elapsedTimer);
+      elapsedTimer = null;
+    }
+    if (recording) {
+      waveformLevels.copyWithin(0, 1);
+      waveformLevels[waveformLevels.length - 1] = state.level;
+      const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      waveformBars.forEach((bar, index) => {
+        const level = waveformLevels[index] ?? 0;
+        bar.style.opacity = String(0.25 + level * 0.75);
+        bar.style.transform = `scaleY(${reducedMotion ? 0.35 : Math.max(0.08, level)})`;
+      });
+    }
+    voiceSkip.hidden = state.phase !== "post-processing";
+    voiceFinish.hidden = !active || state.phase === "post-processing";
+    voiceFinish.disabled = !recording;
+    voiceFinish.title = recording ? "Finish voice input" : (state.status ?? "Voice input is busy");
+    if (recording && state.shortcutLabel) voiceFinish.title += ` (${state.shortcutLabel})`;
+    voiceFinish.setAttribute("aria-label", voiceFinish.title);
+    if (phaseChanged)
+      voiceFinish.innerHTML = recording
+        ? '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="m5 12 4 4L19 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+        : '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M12 2a10 10 0 1 0 10 10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
+    if (!active) voicePill.append(voiceStatus, voiceCancel);
+    else if (phaseChanged) voicePill.append(voiceCancel, voiceStatus, voiceSkip, voiceFinish);
+    voicePreview.textContent = state.preview;
+    voicePreview.hidden = !state.preview;
+    if (phaseChanged || submissionChanged || previewChanged || state.draft) updateStatus();
+    if (pendingVoiceSubmission !== null) {
+      if (state.phase === "recording") sendVoice("stop");
+      if (state.phase === "error") pendingVoiceSubmission = null;
+      if (state.phase === "idle") {
+        const submission = pendingVoiceSubmission;
+        pendingVoiceSubmission = null;
+        if (voiceSubmissionReady && submission !== null) submitAnnotation(submission);
+        voiceSubmissionReady = false;
+      }
+    }
+  };
+
   const dragHandle = document.createElement("button");
   dragHandle.type = "button";
   dragHandle.textContent = "⠿";
@@ -613,7 +873,7 @@ function startAnnotation(sendEnabled: boolean): void {
   submit.className +=
     " h-8 shrink-0 border-primary bg-primary px-3 text-primary-foreground shadow-sm hover:bg-primary/90";
   composerRow.appendChild(submit);
-  editor.appendChild(composerRow);
+  editor.append(composerRow, voicePreview, voiceRow);
 
   const stylePanel = document.createElement("div");
   stylePanel.className =
@@ -638,7 +898,12 @@ function startAnnotation(sendEnabled: boolean): void {
   }
   let tool: AnnotationTool = isPdf ? "marquee" : "select";
   let dragStart: PreviewAnnotationPoint | null = null;
-  let activeStroke: { target: PreviewAnnotationStrokeTarget; path: SVGPathElement } | null = null;
+  let activeStroke: {
+    target: PreviewAnnotationStrokeTarget;
+    geometry: StrokeGeometry;
+    group: SVGGElement;
+    path: SVGPathElement;
+  } | null = null;
   let pendingCapture = false;
   let editorExpanded = false;
   let editorWasShown = false;
@@ -654,12 +919,19 @@ function startAnnotation(sendEnabled: boolean): void {
     comment.style.overflowY = comment.scrollHeight > maxHeight ? "auto" : "hidden";
     queueEditorLayout();
   };
-  comment.addEventListener("input", resizeComment);
+  comment.addEventListener("input", () => {
+    resizeComment();
+    sendVoice("sync");
+  });
 
   const updateStatus = (): void => {
     const hasTargets = selected.size > 0 || regions.length > 0 || strokes.length > 0;
+    if (!hasTargets && voiceBusy) {
+      pendingVoiceSubmission = null;
+      sendVoice("cancel");
+    }
     editor.style.display = hasTargets ? "flex" : "none";
-    submit.disabled = !hasTargets;
+    submit.disabled = !hasTargets || voicePhase === "preparing" || pendingCapture;
     submit.style.opacity = hasTargets ? "1" : "0.45";
     adjust.disabled = !hasTargets;
     stylePanel.style.display = editorExpanded && selected.size > 0 ? "grid" : "none";
@@ -695,7 +967,6 @@ function startAnnotation(sendEnabled: boolean): void {
     for (const [key, change] of styleChanges) {
       if (change.targetId === target.id) styleChanges.delete(key);
     }
-    updateStatus();
   };
 
   const addSelected = (element: Element): void => {
@@ -706,11 +977,11 @@ function startAnnotation(sendEnabled: boolean): void {
       outline: createBox(PRIMARY, PRIMARY_FILL),
       label: createLabel(),
       baselineStyles: new Map(),
+      rect: rectFromDomRect(element.getBoundingClientRect()),
     };
     selected.set(element, target);
     root.append(target.outline, target.label);
     updateSelectedVisual(target);
-    updateStatus();
     if (editorExpanded) {
       stylePanel.style.display = "grid";
       syncStyleControls();
@@ -721,12 +992,13 @@ function startAnnotation(sendEnabled: boolean): void {
     const existing = selected.get(element);
     if (existing) {
       removeSelected(existing);
-      return;
+    } else {
+      if (!additive) {
+        for (const target of Array.from(selected.values())) removeSelected(target);
+      }
+      addSelected(element);
     }
-    if (!additive) {
-      for (const target of Array.from(selected.values())) removeSelected(target);
-    }
-    addSelected(element);
+    updateStatus();
   };
 
   const setStyleForSelected = (property: string, value: string): void => {
@@ -1132,6 +1404,13 @@ function startAnnotation(sendEnabled: boolean): void {
     for (const target of selected.values()) updateSelectedVisual(target);
     queueEditorLayout();
   };
+  const onScroll = (): void => {
+    // A detached element's last rect no longer matches what is on screen once the page scrolls.
+    for (const target of selected.values()) {
+      if (!target.element.isConnected) target.rect = { x: 0, y: 0, width: 0, height: 0 };
+    }
+    repaint();
+  };
   // A scrollbar appearing narrows the viewport without a window resize.
   const rootResizeObserver = new ResizeObserver(repaint);
 
@@ -1140,6 +1419,7 @@ function startAnnotation(sendEnabled: boolean): void {
       const rect = target.element.getBoundingClientRect();
       if (x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom) {
         removeSelected(target);
+        updateStatus();
         return true;
       }
     }
@@ -1231,15 +1511,18 @@ function startAnnotation(sendEnabled: boolean): void {
       return;
     }
     if (tool === "draw" && activeStroke) {
-      activeStroke.target.points = [
-        ...activeStroke.target.points,
-        { x: event.clientX, y: event.clientY },
-      ];
-      activeStroke.target.bounds = strokeBounds(
-        activeStroke.target.points,
-        activeStroke.target.width,
-      );
-      activeStroke.path.setAttribute("d", pathFromPoints(activeStroke.target.points));
+      const closedPath = addStrokePoint(activeStroke.geometry, {
+        x: event.clientX,
+        y: event.clientY,
+      });
+      activeStroke.target.bounds = strokeBounds(activeStroke.geometry, activeStroke.target.width);
+      if (closedPath !== null) {
+        activeStroke.path.setAttribute("d", closedPath);
+        activeStroke.path = activeStroke.group.appendChild(
+          document.createElementNS("http://www.w3.org/2000/svg", "path"),
+        );
+      }
+      activeStroke.path.setAttribute("d", openStrokePath(activeStroke.geometry));
     }
   };
 
@@ -1258,23 +1541,27 @@ function startAnnotation(sendEnabled: boolean): void {
     }
     dragStart = { x: event.clientX, y: event.clientY };
     if (tool === "draw") {
+      const geometry = startStroke(dragStart);
       const stroke: PreviewAnnotationStrokeTarget = {
         id: nextId("stroke"),
         color: annotationTheme?.primary ?? "#2563eb",
         width: 4,
-        points: [dragStart],
+        points: geometry.points,
         bounds: { x: dragStart.x, y: dragStart.y, width: 1, height: 1 },
       };
-      const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-      path.setAttribute(OVERLAY_ATTRIBUTE, "");
-      path.setAttribute("data-stroke-id", stroke.id);
-      path.setAttribute("fill", "none");
-      path.setAttribute("stroke", stroke.color);
-      path.setAttribute("stroke-width", String(stroke.width));
-      path.setAttribute("stroke-linecap", "round");
-      path.setAttribute("stroke-linejoin", "round");
-      svg.appendChild(path);
-      activeStroke = { target: stroke, path };
+      const group = document.createElementNS("http://www.w3.org/2000/svg", "g");
+      group.setAttribute(OVERLAY_ATTRIBUTE, "");
+      group.setAttribute("data-stroke-id", stroke.id);
+      group.setAttribute("fill", "none");
+      group.setAttribute("stroke", stroke.color);
+      group.setAttribute("stroke-width", String(stroke.width));
+      group.setAttribute("stroke-linecap", "round");
+      group.setAttribute("stroke-linejoin", "round");
+      const path = group.appendChild(
+        document.createElementNS("http://www.w3.org/2000/svg", "path"),
+      );
+      svg.appendChild(group);
+      activeStroke = { target: stroke, geometry, group, path };
     }
   };
 
@@ -1301,7 +1588,7 @@ function startAnnotation(sendEnabled: boolean): void {
       }
     } else if (tool === "draw" && activeStroke) {
       if (activeStroke.target.points.length > 1) strokes.push(activeStroke.target);
-      else activeStroke.path.remove();
+      else activeStroke.group.remove();
       activeStroke = null;
     }
     dragStart = null;
@@ -1314,11 +1601,54 @@ function startAnnotation(sendEnabled: boolean): void {
     event.stopPropagation();
   };
 
+  const stopAtOverlay = (event: Event): void => event.stopPropagation();
+  // Focus moving from the page into the overlay targets the page element, so the host never sees it.
+  const onFocusOutToOverlay = (event: FocusEvent): void => {
+    if (event.relatedTarget instanceof Element && isAnnotationNode(event.relatedTarget))
+      event.stopPropagation();
+  };
+
+  // Page popovers and modal dialogs sit in the top layer above any z-index, and a modal makes
+  // everything outside it inert, so the overlay is shown last and lives inside the topmost modal.
+  // Modals in the order they opened, since DOM order does not say which one blocks the rest.
+  const openedModals: Element[] = [];
+  const raiseOverlay = (): void => {
+    const focused = shadowRoot.activeElement;
+    const parent =
+      document.activeElement?.closest("dialog:modal") ??
+      openedModals.findLast((dialog) => dialog.matches(":modal")) ??
+      Array.from(document.querySelectorAll("dialog:modal")).at(-1) ??
+      document.documentElement;
+    if (host.parentElement !== parent) parent.appendChild(host);
+    if (host.matches(":popover-open")) host.hidePopover();
+    host.showPopover();
+    if (focused instanceof HTMLElement && !focused.matches(":focus"))
+      focused.focus({ preventScroll: true });
+  };
+  const onPageToggle = (event: Event): void => {
+    const target = event.target;
+    if (target === host) return;
+    if (target instanceof HTMLDialogElement) {
+      const index = openedModals.indexOf(target);
+      if (index !== -1) openedModals.splice(index, 1);
+      if (target.matches(":modal")) openedModals.push(target);
+    }
+    raiseOverlay();
+  };
+  // Removing an open dialog hides the overlay inside it without a toggle event.
+  const detachObserver = new MutationObserver(() => {
+    if (!host.isConnected || !host.matches(":popover-open")) raiseOverlay();
+  });
+
   const onPointerOut = (event: PointerEvent): void => {
     if (event.relatedTarget === null) clearHoverOutline();
   };
 
+  const onWindowFocus = (): void => {
+    if (editor.style.display !== "none") sendVoice("focus");
+  };
   const onWindowBlur = (): void => {
+    sendVoice("blur");
     clearHoverOutline();
   };
 
@@ -1344,16 +1674,24 @@ function startAnnotation(sendEnabled: boolean): void {
     window.removeEventListener("pointerout", onPointerOut, true);
     window.removeEventListener("click", onClick, true);
     window.removeEventListener("blur", onWindowBlur);
+    window.removeEventListener("focus", onWindowFocus);
     window.removeEventListener("keydown", onKeyDown, true);
-    window.removeEventListener("scroll", repaint, true);
+    window.removeEventListener("keyup", onVoiceKeyUp, true);
+    window.removeEventListener("scroll", onScroll, true);
     window.removeEventListener("resize", repaint);
     dragHandle.removeEventListener("pointerdown", onEditorPointerDown);
     dragHandle.removeEventListener("pointermove", onEditorPointerMove);
     dragHandle.removeEventListener("pointerup", onEditorPointerUp);
     dragHandle.removeEventListener("pointercancel", onEditorPointerUp);
+    for (const type of PAGE_ISOLATED_EVENTS) host.removeEventListener(type, stopAtOverlay);
+    window.removeEventListener("toggle", onPageToggle, true);
+    detachObserver.disconnect();
+    document.documentElement.removeEventListener("focusout", onFocusOutToOverlay);
     if (editorLayoutFrame !== null) window.cancelAnimationFrame(editorLayoutFrame);
     ipcRenderer.off(CANCEL_PICK_CHANNEL, onCancel);
     ipcRenderer.off(ANNOTATION_CAPTURED_CHANNEL, onCaptured);
+    ipcRenderer.off(ANNOTATION_VOICE_STATE_CHANNEL, onVoiceState);
+    if (elapsedTimer !== null) clearInterval(elapsedTimer);
     document.documentElement.removeAttribute("data-t3code-annotation-tool");
     cursorStyle.remove();
     inputLayer?.remove();
@@ -1364,14 +1702,39 @@ function startAnnotation(sendEnabled: boolean): void {
 
   const onCancel = (): void => teardown(false);
   const onCaptured = (): void => teardown(false);
+  const onVoiceKeyUp = (event: KeyboardEvent): void => {
+    if (!event.isTrusted || (event.code || event.key) !== voiceKeyCode) return;
+    voiceKeyCode = null;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    sendVoice("key", event);
+  };
   const onKeyDown = (event: KeyboardEvent): void => {
-    if (isAnnotationNode(event.target as Element) && event.key !== "Escape") return;
-    if (event.key === "Escape") {
+    // Only the keyboard drives dictation; a page cannot synthesize the chord or Escape.
+    if (voice && event.isTrusted && !event.isComposing && event.keyCode !== 229) {
+      if (event.key === "Escape" && voiceBusy) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        voiceKeyCode = null;
+        pendingVoiceSubmission = null;
+        sendVoice("key", event);
+        return;
+      }
+      if (voiceAvailable && editor.style.display !== "none" && isDictationChord(event)) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        voiceKeyCode = event.code || event.key;
+        sendVoice("key", event);
+        return;
+      }
+    }
+    if (event.key === "Escape" && !event.isComposing) {
       event.preventDefault();
       event.stopPropagation();
       teardown(true);
       return;
     }
+    if (shadowRoot.activeElement?.matches("input, textarea, select")) return;
     if (event.key === "v") tool = "select";
     else if (event.key === "r") tool = "marquee";
     else if (event.key === "d") tool = "draw";
@@ -1382,6 +1745,16 @@ function startAnnotation(sendEnabled: boolean): void {
 
   const submitAnnotation = (submission: PreviewAnnotationSubmission): void => {
     if (submission === "send" && !sendEnabled) return;
+    if (voicePhase === "preparing") return;
+    // Submitting while dictating finishes the recording and submits once the text lands.
+    if (voiceBusy) {
+      if (pendingVoiceSubmission === null) {
+        pendingVoiceSubmission = submission;
+        voiceSubmissionReady = false;
+        if (voicePhase === "recording") sendVoice("stop");
+      }
+      return;
+    }
     if (pendingCapture || (selected.size === 0 && regions.length === 0 && strokes.length === 0))
       return;
     pendingCapture = true;
@@ -1403,7 +1776,9 @@ function startAnnotation(sendEnabled: boolean): void {
         return {
           id: target.id,
           element,
-          rect: rectFromDomRect(target.element.getBoundingClientRect()),
+          rect: target.element.isConnected
+            ? rectFromDomRect(target.element.getBoundingClientRect())
+            : target.rect,
         };
       }),
     )
@@ -1443,16 +1818,20 @@ function startAnnotation(sendEnabled: boolean): void {
         teardown(true);
       });
   };
-  submit.addEventListener("click", () => submitAnnotation("attach"));
-  root.addEventListener("keydown", (event) => {
+  submit.addEventListener("click", (event) => {
+    if (event.isTrusted) submitAnnotation("attach");
+  });
+  const handleOverlayKey = (event: KeyboardEvent): void => {
+    if (event.type === "keyup") onVoiceKeyUp(event);
+    if (event.type !== "keydown") return;
+    onKeyDown(event);
+    if (event.cancelBubble) return;
     const submission =
-      event.target === comment ? resolveAnnotationSubmission(event, sendEnabled) : null;
-    // Bubble phase lets editor inputs handle events before hiding them from the page.
-    event.stopImmediatePropagation();
+      shadowRoot.activeElement === comment ? resolveAnnotationSubmission(event, sendEnabled) : null;
     if (!submission) return;
     event.preventDefault();
     submitAnnotation(submission);
-  });
+  };
 
   window.addEventListener("pointermove", onPointerMove, { capture: true, passive: false });
   window.addEventListener("pointerdown", onPointerDown, { capture: true, passive: false });
@@ -1460,19 +1839,29 @@ function startAnnotation(sendEnabled: boolean): void {
   window.addEventListener("pointerout", onPointerOut, { capture: true, passive: true });
   window.addEventListener("click", onClick, { capture: true, passive: false });
   window.addEventListener("blur", onWindowBlur);
+  window.addEventListener("focus", onWindowFocus);
   window.addEventListener("keydown", onKeyDown, { capture: true });
-  window.addEventListener("scroll", repaint, { capture: true, passive: true });
+  window.addEventListener("keyup", onVoiceKeyUp, { capture: true });
+  window.addEventListener("scroll", onScroll, { capture: true, passive: true });
   window.addEventListener("resize", repaint, { passive: true });
+  // Bubble phase, so the overlay's own handlers still see these events.
+  for (const type of PAGE_ISOLATED_EVENTS)
+    host.addEventListener(type, stopAtOverlay, { passive: true });
+  document.documentElement.addEventListener("focusout", onFocusOutToOverlay);
   ipcRenderer.on(CANCEL_PICK_CHANNEL, onCancel);
   ipcRenderer.on(ANNOTATION_CAPTURED_CHANNEL, onCaptured);
+  if (voice) ipcRenderer.on(ANNOTATION_VOICE_STATE_CHANNEL, onVoiceState);
   if (inputLayer) {
     document.documentElement.appendChild(inputLayer);
     inputLayer.focus({ preventScroll: true });
   }
-  document.documentElement.appendChild(host);
+  raiseOverlay();
+  window.addEventListener("toggle", onPageToggle, true);
+  detachObserver.observe(document.documentElement, { childList: true, subtree: true });
   rootResizeObserver.observe(document.documentElement);
   refreshToolButtons();
   updateStatus();
+  sendVoice(document.hasFocus() ? "focus" : "sync");
   activeSession = {
     teardown,
     applyTheme: (theme) => applyAnnotationTheme(host, theme),
@@ -1480,14 +1869,546 @@ function startAnnotation(sendEnabled: boolean): void {
       sendEnabled = enabled;
       updateSendHint();
     },
+    handleOverlayKey,
   };
+}
+
+const pinTranslations: Readonly<Record<string, string>> = {
+  "All annotations": "全部批注",
+  "Close annotations": "关闭批注",
+  "Filter annotations": "筛选批注",
+  "Send to assistant ({count})": "发给助手（{count}）",
+  "Describe what to change…": "写下需要修改的地方…",
+  "Annotation text": "批注内容",
+  "Enter to add": "回车添加",
+  Cancel: "取消",
+  Add: "添加",
+  "All annotations {count}": "全部批注 {count}",
+  "Sending…": "发送中…",
+  "Annotation {number}": "批注 {number}",
+  Unsent: "未发送",
+  Sent: "已发送",
+  Fixed: "已改",
+  Reopen: "撤销已改",
+  "Mark as fixed": "标为已改",
+  "Location not found": "未找到位置",
+  "No matching annotations": "没有符合筛选的批注",
+  "Click an element to annotate it": "点击页面任意元素添加批注",
+  All: "全部",
+  Open: "未处理",
+  "The screenshot failed. Your annotation text is saved.": "局部截图失败，批注文字仍保留",
+  "Invalid annotation records": "批注记录响应无效",
+};
+
+function annotationCopy(source: string, values: Readonly<Record<string, number>> = {}): string {
+  const text = annotationTheme?.locale === "zh-CN" ? (pinTranslations[source] ?? source) : source;
+  return text.replace(/\{([A-Za-z0-9_]+)\}/g, (placeholder, key: string) =>
+    Object.hasOwn(values, key) ? String(values[key]) : placeholder,
+  );
+}
+
+function startPinAnnotation(sendEnabled: boolean): void {
+  activeSession?.teardown(false);
+  let disposed = false;
+  let allowed = sendEnabled;
+  const cancelSettle = afterPinLayoutSettles(document, () => {
+    if (!disposed) mountPinAnnotation(allowed);
+  });
+  activeSession = {
+    teardown: (notify) => {
+      disposed = true;
+      cancelSettle();
+      activeSession = null;
+      if (notify) ipcRenderer.send(ELEMENT_PICKED_CHANNEL, null);
+    },
+    applyTheme: () => {},
+    setSendEnabled: (enabled) => {
+      allowed = enabled;
+    },
+    handleOverlayKey: (event) => {
+      if (event.type === "keydown" && event.key === "Escape" && !event.isComposing) {
+        event.preventDefault();
+        activeSession?.teardown(true);
+      }
+    },
+  };
+}
+function mountPinAnnotation(initialSendEnabled: boolean): void {
+  const host = document.createElement("div");
+  host.setAttribute(OVERLAY_ATTRIBUTE, "pins");
+  host.style.cssText = "position:fixed;inset:0;z-index:800;pointer-events:none";
+  const shadow = host.attachShadow({ mode: "closed" });
+  applyAnnotationTheme(host, annotationTheme);
+  const style = document.createElement("style");
+  style.textContent = `
+    *{box-sizing:border-box}button,textarea{font:inherit}button{cursor:pointer;border:0;color:inherit}button:disabled{opacity:.5;cursor:default}
+    :host{font:13px -apple-system,BlinkMacSystemFont,'PingFang SC',sans-serif;color:var(--t3-foreground,#1d1d1f)}
+    .side{pointer-events:auto;position:fixed;right:0;top:0;bottom:0;width:min(320px,42vw);background:var(--t3-background,#fff);border-left:1px solid var(--t3-border,#ddd);padding:16px;display:flex;flex-direction:column;gap:16px;box-shadow:-8px 0 24px #00000008}
+    .head{display:flex;align-items:center;justify-content:space-between;height:20px;font-weight:600}.head button{background:none;font-size:20px}
+    .filters{position:relative;display:flex;border-radius:9px;background:var(--t3-muted,#eee);padding:3px;flex:none}
+    .thumb{position:absolute;top:3px;bottom:3px;left:3px;width:calc((100% - 6px)/3);border-radius:7px;background:var(--t3-background,#fff);box-shadow:0 3px 8px #00000014,0 .5px 1.5px #0000001f;transition:transform 380ms cubic-bezier(.32,.72,0,1)}
+    .filters button{z-index:1;flex:1;background:none;padding:5px 0;font-size:12px}.list{overflow:auto;overscroll-behavior:contain;flex:1}.item{display:grid;grid-template-columns:24px 1fr;gap:10px;padding:14px 0;border-bottom:1px solid var(--t3-border,#eee)}
+    .badge,.pin{background:#0a7cff;color:white;border-radius:12px 12px 12px 3px;width:24px;height:24px;display:grid;place-items:center;font-size:11px;font-weight:600}.pin{position:fixed;pointer-events:auto;box-shadow:0 2px 5px #0003,0 0 0 2px white;z-index:2}.fixed{background:#34a853}
+    .copy{background:none;text-align:left;padding:0;line-height:1.6;overflow-wrap:anywhere}.meta{font-size:11px;color:var(--t3-muted-foreground,#999);margin-top:6px}.element{background:var(--t3-muted,#eee);border-radius:5px;padding:2px 5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:235px;display:block;font-size:11px;color:var(--t3-muted-foreground,#888)}
+    .resolve{background:none;font-size:11px;padding:5px 0;color:var(--t3-muted-foreground,#888)}.send{height:32px;border-radius:16px;background:var(--t3-foreground,#1c1c1e);color:var(--t3-background,#fff);transition:width 400ms cubic-bezier(.32,.72,0,1)}
+    .hover{position:fixed;border:1.5px solid #0a7cff;background:#0a7cff0d;border-radius:3px;display:none}.label{position:fixed;background:#0a7cff;color:white;padding:3px 7px;border-radius:5px;max-width:280px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font-size:11px;display:none}
+    .editor{position:fixed;pointer-events:auto;width:280px;padding:12px;background:var(--t3-background,#fff);border-radius:16px;box-shadow:0 8px 24px #00000029;display:none;z-index:3}.editor textarea{display:block;width:100%;min-height:66px;resize:vertical;background:none;border:0;outline:none;color:inherit;margin:8px 0}.actions{display:flex;gap:12px;justify-content:flex-end;align-items:center}.actions button{border-radius:15px;padding:6px 12px}.add{background:#0a7cff;color:white}.hint{font-size:11px;color:var(--t3-muted-foreground,#888)}.error{font-size:12px;color:#d33}.missing{font-size:12px;color:var(--t3-muted-foreground,#888);margin:14px 0 0}
+    @media(prefers-reduced-motion:reduce){*{transition:none!important}}
+  `;
+  shadow.append(style);
+  const make = <K extends keyof HTMLElementTagNameMap>(tag: K, className: string, text = "") => {
+    const el = document.createElement(tag);
+    el.className = className;
+    el.textContent = text;
+    return el;
+  };
+  const side = make("aside", "side");
+  side.setAttribute("aria-label", annotationCopy("All annotations"));
+  const head = make("div", "head");
+  const title = make("strong", "", annotationCopy("All annotations"));
+  const close = make("button", "");
+  close.innerHTML =
+    '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M4 4l8 8M12 4l-8 8"/></svg>';
+  close.setAttribute("aria-label", annotationCopy("Close annotations"));
+  head.append(title, close);
+  const filters = make("div", "filters");
+  filters.setAttribute("role", "group");
+  filters.setAttribute("aria-label", annotationCopy("Filter annotations"));
+  const thumb = make("span", "thumb");
+  filters.append(thumb);
+  const list = make("div", "list");
+  const error = make("p", "error");
+  error.setAttribute("role", "status");
+  const send = make("button", "send", annotationCopy("Send to assistant ({count})", { count: 0 }));
+  side.append(head, filters, list, error, send);
+  const hover = make("div", "hover"),
+    label = make("div", "label");
+  const editor = make("div", "editor"),
+    summary = make("span", "element"),
+    input = make("textarea", "");
+  input.placeholder = annotationCopy("Describe what to change\u2026");
+  input.setAttribute("aria-label", annotationCopy("Annotation text"));
+  input.maxLength = 2000;
+  const actions = make("div", "actions"),
+    hint = make("span", "hint", annotationCopy("Enter to add")),
+    cancel = make("button", "", annotationCopy("Cancel")),
+    add = make("button", "add", annotationCopy("Add"));
+  actions.append(hint, cancel, add);
+  editor.append(summary, input, actions);
+  shadow.append(hover, label, editor, side);
+  let pins: PreviewPin[] = [],
+    filter: "all" | "pending" | "fixed" = "all",
+    closed = false,
+    busy = false,
+    allowed = initialSendEnabled;
+  let selected: { element: Element; x: number; y: number } | null = null;
+  const pinNodes = new Map<string, HTMLButtonElement>();
+  const anchors = new Map<string, Element | null>();
+  const report = (cause: unknown) => {
+    error.textContent = cause instanceof Error ? cause.message : String(cause);
+  };
+  const persist = async (next: PreviewPin[]) => {
+    await ipcRenderer.invoke(PIN_REQUEST_CHANNEL, { action: "save", pins: next });
+    if (!closed) {
+      pins = next;
+      render();
+    }
+  };
+  const position = () => {
+    for (const pin of pins) {
+      let element = anchors.get(pin.id);
+      if (!element?.isConnected) {
+        element = findPinElement(pin);
+        anchors.set(pin.id, element);
+      }
+      const node = pinNodes.get(pin.id);
+      if (!node) continue;
+      if (!element) {
+        node.hidden = true;
+        continue;
+      }
+      const rect = element.getBoundingClientRect();
+      node.hidden = !rect.width || !rect.height;
+      node.style.left = `${rect.x + rect.width * pin.relative.x - 12}px`;
+      node.style.top = `${rect.y + rect.height * pin.relative.y - 12}px`;
+    }
+  };
+  const focusPin = (pin: PreviewPin) => {
+    const target = anchors.get(pin.id) ?? findPinElement(pin);
+    target?.scrollIntoView({
+      block: "center",
+      inline: "nearest",
+      behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth",
+    });
+    const node = pinNodes.get(pin.id);
+    if (node && !matchMedia("(prefers-reduced-motion: reduce)").matches)
+      node.animate(
+        [{ transform: "scale(1)" }, { transform: "scale(1.25)" }, { transform: "scale(1)" }],
+        { duration: 480 },
+      );
+  };
+  function render() {
+    side.setAttribute("aria-label", annotationCopy("All annotations"));
+    close.setAttribute("aria-label", annotationCopy("Close annotations"));
+    filters.setAttribute("aria-label", annotationCopy("Filter annotations"));
+    input.placeholder = annotationCopy("Describe what to change…");
+    input.setAttribute("aria-label", annotationCopy("Annotation text"));
+    hint.textContent = annotationCopy("Enter to add");
+    cancel.textContent = annotationCopy("Cancel");
+    add.textContent = annotationCopy("Add");
+    if (closed) return;
+    list.replaceChildren();
+    for (const node of pinNodes.values()) node.remove();
+    pinNodes.clear();
+    anchors.clear();
+    title.textContent = annotationCopy("All annotations {count}", { count: pins.length });
+    const count = pins.filter((p) => p.status === "unsent").length;
+    send.textContent = busy
+      ? annotationCopy("Sending\u2026")
+      : annotationCopy("Send to assistant ({count})", { count });
+    send.disabled = busy || !allowed || !count;
+    ipcRenderer.send(PIN_STATE_CHANNEL, count);
+    const visible = filterPreviewPins(pins, filter);
+    const missing: PreviewPin[] = [],
+      located: PreviewPin[] = [];
+    for (const pin of pins) {
+      const element = findPinElement(pin);
+      anchors.set(pin.id, element);
+      if (visible.includes(pin)) (element ? located : missing).push(pin);
+      if (!element || !visible.includes(pin)) continue;
+      const node = make(
+        "button",
+        "pin" + (pin.status === "fixed" ? " fixed" : ""),
+        String(pin.number),
+      );
+      node.setAttribute(
+        "aria-label",
+        annotationCopy("Annotation {number}", { number: pin.number }),
+      );
+      node.onclick = () => {
+        const row = list.querySelector(`[data-pin-id="${pin.id}"]`);
+        row?.scrollIntoView({ block: "nearest" });
+        if (!matchMedia("(prefers-reduced-motion: reduce)").matches)
+          row?.animate([{ background: "#0a7cff22" }, { background: "transparent" }], {
+            duration: 650,
+          });
+      };
+      shadow.append(node);
+      pinNodes.set(pin.id, node);
+    }
+    const row = (pin: PreviewPin) => {
+      const item = make("div", "item");
+      item.dataset.pinId = pin.id;
+      const badge = make(
+        "button",
+        "badge" + (pin.status === "fixed" ? " fixed" : ""),
+        String(pin.number),
+      );
+      badge.onclick = () => focusPin(pin);
+      const body = make("div", ""),
+        copy = make("button", "copy", pin.text);
+      copy.onclick = () => focusPin(pin);
+      const element = make("span", "element", `${pin.tag} · ${pin.elementText}`);
+      element.title = pin.selectorChain.join("\n");
+      const meta = make(
+        "div",
+        "meta",
+        `${new Date(pin.createdAt).toLocaleTimeString(annotationTheme?.locale ?? "en", { hour: "2-digit", minute: "2-digit" })} · ${pin.status === "unsent" ? annotationCopy("Unsent") : pin.status === "sent" ? annotationCopy("Sent") : annotationCopy("Fixed")}`,
+      );
+      const fixed = make(
+        "button",
+        "resolve",
+        pin.status === "fixed" ? annotationCopy("Reopen") : annotationCopy("Mark as fixed"),
+      );
+      fixed.setAttribute("aria-pressed", String(pin.status === "fixed"));
+      fixed.onclick = () => {
+        if (!busy)
+          void persist(
+            pins.map((p) =>
+              p.id === pin.id
+                ? { ...p, status: p.status === "fixed" ? (p.wasSent ? "sent" : "unsent") : "fixed" }
+                : p,
+            ),
+          ).catch(report);
+      };
+      body.append(copy, element, meta, fixed);
+      item.append(badge, body);
+      list.append(item);
+    };
+    located.forEach(row);
+    if (missing.length) {
+      list.append(make("h3", "missing", annotationCopy("Location not found")));
+      missing.forEach(row);
+    }
+    if (!visible.length)
+      list.append(
+        make(
+          "p",
+          "hint",
+          pins.length
+            ? annotationCopy("No matching annotations")
+            : annotationCopy("Click an element to annotate it"),
+        ),
+      );
+    position();
+  }
+  (
+    [
+      ["all", annotationCopy("All")],
+      ["pending", annotationCopy("Open")],
+      ["fixed", annotationCopy("Fixed")],
+    ] as const
+  ).forEach(([value, text], index) => {
+    const button = make("button", "", text);
+    button.setAttribute("aria-pressed", String(filter === value));
+    button.onclick = () => {
+      filter = value;
+      thumb.style.transform = `translateX(${index * 100}%)`;
+      for (const node of filters.querySelectorAll("button"))
+        node.setAttribute("aria-pressed", String(node === button));
+      render();
+    };
+    filters.append(button);
+  });
+  const dismissEditor = () => {
+    selected = null;
+    editor.style.display = "none";
+    input.value = "";
+  };
+  const save = async () => {
+    if (!selected || busy || !input.value.trim()) return;
+    busy = true;
+    add.disabled = true;
+    const target = selected,
+      text = input.value.trim();
+    try {
+      const rect = target.element.getBoundingClientRect(),
+        chain = pinSelectorChain(target.element),
+        element = await captureElement(target.element);
+      if (closed) return;
+      const key = previewPinKey(location.href),
+        createdAt = new Date().toISOString();
+      const parent = target.element.parentElement?.closest("[id],[data-testid]");
+      const pin: PreviewPin = {
+        id: nextId("pin"),
+        number: Math.max(0, ...pins.map((p) => p.number)) + 1,
+        text,
+        selectorChain: chain,
+        tag: target.element.localName,
+        elementText: pinText(target.element),
+        ancestor: parent?.id
+          ? `#${CSS.escape(parent.id)}`
+          : parent?.getAttribute("data-testid")
+            ? `[data-testid=${JSON.stringify(parent.getAttribute("data-testid"))}]`
+            : null,
+        relative: {
+          x: Math.max(0, Math.min(1, (target.x - rect.x) / Math.max(1, rect.width))),
+          y: Math.max(0, Math.min(1, (target.y - rect.y) / Math.max(1, rect.height))),
+        },
+        documentPosition: {
+          x: (target.x + scrollX) / Math.max(1, document.documentElement.scrollWidth),
+          y: (target.y + scrollY) / Math.max(1, document.documentElement.scrollHeight),
+        },
+        rect: rectFromDomRect(rect),
+        pageKey: key,
+        createdAt,
+        status: "unsent",
+        element: { ...element, selector: chain[0] ?? element.selector },
+        screenshot: null,
+      };
+      host.style.visibility = "hidden";
+      let screenshot: PreviewPin["screenshot"] = null;
+      try {
+        screenshot = await ipcRenderer.invoke(PIN_REQUEST_CHANNEL, {
+          action: "capture",
+          rect: {
+            x: Math.max(0, target.x - 160),
+            y: Math.max(0, target.y - 110),
+            width: 320,
+            height: 220,
+          },
+          ratio: devicePixelRatio,
+        });
+      } catch {
+        error.textContent = annotationCopy("The screenshot failed. Your annotation text is saved.");
+      } finally {
+        host.style.visibility = "";
+      }
+      if (closed) return;
+      await persist([...pins, { ...pin, screenshot }]);
+      dismissEditor();
+    } catch (cause) {
+      report(cause);
+    } finally {
+      busy = false;
+      add.disabled = false;
+      render();
+    }
+  };
+  const submit = () => {
+    if (busy || !allowed || !pins.some((p) => p.status === "unsent")) return;
+    busy = true;
+    render();
+    ipcRenderer.send(
+      ELEMENT_PICKED_CHANNEL,
+      previewPinsPayload(
+        pins,
+        nextId("pin"),
+        location.href,
+        document.title,
+        new Date().toISOString(),
+      ),
+      null,
+      "send",
+      devicePixelRatio,
+    );
+  };
+  const onCommand = (_event: unknown, action: unknown) => {
+    if (action === "send") submit();
+    else if (action === "close") closeWithMotion();
+  };
+  const key = (event: KeyboardEvent) => {
+    if (event.type !== "keydown" || event.isComposing) return;
+    if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      if (selected) dismissEditor();
+      else closeWithMotion();
+    } else if (shadow.activeElement === input && event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      void save();
+    } else if (
+      !shadow.activeElement?.matches("input,textarea") &&
+      event.key.toLowerCase() === "c" &&
+      !event.metaKey &&
+      !event.ctrlKey
+    ) {
+      event.preventDefault();
+      closeWithMotion();
+    }
+  };
+  const pointerMove = (event: PointerEvent) => {
+    if (selected || event.target === host || !(event.target instanceof Element)) {
+      hover.style.display = label.style.display = "none";
+      return;
+    }
+    const rect = event.target.getBoundingClientRect();
+    positionBox(hover, rectFromDomRect(rect));
+    label.textContent = `${event.target.localName} · ${pinText(event.target)}`;
+    label.style.display = "block";
+    label.style.left = `${Math.max(4, rect.x)}px`;
+    label.style.top = `${Math.max(4, rect.y - 24)}px`;
+  };
+  const click = (event: MouseEvent) => {
+    if (event.target === host || !(event.target instanceof Element)) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    if (busy) return;
+    selected = { element: event.target, x: event.clientX, y: event.clientY };
+    summary.textContent = `${event.target.localName} · ${pinText(event.target)}`;
+    editor.style.left = `${Math.max(4, Math.min(event.clientX + 12, innerWidth - side.offsetWidth - 284))}px`;
+    editor.style.top = `${Math.max(4, Math.min(event.clientY + 12, innerHeight - 160))}px`;
+    editor.style.display = "block";
+    input.focus();
+  };
+  const preventPage = (event: PointerEvent) => {
+    if (event.target !== host) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    }
+  };
+  const isolate = (event: Event) => event.stopPropagation();
+  const resize = new ResizeObserver(position);
+  function teardown(notify: boolean) {
+    if (closed) return;
+    closed = true;
+    resize.disconnect();
+    window.removeEventListener("pointermove", pointerMove, true);
+    window.removeEventListener("pointerdown", preventPage, true);
+    window.removeEventListener("click", click, true);
+    window.removeEventListener("keydown", key, true);
+    window.removeEventListener("scroll", position, true);
+    window.removeEventListener("resize", position);
+    ipcRenderer.off(PIN_COMMAND_CHANNEL, onCommand);
+    for (const event of PAGE_ISOLATED_EVENTS) host.removeEventListener(event, isolate);
+    host.remove();
+    activeSession = null;
+    if (notify) ipcRenderer.send(ELEMENT_PICKED_CHANNEL, null);
+  }
+  const closeWithMotion = () => {
+    if (closed) return;
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      teardown(true);
+      return;
+    }
+    busy = true;
+    side
+      .animate([{ transform: "translateX(0)" }, { transform: "translateX(calc(100% + 20px))" }], {
+        duration: 480,
+        easing: "cubic-bezier(.32,.72,0,1)",
+        fill: "forwards",
+      })
+      .finished.then(
+        () => teardown(true),
+        () => teardown(true),
+      );
+  };
+  close.onclick = closeWithMotion;
+  cancel.onclick = dismissEditor;
+  add.onclick = () => void save();
+  send.onclick = submit;
+  window.addEventListener("pointermove", pointerMove, true);
+  window.addEventListener("pointerdown", preventPage, true);
+  window.addEventListener("click", click, true);
+  window.addEventListener("keydown", key, true);
+  window.addEventListener("scroll", position, { capture: true, passive: true });
+  window.addEventListener("resize", position);
+  for (const event of PAGE_ISOLATED_EVENTS) host.addEventListener(event, isolate);
+  ipcRenderer.on(PIN_COMMAND_CHANNEL, onCommand);
+  document.documentElement.append(host);
+  if (document.body) resize.observe(document.body);
+  if (!matchMedia("(prefers-reduced-motion: reduce)").matches)
+    side.animate([{ transform: "translateX(100%)" }, { transform: "translateX(0)" }], {
+      duration: 480,
+      easing: "cubic-bezier(.32,.72,0,1)",
+    });
+  activeSession = {
+    teardown,
+    applyTheme: (theme) => {
+      applyAnnotationTheme(host, theme);
+      render();
+    },
+    setSendEnabled: (value) => {
+      allowed = value;
+      render();
+    },
+    handleOverlayKey: key,
+  };
+  void ipcRenderer
+    .invoke(PIN_REQUEST_CHANNEL, { action: "load" })
+    .then((value: PreviewPin[]) => {
+      if (!closed) {
+        if (!Array.isArray(value)) throw new Error(annotationCopy("Invalid annotation records"));
+        pins = value;
+        render();
+      }
+    })
+    .catch(report);
 }
 
 ipcRenderer.on(
   START_PICK_CHANNEL,
-  (_event, theme: DesktopPreviewAnnotationTheme | undefined, sendEnabled?: boolean) => {
+  (
+    _event,
+    theme: DesktopPreviewAnnotationTheme | undefined,
+    sendEnabled?: boolean,
+    voice?: DesktopPreviewAnnotationVoiceConfig,
+    pins?: boolean,
+  ) => {
     if (theme) annotationTheme = theme;
-    startAnnotation(sendEnabled === true);
+    if (pins) startPinAnnotation(sendEnabled === true);
+    else startAnnotation(sendEnabled === true, voice);
   },
 );
 ipcRenderer.on(ANNOTATION_SEND_ENABLED_CHANNEL, (_event, enabled: boolean) => {

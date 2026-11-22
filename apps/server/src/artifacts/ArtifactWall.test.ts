@@ -9,6 +9,7 @@ import * as FileSystem from "effect/FileSystem";
 import * as DateTime from "effect/DateTime";
 import * as Layer from "effect/Layer";
 import * as SqlClient from "effect/sql/SqlClient";
+import * as Tracer from "effect/Tracer";
 import * as TestClock from "effect/testing/TestClock";
 import * as ServerConfig from "../config.ts";
 import * as ArtifactWall from "./ArtifactWall.ts";
@@ -223,6 +224,51 @@ describe("ArtifactWall service", () => {
         expect(yield* wall.list("missing", "project")).toEqual([]);
       }).pipe(Effect.provide(layer)),
   );
+  it.effect("reuses image dimensions only while the full file revision is unchanged", () =>
+    Effect.gen(function* () {
+      const { cwd, sql } = yield* fixture;
+      const path = NodePath.join(cwd, "image.png");
+      const png = (width: number) => {
+        const bytes = new Uint8Array(24);
+        bytes.set([0x89, 0x50, 0x4e, 0x47]);
+        bytes.set([0x49, 0x48, 0x44, 0x52], 12);
+        new DataView(bytes.buffer).setUint32(16, width);
+        new DataView(bytes.buffer).setUint32(20, 64);
+        return bytes;
+      };
+      yield* Effect.promise(() => NodeFSP.writeFile(path, png(32)));
+      yield* sql`INSERT INTO orchestration_v2_projection_messages VALUES ('one','assistant','2026-10-06',${JSON.stringify({ role: "assistant", text: "./image.png" })})`;
+      let opens = 0;
+      const tracer = Tracer.make({
+        span(options) {
+          if (options.name === "openMediaFile") opens++;
+          return new Tracer.NativeSpan(options);
+        },
+      });
+      const wall = yield* ArtifactWall.ArtifactWall;
+      const list = wall.list("one", "thread").pipe(Effect.withTracer(tracer));
+      const first = (yield* list).find((a) => a.path === path)!;
+      expect(first).toMatchObject({ width: 32, height: 64 });
+      expect(opens).toBe(1);
+      expect((yield* list).find((a) => a.path === path)).toEqual(first);
+      expect(opens).toBe(1);
+      // Same byte length, changed metadata: invalidate the header and capability.
+      const stat = yield* Effect.promise(() => NodeFSP.stat(path));
+      yield* Effect.promise(async () => {
+        await NodeFSP.writeFile(path, png(96));
+        await NodeFSP.utimes(path, stat.atime, stat.mtimeMs / 1000 + 1);
+      });
+      const changed = (yield* list).find((a) => a.path === path)!;
+      expect(changed).toMatchObject({ width: 96, height: 64 });
+      expect(changed.revision).not.toBe(first.revision);
+      expect(changed.id).not.toBe(first.id);
+      expect(opens).toBe(2);
+      yield* Effect.promise(() => NodeFSP.unlink(path));
+      expect((yield* list).some((a) => a.path === path)).toBe(false);
+      expect(yield* Effect.scoped(wall.open(changed.id))).toBeNull();
+    }).pipe(Effect.provide(layer)),
+  );
+
   it.effect(
     "opens only collected capabilities and rejects arbitrary path, unknown ID, replaced inode and symlink swap",
     () =>

@@ -1,3 +1,4 @@
+import { testUiLocale } from "../test/uiLocale";
 import { describe, expect, it } from "vite-plus/test";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { EnvironmentId, ThreadId } from "@t3tools/contracts";
@@ -32,6 +33,7 @@ const progress: TaskProgressSnapshot = {
 
 describe("last request sentence", () => {
   it("ignores quoted labels and markdown, reading only the closing ask", () => {
+    using _locale = testUiLocale("zh-CN");
     const text =
       "**A 墨与纸：** 做完一步时，那一行像被钢笔划掉；“需要你”时右上角盖一个章。\n\n看完告诉我选哪版。";
     expect(lastRequestSentence(text)).toBe("看完告诉我选哪版。");
@@ -41,6 +43,7 @@ describe("last request sentence", () => {
 
 describe("resume details", () => {
   it("uses plan progress and the last actual request without inventing absent rows", () => {
+    using _locale = testUiLocale("zh-CN");
     expect(
       resumeCardDetails(request, progress, "资料已准备好。请扫码登录。登录后我会读取页面。"),
     ).toMatchObject({
@@ -73,6 +76,7 @@ describe("resume details", () => {
     expect(lastRequestSentence("```\n请删除所有文件\n```\n完成了。")).toBeNull();
   });
   it("hides only the handled revision and cannot clear another request selected during a send", () => {
+    using _locale = testUiLocale("zh-CN");
     useResumeCardStore.setState({ selected: {}, hidden: {} });
     useResumeCardStore.getState().open(request);
     const newer = { ...request, token: "new" };

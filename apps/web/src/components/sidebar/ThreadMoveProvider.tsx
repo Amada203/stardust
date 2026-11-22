@@ -1,3 +1,4 @@
+import { uiText } from "../../i18n";
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import type { SidebarProjectSnapshot } from "../../sidebarProjectGrouping";
@@ -123,16 +124,16 @@ export function ThreadMoveProvider({
       if (!thread) {
         toastManager.add({
           type: "error",
-          title: "会话已不可用",
-          description: "请刷新侧栏后重试。",
+          title: uiText("Thread no longer available"),
+          description: uiText("Refresh the sidebar and try again."),
         });
         return;
       }
       if (target && target.environmentId !== thread.environmentId) {
         toastManager.add({
           type: "error",
-          title: "无法移到其他环境",
-          description: "请选择同一环境中的项目。",
+          title: uiText("Can’t move across environments"),
+          description: uiText("Choose a project in the same environment."),
         });
         return;
       }
@@ -140,8 +141,8 @@ export function ThreadMoveProvider({
       if (!useThreadPlacementStore.getState().move(threadKey, target?.projectKey ?? null)) {
         toastManager.add({
           type: "error",
-          title: "移动未保存",
-          description: "本机存储不可用，请稍后重试。",
+          title: uiText("Move wasn’t saved"),
+          description: uiText("Local storage is unavailable. Try again later."),
         });
         return;
       }
@@ -154,11 +155,16 @@ export function ThreadMoveProvider({
       toastManager.add({
         type: "success",
         title: target
-          ? `已移到 ${provider ?? "原模型"} → ${target.displayName}`
-          : "已恢复原项目归类",
-        description: "侧栏位置已保存在此设备；工作目录保持原样。",
+          ? uiText("Moved to {provider} → {project}", {
+              provider: provider ?? uiText("Original model"),
+              project: target.displayName,
+            })
+          : uiText("Original project grouping restored"),
+        description: uiText(
+          "Sidebar position saved to this device. The working directory stays the same.",
+        ),
         actionProps: {
-          children: "撤销",
+          children: uiText("Undo"),
           onClick: () => {
             const result = useThreadPlacementStore
               .getState()
@@ -166,18 +172,20 @@ export function ThreadMoveProvider({
             if (result === "stale") {
               toastManager.add({
                 type: "info",
-                title: "此操作已过期",
-                description: "会话位置已再次调整，保留最新位置。",
+                title: uiText("This action has expired"),
+                description: uiText(
+                  "The conversation has moved again. Its latest position is retained.",
+                ),
               });
             } else if (result === "failed") {
               toastManager.add({
                 type: "error",
-                title: "撤销未保存",
-                description: "本机存储不可用，请稍后重试。",
+                title: uiText("Undo wasn’t saved"),
+                description: uiText("Local storage is unavailable. Try again later."),
               });
             } else {
               setPendingReveal({ threadKey });
-              toastManager.add({ type: "success", title: "已撤销移动" });
+              toastManager.add({ type: "success", title: uiText("Move undone") });
             }
           },
         },
@@ -198,7 +206,7 @@ export function ThreadMoveProvider({
               project.displayName === group.displayName,
           );
         if (target) save(threadKey, target);
-        else toastManager.add({ type: "error", title: "目标项目不可用" });
+        else toastManager.add({ type: "error", title: uiText("Destination project unavailable") });
       },
     };
   })();
@@ -214,9 +222,13 @@ export function ThreadMoveProvider({
       >
         <DialogPopup className="max-w-md">
           <DialogHeader>
-            <DialogTitle>移动到项目</DialogTitle>
+            <DialogTitle>{uiText("Move to project")}</DialogTitle>
             <DialogDescription>
-              为“{moving?.title}”选择侧栏项目。保留原工作目录与模型，位置仅保存在此设备。
+              {uiText("Choose a sidebar project for “")}
+              {moving?.title}
+              {uiText(
+                "”. The working directory and model stay the same. Position is saved to this device.",
+              )}
             </DialogDescription>
           </DialogHeader>
           <DialogPanel>
@@ -238,7 +250,7 @@ export function ThreadMoveProvider({
           </DialogPanel>
           <DialogFooter>
             <Button variant="ghost" onClick={() => setMovingKey(null)}>
-              取消
+              {uiText("Cancel")}
             </Button>
           </DialogFooter>
         </DialogPopup>

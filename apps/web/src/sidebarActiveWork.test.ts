@@ -1,3 +1,4 @@
+import { testUiLocale } from "../test/uiLocale";
 import { describe, expect, it } from "vite-plus/test";
 import { EnvironmentId, ProviderInstanceId, ThreadId } from "@t3tools/contracts";
 import { makeThreadFixture } from "./test-fixtures";
@@ -25,6 +26,7 @@ const child = (id: string, extra: Parameters<typeof makeThreadFixture>[0] = {}) 
 
 describe("cross-provider active work", () => {
   it("retains an idle parent when a different provider is working beneath it", () => {
+    using _locale = testUiLocale("zh-CN");
     const c = child("claude-child");
     const groups = collectActiveWork([{ ...root, runtime: runtime("idle") }, c]);
     expect(groups).toHaveLength(1);
@@ -33,11 +35,13 @@ describe("cross-provider active work", () => {
     expect(groups[0]!.children[0]!.modelSelection.instanceId).toBe("claudeAgent");
   });
   it("keeps a grandchild reachable without promoting intermediate ancestors to separate roots", () => {
+    using _locale = testUiLocale("zh-CN");
     const c = child("middle", { runtime: runtime("idle") });
     const grandchild = child("grandchild", { lineage: { ...c.lineage, parentThreadId: c.id } });
     expect(collectActiveWork([root, c, grandchild])[0]!.children).toEqual([grandchild]);
   });
   it("shows waiting-for-children and human requests without calling them working", () => {
+    using _locale = testUiLocale("zh-CN");
     expect(
       activeWorkStatus({ ...root, runtime: runtime("running"), blockedOnThreadWait: true }),
     ).toBe("等待任务");
@@ -50,6 +54,7 @@ describe("cross-provider active work", () => {
     expect(activeWorkStatus({ ...root, runtime: runtime("queued") })).toBe("排队中");
   });
   it("removes settled work, ignores deleted threads and leaves failures to the inbox", () => {
+    using _locale = testUiLocale("zh-CN");
     expect(
       collectActiveWork([
         root,
@@ -60,14 +65,17 @@ describe("cross-provider active work", () => {
     ).toEqual([]);
   });
   it("retains a running archived child and treats missing parents as standalone roots", () => {
+    using _locale = testUiLocale("zh-CN");
     const c = child("orphan", { archivedAt: "2026-10-22" });
     expect(collectActiveWork([c])[0]!.root).toEqual(c);
   });
   it("does not attach a remote child to a local parent with the same id", () => {
+    using _locale = testUiLocale("zh-CN");
     const c = child("remote", { environmentId: EnvironmentId.make("remote") });
     expect(collectActiveWork([root, c])[0]!.root.id).toBe(c.id);
   });
   it("preserves row order when incoming updates and input array order change", () => {
+    using _locale = testUiLocale("zh-CN");
     const a = child("a"),
       b = child("b");
     expect(collectActiveWork([root, b, a])[0]!.children.map((t) => t.id)).toEqual([a.id, b.id]);
@@ -76,6 +84,7 @@ describe("cross-provider active work", () => {
     ).toEqual([a.id, b.id]);
   });
   it("does not loop on cyclic parent metadata", () => {
+    using _locale = testUiLocale("zh-CN");
     const a = child("a", {
       lineage: {
         ...root.lineage,
@@ -96,6 +105,7 @@ describe("activeWorkElapsed", () => {
     ["2026-11-15T07:55:00.000Z", "已运行 2 时 5 分"],
     ["not a date", null],
   ])("formats a run started at %s", (startedAt, expected) => {
+    using _locale = testUiLocale("zh-CN");
     expect(activeWorkElapsed(startedAt, Date.parse("2026-11-15T10:00:00.000Z"))).toBe(expected);
   });
 });

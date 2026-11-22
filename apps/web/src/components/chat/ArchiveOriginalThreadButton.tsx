@@ -1,3 +1,5 @@
+import { serverCopy } from "~/i18n/serverCopy";
+import { uiText } from "../../i18n";
 import { useAtomValue } from "@effect/atom-react";
 import { scopeThreadRef, scopedThreadKey } from "@t3tools/client-runtime/environment";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
@@ -49,14 +51,16 @@ export function ArchiveOriginalThreadButton({
         if (result._tag !== "Success") {
           claim.finish();
           const failure = squashAtomCommandFailure(result);
-          setError(failure instanceof Error ? failure.message : "归档失败，请重试。");
+          setError(
+            failure instanceof Error ? failure.message : uiText("Couldn’t archive. Try again."),
+          );
           return;
         }
         refreshArchivedThreadsForEnvironment(environmentId);
         showThreadUndoNotice({
           action: "Archived",
           claim,
-          failureTitle: "撤销归档失败",
+          failureTitle: uiText("Failed to undo archive"),
           undo: async () => {
             ThreadUndo.invalidate("archive", scopedThreadKey(target));
             const result = await unarchive({ environmentId, input: { threadId } });
@@ -66,7 +70,7 @@ export function ArchiveOriginalThreadButton({
         });
       } catch {
         claim.finish();
-        setError("归档结果暂未确认，请恢复连接后核对归档状态。");
+        setError(uiText("Restore the connection to verify the archive status."));
       }
     })().finally(() => {
       inFlight.current = false;
@@ -83,15 +87,18 @@ export function ArchiveOriginalThreadButton({
           void submit();
         }}
       >
-        {busy ? "正在核实并归档…" : "一键归档原会话"}
+        {busy ? uiText("Verifying and archiving…") : uiText("Archive original conversation")}
       </Button>
       {!supported ? (
-        <p className="text-2xs text-muted-foreground">此环境尚不支持安全归档，请更新服务端。</p>
+        <p className="text-2xs text-muted-foreground">
+          {uiText("Update the server to enable safe archiving in this environment.")}
+        </p>
       ) : null}
       {error ? (
         <div role="alert" className="text-xs">
-          <p>{error}</p>
-          {error.includes("绑定了已启用的定时任务") ? (
+          <p>{serverCopy(error)}</p>
+          {error.includes(uiText("Linked to an enabled scheduled task", undefined, "zh-CN")) ||
+          error.includes("Linked to an enabled scheduled task") ? (
             <Button
               size="xs"
               variant="ghost"
@@ -99,7 +106,7 @@ export function ArchiveOriginalThreadButton({
                 void navigate({ to: "/settings/scheduled-tasks", search: { environmentId } });
               }}
             >
-              管理定时任务
+              {uiText("Manage scheduled tasks.")}
             </Button>
           ) : null}
         </div>

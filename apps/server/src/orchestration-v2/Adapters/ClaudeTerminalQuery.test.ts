@@ -9,7 +9,7 @@ import * as NodePath from "node:path";
 import { afterEach, describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Pty from "@t3tools/shared/PtyAdapter";
-import type { SDKMessage, SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
+import type { HookCallback, SDKMessage, SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 import {
   makeClaudeTerminalQueryFactory,
   type ClaudeTerminalQueryRuntime,
@@ -25,15 +25,17 @@ function prompts() {
   let notify: (() => void) | undefined;
   let closed = false;
   return {
-    offer(text: string) {
+    offer(content: SDKUserMessage["message"]["content"]) {
+      const uuid = crypto.randomUUID();
       values.push({
         type: "user",
         session_id: "",
         parent_tool_use_id: null,
-        uuid: crypto.randomUUID(),
-        message: { role: "user", content: text },
+        uuid,
+        message: { role: "user", content },
       });
       notify?.();
+      return uuid;
     },
     [Symbol.asyncIterator]() {
       return {
@@ -68,7 +70,7 @@ async function nextResult(query: ClaudeTerminalQueryRuntime) {
   }
 }
 
-async function fixture(failStart = false, rejectSpawn = false) {
+async function fixture(failStart = false, rejectSpawn = false, finishWithSteering = false) {
   const root = NodeFS.realpathSync(
     NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "t3-tui-runtime-test-")),
   );
@@ -129,6 +131,7 @@ async function fixture(failStart = false, rejectSpawn = false) {
           let dataListener: ((data: string) => void) | undefined;
           const exitListeners = new Set<(event: Pty.PtyExitEvent) => void>();
           let typed = "";
+          let waitingForSteering = false;
           let jobs = Promise.resolve();
           const enqueue = (run: () => Promise<void>) => {
             jobs = jobs.then(run);
@@ -169,6 +172,19 @@ async function fixture(failStart = false, rejectSpawn = false) {
                 const text = typed;
                 typed = "";
                 enqueue(async () => {
+                  if (waitingForSteering) {
+                    // A trailing standalone attachment paste can stay in the input box.
+                    const absorbed = text.replace(/\n\n@[^\n]+$/, "");
+                    append({
+                      type: "queue-operation",
+                      operation: "remove",
+                      reason: "absorbed_mid_turn",
+                      content: absorbed,
+                    });
+                    append({ type: "system", subtype: "turn_duration", durationMs: 10 });
+                    await hook("stop");
+                    return;
+                  }
                   await hook("prompt-submit", { prompt: text });
                   append({
                     type: "user",
@@ -176,7 +192,10 @@ async function fixture(failStart = false, rejectSpawn = false) {
                     message: { role: "user", content: text },
                   });
                   submitted.resolve();
-                  if (text === "WAIT") return;
+                  if (text === "WAIT") {
+                    waitingForSteering = finishWithSteering;
+                    return;
+                  }
                   const toolId = crypto.randomUUID();
                   await hook("pre-tool-use", {
                     tool_name: "Read",
@@ -236,7 +255,7 @@ async function fixture(failStart = false, rejectSpawn = false) {
                   await hook("stop");
                 });
               } else {
-                typed += data.replace(/\x1b\[20[01]~/g, "");
+                typed += String(data).replace(/\x1b\[20[01]~/g, "");
               }
               dataListener?.("");
             },
@@ -245,6 +264,22 @@ async function fixture(failStart = false, rejectSpawn = false) {
             queueMicrotask(() =>
               enqueue(async () => {
                 await hook("session-start");
+                if (input.env?.CLAUDE_CODE_RESUME_INTERRUPTED_TURN === "1") {
+                  append({
+                    type: "assistant",
+                    uuid: crypto.randomUUID(),
+                    message: {
+                      id: "resumed-answer",
+                      role: "assistant",
+                      model: "offline-model",
+                      content: [{ type: "text", text: "Resumed without a user prompt" }],
+                      stop_reason: "end_turn",
+                      usage: { input_tokens: 3, output_tokens: 4 },
+                    },
+                  });
+                  append({ type: "system", subtype: "turn_duration", durationMs: 10 });
+                  await hook("stop");
+                }
               }),
             );
           return child;
@@ -253,7 +288,12 @@ async function fixture(failStart = false, rejectSpawn = false) {
   const factory = await Effect.runPromise(
     makeClaudeTerminalQueryFactory.pipe(Effect.provideService(Pty.PtyAdapter, { spawn })),
   );
-  const open = (resume = false, terminalSubagentContext?: string) => {
+  const open = (
+    resume = false,
+    terminalSubagentContext?: string,
+    terminalOnStop?: HookCallback,
+    nativeResume = false,
+  ) => {
     const input = prompts();
     const query = factory({
       sandbox: root,
@@ -261,10 +301,14 @@ async function fixture(failStart = false, rejectSpawn = false) {
       prompt: input,
       options: {
         ...(terminalSubagentContext === undefined ? {} : { terminalSubagentContext }),
+        ...(terminalOnStop === undefined ? {} : { terminalOnStop }),
         cwd: NodePath.join(root, "workspace"),
         env: {
           CLAUDE_CONFIG_DIR: NodePath.join(root, "home/.claude"),
           T3CODE_THREAD_ID: "fixture-thread",
+          ...(nativeResume
+            ? { CLAUDE_CODE_RESUME_INTERRUPTED_TURN: "1", CLAUDE_CODE_RESUME_REASON: "user_resume" }
+            : {}),
         },
         ...(resume ? { resume: session } : { sessionId: session }),
         canUseTool: async (_name, toolInput) => ({ behavior: "allow", updatedInput: toolInput }),
@@ -272,6 +316,18 @@ async function fixture(failStart = false, rejectSpawn = false) {
     });
     cleanup.push(query.close);
     return { input, query };
+  };
+  const recordCompletedTurn = () => {
+    append({
+      type: "assistant",
+      message: {
+        role: "assistant",
+        stop_reason: "end_turn",
+        content: [{ type: "text", text: "Already complete." }],
+      },
+    });
+    append({ type: "system", subtype: "turn_duration", durationMs: 10 });
+    append({ type: "cost-state" });
   };
   return {
     root,
@@ -281,12 +337,57 @@ async function fixture(failStart = false, rejectSpawn = false) {
     kills,
     approvals,
     submitted,
+    append,
+    recordCompletedTurn,
     hook,
     drain: () => Promise.all(drains.map((drain) => drain())),
   };
 }
 
 describe("Claude terminal runtime (offline PTY fixture)", () => {
+  it.live("reports an unprompted native resume and preserves the stop decision", () =>
+    Effect.promise(async () => {
+      const f = await fixture();
+      f.recordCompletedTurn();
+      f.append({
+        type: "user",
+        message: { role: "user", content: "[Request interrupted by user]" },
+      });
+      let stopCalls = 0;
+      const { query } = f.open(
+        true,
+        undefined,
+        async () => {
+          stopCalls++;
+          return { continue: false };
+        },
+        true,
+      );
+      const first = await query.next();
+      expect(first.value).toMatchObject({ type: "system", subtype: "init" });
+      const result = await nextResult(query);
+      expect(result.result).toMatchObject({
+        type: "result",
+        subtype: "success",
+        result: "Resumed without a user prompt",
+      });
+      expect(stopCalls).toBe(1);
+      expect(JSON.parse(await f.hook("stop"))).toEqual({ continue: false });
+      expect(f.spawns[0]?.args).toContain("--resume");
+      await f.drain();
+      query.close();
+    }),
+  );
+
+  it.live("rejects native resume when Claude already finished the last recorded turn", () =>
+    Effect.promise(async () => {
+      const f = await fixture();
+      f.recordCompletedTurn();
+      const { input, query } = f.open(true, undefined, undefined, true);
+      input.offer([]);
+      await expect(query.next()).rejects.toThrow("Send a follow-up message to continue");
+    }),
+  );
   it.live("returns device context from the native SubagentStart hook", () =>
     Effect.promise(async () => {
       const f = await fixture();
@@ -372,6 +473,26 @@ describe("Claude terminal runtime (offline PTY fixture)", () => {
       query.close();
       expect(f.spawns).toHaveLength(1);
       expect(f.kills).toEqual([12346]);
+    }),
+  );
+
+  it.live("acknowledges an image follow-up absorbed by the ongoing Claude turn", () =>
+    Effect.promise(async () => {
+      const f = await fixture(false, false, true);
+      const { input, query } = f.open();
+      const first = input.offer("WAIT");
+      await f.submitted.promise;
+      const followup = input.offer([
+        { type: "text", text: "Use this screenshot." },
+        { type: "image", source: { type: "base64", media_type: "image/png", data: "AA==" } },
+      ]);
+      const { result } = await nextResult(query);
+      expect(result).toMatchObject({
+        subtype: "success",
+        user_message_uuids: [first, followup],
+      });
+      await f.drain();
+      query.close();
     }),
   );
 });

@@ -1,24 +1,18 @@
 import { describe, expect, it } from "vite-plus/test";
+
 import { ThreadId, TurnItemId, type OrchestrationV2TurnItem } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
+
 import {
   resolveWorkEntryToolPresentation,
   toolItemForDisplay,
   type WorkLogPresentationEntry,
   workEntryIndicatesToolFailure,
   workEntryDisplayIndicatesToolFailure,
-  contextCompactionLabel,
-  toolGroupAction,
 } from "./presentation.js";
+
 function commandItem(
-  fields: Partial<
-    Extract<
-      OrchestrationV2TurnItem,
-      {
-        type: "command_execution";
-      }
-    >
-  > = {},
+  fields: Partial<Extract<OrchestrationV2TurnItem, { type: "command_execution" }>> = {},
 ): OrchestrationV2TurnItem {
   return {
     id: TurnItemId.make("command"),
@@ -40,16 +34,36 @@ function commandItem(
     ...fields,
   };
 }
+
 describe("workEntryIndicatesToolFailure", () => {
   const base = {
     id: "w1",
     createdAt: "2026-01-01T00:00:00.000Z",
     label: "Read",
   };
+
+  it("keeps a no-match search neutral despite the provider's failed status", () => {
+    const entry = {
+      ...base,
+      tone: "tool",
+      itemType: "command_execution",
+      toolLifecycleStatus: "failed",
+      structuredPayload: commandItem({ status: "failed", exitCode: 1 }),
+    } satisfies WorkLogPresentationEntry;
+    expect(workEntryDisplayIndicatesToolFailure(entry)).toBe(false);
+    expect(workEntryIndicatesToolFailure(entry)).toBe(false);
+    expect(
+      workEntryDisplayIndicatesToolFailure({
+        ...entry,
+        structuredPayload: commandItem({ status: "failed", exitCode: 1, outputOmitted: true }),
+      }),
+    ).toBe(true);
+  });
+
   it.each([
     [{ exitCode: 2 }, true],
     [{ output: "sh: missing-command: command not found" }, true],
-    [{ output: `${"x".repeat(32768)} command not found` }, false],
+    [{ output: `${"x".repeat(32_768)} command not found` }, false],
   ] as const)(
     "preserves command failure state after removing displayed output: %j",
     (fields, failed) => {
@@ -94,6 +108,7 @@ describe("workEntryIndicatesToolFailure", () => {
     expect(workEntryIndicatesToolFailure(entry)).toBe(false);
     expect(workEntryDisplayIndicatesToolFailure(entry)).toBe(false);
   });
+
   it("does not treat error text in a command as rendered failure", () => {
     const entry = {
       ...base,
@@ -103,20 +118,14 @@ describe("workEntryIndicatesToolFailure", () => {
       command: 'rg "file not found"',
       detail: "Found 3 matches",
     } satisfies WorkLogPresentationEntry;
+
     expect(workEntryDisplayIndicatesToolFailure(entry)).toBe(false);
+
     expect(workEntryIndicatesToolFailure(entry)).toBe(true);
-    expect(toolGroupAction(entry)).toBe("command");
-    const updated = {
-      ...entry,
-      detail: "File not found",
-      requestKind: "file-read" as const,
-    };
-    expect(workEntryDisplayIndicatesToolFailure(updated)).toBe(true);
-    expect(toolGroupAction(updated)).toBe("read");
-    expect(workEntryDisplayIndicatesToolFailure(entry)).toBe(false);
-    expect(toolGroupAction(entry)).toBe("command");
+    expect(workEntryDisplayIndicatesToolFailure({ ...entry, detail: "File not found" })).toBe(true);
   });
 });
+
 describe("resolveWorkEntryToolPresentation", () => {
   it("shows returned MCP errors as failures even in the live activity row", () => {
     const entry: WorkLogPresentationEntry = {
@@ -145,7 +154,7 @@ describe("resolveWorkEntryToolPresentation", () => {
     "mcp__t3_code__preview_click",
     "mcp__t3code__preview_click",
     "T3-code.preview_click",
-    "t3-code \u00B7 preview_click completed",
+    "t3-code · preview_click completed",
     "t3_code/preview_click",
     "preview_click",
   ])("recognizes browser tool names across providers: %s", (label) => {
@@ -154,6 +163,7 @@ describe("resolveWorkEntryToolPresentation", () => {
       icon: "browser",
     });
   });
+
   it("uses structured MCP identity when the provider supplies a custom title", () => {
     expect(
       resolveWorkEntryToolPresentation({
@@ -163,6 +173,7 @@ describe("resolveWorkEntryToolPresentation", () => {
       }),
     ).toEqual({ displayName: "Taking a snapshot of the preview page", icon: "browser" });
   });
+
   it("uses the summary's state only when the provider omitted a lifecycle status", () => {
     const entry = { label: "T3-code.preview_click" };
     expect(resolveWorkEntryToolPresentation(entry, "inProgress")?.displayName).toBe(
@@ -180,6 +191,7 @@ describe("resolveWorkEntryToolPresentation", () => {
         ?.displayName,
     ).toBe("Failed to click in the preview browser");
   });
+
   it.each([
     ["https://github.com/acme/web/pull/7", "PR #7"],
     ["https://gitlab.com/acme/web/-/merge_requests/7", "MR #7"],
@@ -192,6 +204,7 @@ describe("resolveWorkEntryToolPresentation", () => {
       })?.displayName,
     ).toMatch(new RegExp(` ${target}$`));
   });
+
   it("does not brand unknown tools or another server's matching tool name", () => {
     for (const label of [
       "mcp__github__preview_click",
@@ -207,18 +220,5 @@ describe("resolveWorkEntryToolPresentation", () => {
         toolData: { server: "another-server", tool: "preview_click" },
       }),
     ).toBeNull();
-  });
-});
-describe("contextCompactionLabel", () => {
-  it("keeps success separate from failed, stopped, active, and unconfirmed results", () => {
-    expect(contextCompactionLabel({ status: "completed", completionConfirmed: false })).toBe(
-      "Context compaction result unconfirmed",
-    );
-    expect(contextCompactionLabel({ status: "failed" })).toBe("Context compaction failed");
-    expect(contextCompactionLabel({ status: "interrupted" })).toBe("Context compaction stopped");
-    expect(contextCompactionLabel({ status: "running" })).toBe("Compacting context");
-    expect(
-      contextCompactionLabel({ status: "completed", beforeTokenCount: 1000, afterTokenCount: 500 }),
-    ).toBe("Context compacted 1K \u2192 500 tokens");
   });
 });

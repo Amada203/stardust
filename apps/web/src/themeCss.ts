@@ -1,4 +1,4 @@
-import { themeCssValueFetches } from "./themeCssValues";
+import { themeCssValueFetches } from "@t3tools/shared/themeCss";
 
 // Theme CSS comes from imported files and from agents, so it must not fetch: a
 // url() on an attribute selector can send what is on screen to another host.
@@ -49,7 +49,7 @@ function stripFetches(parent: RuleParent): void {
 export function createThemeCssApplier() {
   let themeSheet: CSSStyleSheet | null = null;
   let appliedCss = "";
-  return (css: string | undefined): void => {
+  return function applyThemeCss(css: string | undefined): void {
     if (typeof document === "undefined" || typeof CSSStyleSheet === "undefined") return;
     const next = css ?? "";
     if (next === appliedCss) return;

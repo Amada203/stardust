@@ -1,3 +1,4 @@
+import { useUiText } from "../../i18n/useUiText";
 import { ContextTokenDetails } from "./ContextTokenDetails";
 import type { ThreadStructure } from "@t3tools/client-runtime/state/shell";
 import { latestContextUsage } from "./contextUsage";
@@ -9,8 +10,9 @@ import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { Button } from "../ui/button";
 import { Popover, PopoverTrigger, PopoverPopup, PopoverTitle } from "../ui/popover";
-import { ChevronDownIcon, CircleAlertIcon } from "lucide-react";
-import { LiveTurnThroughput } from "./TurnThroughputStatus";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { CircleAlertIcon } from "lucide-react";
+import "./composerV9.css";
 import { useProjectFileQuery } from "../files/projectFilesQueryState";
 import { useThreadHandoffSummary, useThreadShell } from "../../state/entities";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
@@ -76,7 +78,6 @@ export function ContextHandoffNotice({
   disabled,
   onCompact,
   compactDisabled = false,
-  showThroughput = false,
   disconnected = false,
 }: {
   environmentId: EnvironmentId;
@@ -87,9 +88,11 @@ export function ContextHandoffNotice({
   disabled: boolean;
   onCompact?: (() => void) | undefined;
   compactDisabled?: boolean;
+  /** Per-turn throughput now lives in the session statistics under the composer. */
   showThroughput?: boolean;
   disconnected?: boolean;
 }) {
+  const uiText = useUiText();
   const key = `t3-context-handoff:${environmentId}:${thread.id}`;
   const [state, setState] = useState(() => readState(key));
   const [dismissed, setDismissed] = useState(() => {
@@ -100,7 +103,6 @@ export function ContextHandoffNotice({
     }
   });
   const [open, setOpen] = useState(false);
-  const [detailsOpen, setDetailsOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
@@ -235,7 +237,11 @@ export function ContextHandoffNotice({
     try {
       await action();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "交接失败，请重试");
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : uiText("Could not prepare the handoff. Try again."),
+      );
     }
     busyRef.current = false;
     setBusy(false);
@@ -325,7 +331,10 @@ export function ContextHandoffNotice({
         environmentId,
         input: { threadId: thread.id, commandId: CommandId.make(`context-handoff:settle:${id}`) },
       });
-      if (settled._tag === "Failure") setError("旧会话未能自动收起，可在侧栏手动收起");
+      if (settled._tag === "Failure")
+        setError(
+          uiText("Could not archive the old conversation. You can archive it from the sidebar."),
+        );
     });
   if (thread.lineage.relationshipToParent === "subagent") return null;
   const continued =
@@ -350,105 +359,125 @@ export function ContextHandoffNotice({
     !handoffPath &&
     !budgetBlocked &&
     !continued &&
-    !showThroughput &&
     !(enabled && usage !== null)
   )
     return null;
-  const label = budgetBlocked
-    ? "上下文不足 · 恢复"
+  const clampedRatio = ratio === null ? null : Math.max(0, Math.min(1, ratio));
+  const percent = clampedRatio === null ? null : Math.round(clampedRatio * 100);
+  const isStatusAlert = budgetBlocked || Boolean(error);
+  const isSpecialStatus = isStatusAlert || continued || pending || ready || compacting;
+  const accessibleLabel = budgetBlocked
+    ? uiText("Recover from a full context window")
     : error
-      ? "交接失败 · 重试"
+      ? uiText("Handoff failed · Retry")
       : continued
-        ? "已交接"
+        ? uiText("Handoff complete")
         : pending
-          ? "整理交接中"
+          ? uiText("Preparing handoff")
           : ready
-            ? "交接已就绪"
+            ? uiText("Handoff ready")
             : compacting
-              ? "压缩中"
-              : ratio !== null
-                ? `上下文 ${Math.round(ratio * 100)}%`
-                : "会话详情";
+              ? uiText("Compacting")
+              : percent !== null
+                ? uiText("Context usage {percent}%", { percent })
+                : uiText("Conversation details");
+  const compactLabel = isSpecialStatus
+    ? accessibleLabel
+    : percent !== null
+      ? `${percent}%`
+      : accessibleLabel;
+  const ctxTone = isStatusAlert
+    ? "bad"
+    : level === "strong" || (clampedRatio !== null && clampedRatio >= 0.8)
+      ? "warn"
+      : "normal";
   const description = budgetBlocked
-    ? "上下文不足，请压缩或换新会话。原记录会保留。"
+    ? uiText(
+        "Compact the context or move to a new conversation. The original history stays available.",
+      )
     : compacting
-      ? "正在压缩，草稿与原记录会保留。"
+      ? uiText("Compacting context. Your draft and history stay available.")
       : pending
         ? pendingRun?.status === "queued"
-          ? "交接指令已排队，当前轮结束后执行。"
-          : "正在整理交接，写好后即可开新会话。"
+          ? uiText("Handoff queued until the current turn finishes.")
+          : uiText("Preparing the handoff. You can open a new conversation when it is ready.")
         : ready
-          ? "交接已写好。默认只准备新会话草稿；填写继续事项才会执行。"
+          ? uiText(
+              "Handoff ready. A new draft is prepared by default. Enter instructions to continue work.",
+            )
           : missing
-            ? "没找到交接文件，可重试整理或在新草稿中保留旧记录入口。"
+            ? uiText(
+                "Handoff file unavailable. Try again or open a draft with a link to the original conversation.",
+              )
             : continued
               ? state.preparedNextThreadId === nextThread?.id
-                ? "交接草稿已准备；本次未发送执行请求，等待你发出新指令。"
-                : "已交接到新会话，旧记录仍保留在这里。"
+                ? uiText("Handoff draft ready. Send instructions when you are ready to start.")
+                : uiText("Handoff complete. The original conversation is still here.")
               : level !== null
                 ? ratio !== null && ratio >= 0.6
-                  ? "占用偏高，仍可继续。"
-                  : "会话较长，可整理后换新会话。"
+                  ? uiText("Context usage is high. You can still continue.")
+                  : uiText(
+                      "You can prepare a handoff to continue this long conversation in a new thread.",
+                    )
                 : "";
   return (
     <Popover
       open={open}
       onOpenChange={(value) => {
         setOpen(value);
-        if (!value) setDetailsOpen(false);
       }}
     >
-      <PopoverTrigger
-        render={
-          <Button
-            type="button"
-            size="xs"
-            variant={
-              budgetBlocked || error
-                ? "destructive-outline"
-                : level === "strong"
-                  ? "warning-outline"
-                  : "ghost-muted"
-            }
-          />
-        }
-        aria-label={label}
-        style={
-          {
-            "--apple-context-progress": `${Math.max(0, Math.min(1, ratio ?? 0)) * 100}%`,
-          } as CSSProperties
-        }
-        data-context-handoff={
-          budgetBlocked
-            ? "blocked"
-            : compacting
-              ? "compacting"
-              : continued
-                ? "continued"
-                : ready
-                  ? "ready"
-                  : pending
-                    ? "pending"
-                    : (level ?? "normal")
-        }
-      >
-        {budgetBlocked || error ? <CircleAlertIcon /> : null}
-        <span className="tabular-nums whitespace-nowrap">{label}</span>
-        <ChevronDownIcon />
-      </PopoverTrigger>
-      <PopoverPopup side="top" align="end" width="md">
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <PopoverTrigger
+              render={<button type="button" />}
+              aria-label={accessibleLabel}
+              style={
+                {
+                  "--apple-context-progress": `${(clampedRatio ?? 0) * 100}%`,
+                } as CSSProperties
+              }
+              data-v9-ctx-pill={isSpecialStatus ? "status" : "compact"}
+              data-v9-ctx-tone={ctxTone}
+              data-context-handoff={
+                budgetBlocked
+                  ? "blocked"
+                  : compacting
+                    ? "compacting"
+                    : continued
+                      ? "continued"
+                      : ready
+                        ? "ready"
+                        : pending
+                          ? "pending"
+                          : (level ?? "normal")
+              }
+            />
+          }
+        >
+          {isStatusAlert ? (
+            <CircleAlertIcon aria-hidden="true" data-v9-ctx-alert-icon="" />
+          ) : (
+            <span data-v9-ctx-ring="" aria-hidden="true" />
+          )}
+          <span data-v9-ctx-pct="">{compactLabel}</span>
+        </TooltipTrigger>
+        <TooltipPopup side="top">{accessibleLabel}</TooltipPopup>
+      </Tooltip>
+      <PopoverPopup side="top" align="start" width="md">
         <div className="space-y-3 text-xs leading-relaxed" data-context-details>
           <div className="space-y-2">
             <div className="flex items-center justify-between gap-3">
-              <PopoverTitle>上下文</PopoverTitle>
+              <PopoverTitle>{uiText("Context window")}</PopoverTitle>
               <span className="text-sm font-medium tabular-nums">
-                {ratio === null ? "未上报" : `${Math.round(ratio * 100)}%`}
+                {ratio === null ? uiText("Not reported") : `${Math.round(ratio * 100)}%`}
               </span>
             </div>
             {ratio !== null ? (
               <div
                 role="progressbar"
-                aria-label="上下文占用"
+                aria-label={uiText("Context usage")}
                 aria-valuenow={Math.round(Math.min(1, Math.max(0, ratio)) * 100)}
                 aria-valuemin={0}
                 aria-valuemax={100}
@@ -470,17 +499,30 @@ export function ContextHandoffNotice({
               {description ? <p>{description}</p> : null}
               {usage?.usedTokens != null ? (
                 <span className="tabular-nums whitespace-nowrap">
-                  约 {Math.round(usage.usedTokens / 1000)}k
-                  {usage.maxTokens ? ` / ${Math.round(usage.maxTokens / 1000)}k` : ""} tokens
+                  {uiText("About {count} tokens", {
+                    count: [
+                      `${Math.round(usage.usedTokens / 1000)}k`,
+                      usage.maxTokens ? `${Math.round(usage.maxTokens / 1000)}k` : null,
+                    ]
+                      .filter(Boolean)
+                      .join(" / "),
+                  })}
                 </span>
               ) : null}
             </div>
             {usage ? <ContextTokenDetails usage={usage} /> : null}
-            {disconnected ? <p className="text-warning">连接中断，数据可能过期</p> : null}
+            {disconnected ? (
+              <p className="text-warning">{uiText("Disconnected. Context data may be stale.")}</p>
+            ) : null}
           </div>
           {pendingSubtasks > 0 ? (
             <p className="text-muted-foreground">
-              {pendingSubtasks} 个子任务运行中，结果仍回到这里。
+              {uiText(
+                pendingSubtasks === 1
+                  ? "{count} subtask is running. Its result will appear here."
+                  : "{count} subtasks are running. Their results will appear here.",
+                { count: pendingSubtasks },
+              )}
             </p>
           ) : null}
           {continued ? (
@@ -491,19 +533,21 @@ export function ContextHandoffNotice({
                 void openThread(nextThread.id);
               }}
             >
-              打开接续会话
+              {uiText("Open the continuation")}
             </Button>
           ) : (
             <div className="flex flex-wrap gap-2">
               {!pending ? (
                 <label className="w-full space-y-1">
-                  <span>交接后继续事项（可选）</span>
+                  <span>{uiText("Instructions after handoff (optional)")}</span>
                   <textarea
                     rows={2}
                     className="w-full rounded-md border bg-background p-2 text-foreground"
                     value={continueInstructions}
                     disabled={busy || disabled || active || state.nextThreadId !== undefined}
-                    placeholder="留空只准备交接草稿，不启动任务；需要继续时写清具体事项。"
+                    placeholder={uiText(
+                      "Leave blank to prepare a draft. To start work, enter the tasks to continue.",
+                    )}
                     onChange={(event) => setContinueInstructions(event.currentTarget.value)}
                   />
                 </label>
@@ -518,7 +562,9 @@ export function ContextHandoffNotice({
                       void continueThread(handoffPath);
                     }}
                   >
-                    {continueInstructions.trim() ? "交接并继续指定事项" : "准备新会话交接"}
+                    {continueInstructions.trim()
+                      ? uiText("Hand off and continue with instructions")
+                      : uiText("Prepare a handoff draft")}
                   </Button>
                 ) : budgetBlocked ? (
                   <>
@@ -529,7 +575,7 @@ export function ContextHandoffNotice({
                         disabled={busy || disabled || compactDisabled}
                         onClick={onCompact}
                       >
-                        压缩当前会话
+                        {uiText("Compact this conversation")}
                       </Button>
                     ) : null}
                     <Button
@@ -540,7 +586,9 @@ export function ContextHandoffNotice({
                         void continueThread(null);
                       }}
                     >
-                      {continueInstructions.trim() ? "交接并继续指定事项" : "准备新会话读取旧记录"}
+                      {continueInstructions.trim()
+                        ? uiText("Hand off and continue with instructions")
+                        : uiText("Prepare a draft with conversation history")}
                     </Button>
                   </>
                 ) : missing ? (
@@ -554,7 +602,7 @@ export function ContextHandoffNotice({
                         void requestHandoff();
                       }}
                     >
-                      重试
+                      {uiText("Retry handoff")}
                     </Button>
                     <Button
                       variant="ghost"
@@ -564,7 +612,9 @@ export function ContextHandoffNotice({
                         void continueThread(null);
                       }}
                     >
-                      {continueInstructions.trim() ? "交接并继续指定事项" : "准备新会话读取旧记录"}
+                      {continueInstructions.trim()
+                        ? uiText("Hand off and continue with instructions")
+                        : uiText("Prepare a draft with conversation history")}
                     </Button>
                   </>
                 ) : (
@@ -576,7 +626,7 @@ export function ContextHandoffNotice({
                       void requestHandoff();
                     }}
                   >
-                    交接到新会话
+                    {uiText("Hand off to a new conversation")}
                   </Button>
                 ))}
 
@@ -587,7 +637,7 @@ export function ContextHandoffNotice({
                   disabled={busy || disabled || compactDisabled || compacting}
                   onClick={onCompact}
                 >
-                  压缩当前会话
+                  {uiText("Compact this conversation")}
                 </Button>
               ) : null}
             </div>
@@ -599,15 +649,9 @@ export function ContextHandoffNotice({
           ) : null}
           <div className="border-t border-border pt-2">
             <div className="flex items-center justify-between gap-2">
-              <Button
-                size="xs"
-                variant="ghost-muted"
-                aria-expanded={detailsOpen}
-                onClick={() => setDetailsOpen(!detailsOpen)}
-              >
-                详细数据
-                <ChevronDownIcon className={detailsOpen ? "rotate-180" : undefined} />
-              </Button>
+              <span className="text-muted-foreground">
+                {uiText("See session statistics below the composer for rounds, times, and tokens.")}
+              </span>
               {!state.requestMessageId && !handoffPath && enabled ? (
                 <Button
                   size="xs"
@@ -621,25 +665,12 @@ export function ContextHandoffNotice({
                     }
                   }}
                 >
-                  {dismissed ? "恢复普通提醒" : "关闭普通提醒"}
+                  {dismissed
+                    ? uiText("Restore context reminders")
+                    : uiText("Mute context reminders")}
                 </Button>
               ) : null}
             </div>
-            {detailsOpen ? (
-              <div className="space-y-3 pt-3 text-muted-foreground">
-                <p className="tabular-nums">
-                  {thread.itemCount} 条记录 · 第 {turns} 轮
-                </p>
-                {showThroughput && open ? (
-                  <LiveTurnThroughput
-                    projection={projection}
-                    environmentId={environmentId}
-                    threadId={thread.id}
-                    disconnected={disconnected}
-                  />
-                ) : null}
-              </div>
-            ) : null}
           </div>
         </div>
       </PopoverPopup>

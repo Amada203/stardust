@@ -8,15 +8,16 @@ import { AnchoredToastProvider } from "./ui/toast";
 it("explains a denied clipboard write and lets the same path be copied again", async () => {
   await using screen = await render(
     <AnchoredToastProvider timeout={0}>
-      <DiffFilePathCopyButton filePath="apps/web/src/index.ts" />
+      <DiffFilePathCopyButton filePath="apps/web/src/index.ts" workspaceRoot="/repo" />
     </AnchoredToastProvider>,
   );
   using write = vi
     .spyOn(navigator.clipboard, "writeText")
     .mockRejectedValueOnce(new DOMException("Clipboard access denied", "NotAllowedError"))
     .mockResolvedValue(undefined);
-  using _console = vi.spyOn(console, "error").mockImplementation(() => undefined);
+  // Exercise total clipboard denial, including the approved browser fallback.
   using _fallback = vi.spyOn(document, "execCommand").mockReturnValue(false);
+  using _console = vi.spyOn(console, "error").mockImplementation(() => undefined);
 
   const copy = screen.getByRole("button", { name: "Copy file path" });
   await copy.click();
@@ -25,7 +26,20 @@ it("explains a denied clipboard write and lets the same path be copied again", a
   await page.getByRole("button", { name: "Dismiss notification" }).click();
   await copy.click();
 
-  await expect.element(page.getByText("Copied!", { exact: true })).toBeVisible();
+  await expect.element(page.getByText("Copied!", { exact: true })).not.toBeInTheDocument();
   expect(write).toHaveBeenCalledTimes(2);
   expect(write).toHaveBeenLastCalledWith("apps/web/src/index.ts");
+});
+
+it("copies a Windows workspace's file path with Windows separators", async () => {
+  await using screen = await render(
+    <AnchoredToastProvider timeout={0}>
+      <DiffFilePathCopyButton filePath="apps/web/src/index.ts" workspaceRoot="C:\repo" />
+    </AnchoredToastProvider>,
+  );
+  using write = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue(undefined);
+
+  await screen.getByRole("button", { name: "Copy file path" }).click();
+
+  await vi.waitFor(() => expect(write).toHaveBeenCalledWith("apps\\web\\src\\index.ts"));
 });

@@ -1,3 +1,4 @@
+import { uiText } from "../../i18n";
 import { useAtomValue } from "@effect/atom-react";
 import {
   type EnvironmentId,
@@ -52,7 +53,7 @@ function MemoryEditor({
       }}
     >
       <Textarea
-        aria-label="记忆内容"
+        aria-label={uiText("Memory content")}
         rows={3}
         maxLength={500}
         value={text}
@@ -60,14 +61,14 @@ function MemoryEditor({
       />
       <div className="flex flex-wrap items-center gap-3">
         <label className="flex items-center gap-2 text-sm">
-          范围
+          {uiText("Scope")}
           <select
-            aria-label="记忆范围"
+            aria-label={uiText("Memory scope")}
             className="rounded-md border bg-background px-2 py-1"
             value={scopeId}
             onChange={(event) => setScopeId(event.target.value)}
           >
-            <option value="global">全局</option>
+            <option value="global">{uiText("Global")}</option>
             {projects.map((project) => (
               <option key={project.id} value={project.id}>
                 {project.title}
@@ -80,10 +81,10 @@ function MemoryEditor({
           </select>
         </label>
         <Button type="submit" size="sm" disabled={busy || text.trim().length === 0}>
-          {approving ? "保存并批准" : "保存记忆"}
+          {approving ? uiText("Save and approve") : uiText("Save memory")}
         </Button>
         <Button type="button" variant="ghost" size="sm" onClick={onCancel} disabled={busy}>
-          取消
+          {uiText("Cancel")}
         </Button>
       </div>
     </form>
@@ -113,14 +114,17 @@ function MemoryEnvironment({
       toastManager.add({
         type: "success",
         title:
-          memoryMutation.type === "approve" ? "记忆已批准，将在下一次普通回合生效" : "记忆已更新",
+          memoryMutation.type === "approve"
+            ? uiText("Memory approved. It takes effect on the next regular turn.")
+            : uiText("Memory updated"),
       });
     }
   };
   const scopeTitle = (scope: MemoryScope) =>
     scope.kind === "global"
-      ? "全局"
-      : (projects.find(({ id }) => id === scope.projectId)?.title ?? `项目 ${scope.projectId}`);
+      ? uiText("Global")
+      : (projects.find(({ id }) => id === scope.projectId)?.title ??
+        uiText("Project {projectId}", { projectId: scope.projectId }));
   const groups = [
     ...new Set([
       "global",
@@ -148,8 +152,10 @@ function MemoryEnvironment({
         <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="text-xs text-muted-foreground">
             {scopeTitle(entry.scope)} ·{" "}
-            {entry.source.kind === "user" ? "用户添加" : `Agent 提案 · ${entry.source.threadId}`} ·{" "}
-            {new Date(entry.updatedAt).toLocaleString()}
+            {entry.source.kind === "user"
+              ? uiText("Added by you")
+              : uiText("Agent proposal · {threadId}", { threadId: entry.source.threadId })}{" "}
+            · {new Date(entry.updatedAt).toLocaleString()}
           </p>
           <div className="flex gap-2">
             {pending ? (
@@ -158,7 +164,7 @@ function MemoryEnvironment({
                 disabled={!allowed || busy}
                 onClick={() => void mutate({ type: "approve", id: entry.id })}
               >
-                批准
+                {uiText("Approve")}
               </Button>
             ) : null}
             <Button
@@ -167,7 +173,7 @@ function MemoryEnvironment({
               disabled={!allowed || busy}
               onClick={() => setEditor(entry)}
             >
-              {pending ? "修改后批准" : "编辑"}
+              {pending ? uiText("Edit and approve") : uiText("Edit")}
             </Button>
             <Button
               variant="ghost"
@@ -175,40 +181,43 @@ function MemoryEnvironment({
               disabled={!allowed || busy}
               onClick={() => void mutate({ type: pending ? "reject" : "delete", id: entry.id })}
             >
-              {pending ? "拒绝" : "删除"}
+              {pending ? uiText("Reject") : uiText("Delete")}
             </Button>
           </div>
         </div>
       </div>
     );
-  if (!config) return <p role="status">正在加载记忆…</p>;
+  if (!config) return <p role="status">{uiText("Loading memory…")}</p>;
   if (!config.memorySettings)
     return (
-      <p className="p-4 text-sm text-muted-foreground">此环境尚不支持记忆，请先升级服务器。</p>
+      <p className="p-4 text-sm text-muted-foreground">
+        {uiText("Update the server to enable memory in this environment.")}
+      </p>
     );
   return (
     <>
       <p className="px-4 text-sm text-muted-foreground">
-        已批准的记忆由此环境统一提供给所有模型。Agent
-        只能提案，需你批准后才会生效。每次普通回合最多注入约 2,000 字符，优先最近更新。
+        {uiText(
+          "This environment shares approved memories with all models. Agents can propose changes for your approval. A regular turn includes up to about 2,000 characters, newest first.",
+        )}
       </p>
       <SettingsSection
         id="memory"
-        title="待确认"
+        title={uiText("Pending approval")}
         titleAction={<Badge variant="secondary">{memory.pending.length}</Badge>}
       >
         {memory.pending.length ? (
           memory.pending.toReversed().map((entry) => renderRow(entry, true))
         ) : (
-          <p className="p-4 text-sm text-muted-foreground">暂无待确认提案</p>
+          <p className="p-4 text-sm text-muted-foreground">{uiText("No pending proposals")}</p>
         )}
       </SettingsSection>
       <SettingsSection
-        title="添加记忆"
+        title={uiText("Add memory")}
         headerAction={
           editor !== "new" ? (
             <Button size="xs" disabled={!allowed || busy} onClick={() => setEditor("new")}>
-              添加记忆
+              {uiText("Add memory")}
             </Button>
           ) : null
         }
@@ -222,7 +231,7 @@ function MemoryEnvironment({
           />
         ) : (
           <p className="p-4 text-sm text-muted-foreground">
-            保存适合长期复用的简短事实与偏好，最多 500 字符。
+            {uiText("Save short facts and preferences for reuse. Up to 500 characters.")}
           </p>
         )}
       </SettingsSection>
@@ -231,8 +240,8 @@ function MemoryEnvironment({
           key={key}
           title={
             key === "global"
-              ? "全局"
-              : (projects.find(({ id }) => id === key)?.title ?? `项目 ${key}`)
+              ? uiText("Global")
+              : (projects.find(({ id }) => id === key)?.title ?? uiText("Project {key}", { key }))
           }
         >
           {memory.approved
@@ -244,7 +253,7 @@ function MemoryEnvironment({
             .toSorted((a, b) => b.updatedAt.localeCompare(a.updatedAt))
             .map((entry) => renderRow(entry, false))}
           {key === "global" && !memory.approved.some(({ scope }) => scope.kind === "global") ? (
-            <p className="p-4 text-sm text-muted-foreground">暂无全局记忆</p>
+            <p className="p-4 text-sm text-muted-foreground">{uiText("No global memories")}</p>
           ) : null}
         </SettingsSection>
       ))}
@@ -268,7 +277,9 @@ export function MemorySettings() {
           projects={projects}
         />
       ) : (
-        <p className="p-4 text-sm text-muted-foreground">连接环境后管理记忆。</p>
+        <p className="p-4 text-sm text-muted-foreground">
+          {uiText("Connect to an environment to manage memory.")}
+        </p>
       )}
     </SettingsPageContainer>
   );

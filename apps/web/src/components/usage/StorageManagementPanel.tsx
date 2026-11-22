@@ -1,3 +1,9 @@
+import { serverCopy } from "~/i18n/serverCopy";
+import type { DiskSpaceReport } from "@t3tools/contracts";
+import { storagePresentation } from "./storagePresentation";
+import { useTheme } from "../../hooks/useTheme";
+import { UsageDetailsSheet } from "./UsageDetailsSheet";
+import { useUiText } from "~/i18n/useUiText";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import { useState, useEffect, useRef } from "react";
 import { useAtomValue, useAtomRefresh } from "@effect/atom-react";
@@ -5,7 +11,7 @@ import * as AsyncResult from "effect/reactivity/AsyncResult";
 import * as Option from "effect/Option";
 import type { EnvironmentId, StorageActionInput, StorageOperation } from "@t3tools/contracts";
 import { Link } from "@tanstack/react-router";
-import { uiText } from "~/i18n";
+
 import { serverEnvironment } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { formatBytes } from "../../lib/formatBytes";
@@ -18,7 +24,6 @@ import {
 
 import { latestCleanupScan } from "./cleanupModel";
 import { CleanupOverview } from "./CleanupOverview";
-import { cleanupText } from "./cleanupText";
 
 const phaseLabel: Record<string, string> = {
   trashed: "Moved to Trash",
@@ -68,16 +73,22 @@ const kindLabels: Record<string, string> = {
 };
 
 export function StorageManagementPanel({
+  diskReport,
+  refreshTick = 0,
   environmentId,
   onOperationFinished,
 }: {
+  diskReport?: DiskSpaceReport | null;
+  refreshTick?: number;
   environmentId: EnvironmentId;
   onOperationFinished: () => void;
 }) {
+  const uiText = useUiText();
   const [objectId, setObjectId] = useState<string | undefined>();
   const [tab, setTab] = useState<StorageTab>("candidates");
   const [volumePath, setVolumePath] = useState("");
   const [volumeId, setVolumeId] = useState("");
+  const { theme } = useTheme();
   const [plan, setPlan] = useState<StorageOperation | null>(null);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
@@ -96,6 +107,10 @@ export function StorageManagementPanel({
   const result = useAtomValue(atom);
   const data = Option.getOrNull(AsyncResult.value(result));
   const refresh = useAtomRefresh(atom);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Invalidate inventory on an explicit page refresh without remounting its cards.
+  useEffect(() => {
+    if (refreshTick > 0) refresh();
+  }, [refreshTick, refresh]);
   const allowed = useAtomValue(serverEnvironment.manageStorage.permissionAtom(environmentId));
   const run = useAtomCommand(serverEnvironment.manageStorage, { reportFailure: false });
   const statusAtom = serverEnvironment.inspectStorage({
@@ -106,10 +121,28 @@ export function StorageManagementPanel({
   const statusData = Option.getOrNull(AsyncResult.value(statusResult));
   const refreshStatus = useAtomRefresh(statusAtom);
   const operations = statusData?.operations ?? data?.operations ?? [];
+  const [statusUnknown, setStatusUnknown] = useState(false);
+  const [submissionBaseline, setSubmissionBaseline] = useState<typeof statusData>(null);
+  const missingSubmission =
+    submittedId !== null &&
+    statusData !== null &&
+    statusData !== submissionBaseline &&
+    !statusResult.waiting &&
+    !operations.some((op) => op.id === submittedId);
+  const unknownSubmission = statusUnknown || missingSubmission;
   const submitted =
+    !unknownSubmission &&
     submittedId !== null &&
     !operations.some((op) => op.id === submittedId && op.phase !== "planned");
   const running = submitted || operations.some((op) => activePhases.has(op.phase));
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- A submission has one bounded acknowledgement deadline, independent of status polls.
+  useEffect(() => {
+    if (!submitted || !submittedId) return;
+    const timer = window.setTimeout(() => {
+      setStatusUnknown(true);
+    }, 30_000);
+    return () => window.clearTimeout(timer);
+  }, [submitted, submittedId]);
   const scanState = latestCleanupScan(data?.scan, statusData?.scan);
   const scanning = scanState?.phase === "scanning";
   const finishedKey = operations
@@ -163,6 +196,8 @@ export function StorageManagementPanel({
         )
           setPlan(result.value);
         if (input.action === "execute") {
+          setSubmissionBaseline(statusData);
+          setStatusUnknown(false);
           setSubmittedId(result.value.id);
           setPlan(result.value);
         }
@@ -172,7 +207,11 @@ export function StorageManagementPanel({
         }
         if (input.action === "cleanup-settings") refresh();
         refreshStatus();
-      } else setError(String(squashAtomCommandFailure(result)));
+      } else {
+        const message = String(squashAtomCommandFailure(result));
+        setError(message);
+        if (input.action === "execute" && /返回预览|重新预览|重新检查/.test(message)) setPlan(null);
+      }
     } catch (cause) {
       setError(String(cause));
     }
@@ -210,7 +249,10 @@ export function StorageManagementPanel({
   return (
     <section className="flex min-w-0 flex-col gap-4" aria-busy={pending || result.waiting}>
       <CleanupOverview
-        data={{ ...data, ...(scanState ? { scan: scanState } : {}) }}
+        data={storagePresentation(
+          { ...data, operations, ...(scanState ? { scan: scanState } : {}) },
+          theme === "apple" ? diskReport : undefined,
+        )}
         previewPlan={plan}
         allowed={allowed}
         busy={busy}
@@ -235,96 +277,176 @@ export function StorageManagementPanel({
         )}
       />
       {plan?.phase === "planned" ? (
-        <div
-          className="space-y-3 rounded-lg border bg-muted/30 p-4"
-          role="region"
-          aria-label={uiText("Confirm storage plan")}
-        >
-          <h4 className="text-sm font-medium">{uiText("Confirm storage plan")}</h4>
-          <p className="break-all text-xs">{plan.source ?? plan.destination}</p>
-          {plan.cleanupDestination ? (
-            <p className="break-all text-xs">
-              {plan.cleanupDestination === "trash"
-                ? cleanupText(
-                    "Move to Trash (no immediate space released)",
-                    "移入废纸篓（不立即释放空间）",
-                  )
-                : cleanupText("Permanently delete rebuildable files", "永久删除可重建文件")}{" "}
-              · {plan.destination}
-            </p>
-          ) : null}
-          {plan.archive ? <p className="break-all text-xs">{plan.archive}</p> : null}
-          <p className="text-sm">
-            {formatBytes(plan.sourceBytes)} ·{" "}
-            {uiText(
-              plan.type === "mole-cleanup"
-                ? cleanupText(
-                    "Review destination and recovery before confirming.",
-                    "请核对去向与恢复方式后确认。",
-                  )
-                : plan.type === "log-cleanup"
-                  ? cleanupText(
-                      "Verified log archive, then remove only the listed logs.",
-                      "先校验日志归档，再移除清单内的旧日志。",
-                    )
-                  : plan.type === "restore"
-                    ? "Restore to a new directory; never overwrite."
-                    : plan.release
-                      ? "Release the source only after archive verification."
-                      : "Archive a copy; keep the original.",
-            )}
-          </p>
-          {plan.items ? (
-            <details className="text-xs">
-              <summary className="cursor-pointer">
-                {uiText("Files in this plan")} · {plan.items.length}
-              </summary>
-              <ul className="mt-2 max-h-48 overflow-auto">
-                {plan.items.map((item) => (
-                  <li key={item.path} className="break-all py-1">
-                    {item.path} · {formatBytes(item.bytes)}
-                  </li>
-                ))}
-              </ul>
-            </details>
-          ) : null}
-          {plan.warnings?.map((warning) => (
-            <p key={warning} className="text-xs text-muted-foreground">
-              {warning}
-            </p>
-          ))}
-          <div className="flex gap-2">
-            <Button
-              size="sm"
-              disabled={!allowed || busy}
-              onClick={() => void act({ action: "execute", planId: plan.id })}
+        theme === "apple" ? (
+          <UsageDetailsSheet
+            open
+            onOpenChange={(open) => {
+              if (!open && !pending) void act({ action: "cancel", planId: plan.id });
+            }}
+            title={uiText("Confirm storage plan")}
+            description={uiText("Review paths, destinations, and recovery before confirming.")}
+          >
+            <div
+              className="space-y-3 rounded-lg border bg-muted/30 p-4"
+              role="region"
+              aria-label={uiText("Confirm storage plan")}
             >
+              <h4 className="text-sm font-medium">{uiText("Confirm storage plan")}</h4>
+              <p className="break-all text-xs">{plan.source ?? plan.destination}</p>
+              {plan.cleanupDestination ? (
+                <p className="break-all text-xs">
+                  {plan.cleanupDestination === "trash"
+                    ? uiText("Move to Trash (no immediate space released)")
+                    : uiText("Permanently delete rebuildable files")}{" "}
+                  · {serverCopy(plan.destination ?? "")}
+                </p>
+              ) : null}
+              {plan.archive ? <p className="break-all text-xs">{plan.archive}</p> : null}
+              <p className="text-sm">
+                {formatBytes(plan.sourceBytes)} ·{" "}
+                {uiText(
+                  plan.type === "mole-cleanup"
+                    ? uiText("Review destination and recovery before confirming.")
+                    : plan.type === "log-cleanup"
+                      ? uiText("Verified log archive, then remove only the listed logs.")
+                      : plan.type === "restore"
+                        ? "Restore to a new directory; never overwrite."
+                        : plan.release
+                          ? "Release the source only after archive verification."
+                          : "Archive a copy; keep the original.",
+                )}
+              </p>
+              {plan.items ? (
+                <details className="text-xs">
+                  <summary className="cursor-pointer">
+                    {uiText("Files in this plan")} · {plan.items.length}
+                  </summary>
+                  <ul className="mt-2 max-h-48 overflow-auto">
+                    {plan.items.map((item) => (
+                      <li key={item.path} className="break-all py-1">
+                        {item.path} · {formatBytes(item.bytes)}
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              ) : null}
+              {plan.warnings?.map((warning) => (
+                <p key={serverCopy(warning)} className="text-xs text-muted-foreground">
+                  {serverCopy(warning)}
+                </p>
+              ))}
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  disabled={!allowed || busy}
+                  onClick={() => void act({ action: "execute", planId: plan.id })}
+                >
+                  {uiText(
+                    plan.type === "mole-cleanup"
+                      ? uiText("Confirm cleanup")
+                      : plan.type === "log-cleanup"
+                        ? uiText("Confirm log cleanup")
+                        : plan.type === "restore"
+                          ? "Confirm restore"
+                          : plan.release
+                            ? "Confirm archive and release"
+                            : "Confirm archive copy",
+                  )}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={pending}
+                  onClick={() => void act({ action: "cancel", planId: plan.id })}
+                >
+                  {uiText("Cancel")}
+                </Button>
+              </div>
+            </div>
+          </UsageDetailsSheet>
+        ) : (
+          <div
+            className="space-y-3 rounded-lg border bg-muted/30 p-4"
+            role="region"
+            aria-label={uiText("Confirm storage plan")}
+          >
+            <h4 className="text-sm font-medium">{uiText("Confirm storage plan")}</h4>
+            <p className="break-all text-xs">{plan.source ?? plan.destination}</p>
+            {plan.cleanupDestination ? (
+              <p className="break-all text-xs">
+                {plan.cleanupDestination === "trash"
+                  ? uiText("Move to Trash (no immediate space released)")
+                  : uiText("Permanently delete rebuildable files")}{" "}
+                · {serverCopy(plan.destination ?? "")}
+              </p>
+            ) : null}
+            {plan.archive ? <p className="break-all text-xs">{plan.archive}</p> : null}
+            <p className="text-sm">
+              {formatBytes(plan.sourceBytes)} ·{" "}
               {uiText(
                 plan.type === "mole-cleanup"
-                  ? cleanupText("Confirm cleanup", "确认清理")
+                  ? uiText("Review destination and recovery before confirming.")
                   : plan.type === "log-cleanup"
-                    ? cleanupText("Confirm log cleanup", "确认清理日志")
+                    ? uiText("Verified log archive, then remove only the listed logs.")
                     : plan.type === "restore"
-                      ? "Confirm restore"
+                      ? "Restore to a new directory; never overwrite."
                       : plan.release
-                        ? "Confirm archive and release"
-                        : "Confirm archive copy",
+                        ? "Release the source only after archive verification."
+                        : "Archive a copy; keep the original.",
               )}
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={pending}
-              onClick={() => void act({ action: "cancel", planId: plan.id })}
-            >
-              {uiText("Cancel")}
-            </Button>
+            </p>
+            {plan.items ? (
+              <details className="text-xs">
+                <summary className="cursor-pointer">
+                  {uiText("Files in this plan")} · {plan.items.length}
+                </summary>
+                <ul className="mt-2 max-h-48 overflow-auto">
+                  {plan.items.map((item) => (
+                    <li key={item.path} className="break-all py-1">
+                      {item.path} · {formatBytes(item.bytes)}
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            ) : null}
+            {plan.warnings?.map((warning) => (
+              <p key={serverCopy(warning)} className="text-xs text-muted-foreground">
+                {serverCopy(warning)}
+              </p>
+            ))}
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                disabled={!allowed || busy}
+                onClick={() => void act({ action: "execute", planId: plan.id })}
+              >
+                {uiText(
+                  plan.type === "mole-cleanup"
+                    ? uiText("Confirm cleanup")
+                    : plan.type === "log-cleanup"
+                      ? uiText("Confirm log cleanup")
+                      : plan.type === "restore"
+                        ? "Confirm restore"
+                        : plan.release
+                          ? "Confirm archive and release"
+                          : "Confirm archive copy",
+                )}
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={pending}
+                onClick={() => void act({ action: "cancel", planId: plan.id })}
+              >
+                {uiText("Cancel")}
+              </Button>
+            </div>
           </div>
-        </div>
+        )
       ) : null}
-      <details>
-        <summary className="cursor-pointer text-xs text-muted-foreground">
-          {cleanupText("All directories, archives & activity", "所有目录、归档与操作记录")}
+      <details data-usage-card>
+        <summary className="cursor-pointer text-sm text-foreground">
+          {uiText("Cleanup history & directory details")}
         </summary>
         <div className="mt-4 flex min-w-0 flex-col gap-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -339,7 +461,7 @@ export function StorageManagementPanel({
                 <option value="">{uiText("All inspected volumes")}</option>
                 {data.volumes.map((volume) => (
                   <option key={volume.id} value={volume.path}>
-                    {volume.internal ? uiText("T3 data volume") : volume.name}
+                    {volume.internal ? uiText("T3 data volume") : serverCopy(volume.name)}
                   </option>
                 ))}
               </select>
@@ -440,7 +562,7 @@ export function StorageManagementPanel({
                   <div key={item.id} className="border-b py-3 last:border-b-0">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <div className="truncate text-sm font-medium">{item.name}</div>
+                        <div className="truncate text-sm font-medium">{serverCopy(item.name)}</div>
                         <span className="text-xs text-muted-foreground">
                           {uiText(kindLabels[item.kind] ?? "Directory")}
                           {item.modifiedAt
@@ -457,7 +579,7 @@ export function StorageManagementPanel({
                         {uiText("Details and actions")}
                       </summary>
                       <p className="my-2 break-all select-text">{item.path}</p>
-                      <p className="mb-2 text-muted-foreground">{item.reason}</p>
+                      <p className="mb-2 text-muted-foreground">{serverCopy(item.reason ?? "")}</p>
                       <div className="flex flex-wrap gap-2">
                         <Button variant="ghost" size="xs" onClick={() => void copyPath(item.path)}>
                           {uiText("Copy path")}
@@ -568,7 +690,7 @@ export function StorageManagementPanel({
                   </p>
                   <p className="break-all">{op.source ?? op.destination ?? op.archive}</p>
                   {op.held ? <p className="break-all">{op.held}</p> : null}
-                  {op.error ? <p role="alert">{op.error}</p> : null}
+                  {op.error ? <p role="alert">{serverCopy(op.error)}</p> : null}
                   {op.freeAfter !== undefined && op.freeBefore !== undefined ? (
                     <p>
                       {uiText("Observed free-space change")}:{" "}
@@ -618,10 +740,10 @@ export function StorageManagementPanel({
                   setScanRequest(Date.now());
                 }}
               >
-                {cleanupText("Scan cleanup candidates", "扫描可清理项目")}
+                {uiText("Scan cleanup candidates")}
               </Button>
               <span className="text-xs text-muted-foreground">
-                {cleanupText("Review each destination before confirming.", "逐项核对去向后确认。")}
+                {uiText("Review each destination before confirming.")}
               </span>
             </div>
           ) : null}
@@ -635,7 +757,7 @@ export function StorageManagementPanel({
               <option value="">{uiText("Choose an external APFS / HFS+ volume")}</option>
               {targets.map((volume) => (
                 <option key={volume.id} value={volume.id}>
-                  {volume.name} · {formatBytes(volume.freeBytes)}
+                  {serverCopy(volume.name)} · {formatBytes(volume.freeBytes)}
                 </option>
               ))}
             </select>
@@ -652,9 +774,21 @@ export function StorageManagementPanel({
           {uiText("Storage operation in progress. See Archives and activity.")}
         </p>
       ) : null}
+      {unknownSubmission ? (
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => {
+            refreshStatus();
+            refresh();
+          }}
+        >
+          {uiText("Status unknown · Refresh")}
+        </Button>
+      ) : null}
       {error ? (
         <p role="alert" className="break-all text-sm text-destructive">
-          {error}
+          {serverCopy(error)}
         </p>
       ) : null}
     </section>

@@ -1,4 +1,5 @@
-import { uiText } from "~/i18n";
+import { thrownErrorMessage } from "@t3tools/client-runtime/errors";
+import { m } from "~/i18n/messages";
 import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
@@ -11,10 +12,12 @@ import type {
   ProviderInstanceId,
   ServerProvider,
 } from "@t3tools/contracts";
+import { msg, T, useGT, useMessages, Var } from "gt-react";
 import { lazy, Suspense, useRef, useState } from "react";
 import { CopyIcon } from "lucide-react";
 
 import { writeTextToClipboard } from "../../hooks/useCopyToClipboard";
+import { isWebUrl } from "../../browser/webUrl";
 import { ensureLocalApi } from "../../localApi";
 import { useEnvironmentQuery } from "../../state/query";
 import { serverEnvironment } from "../../state/server";
@@ -41,8 +44,9 @@ export function ProviderAuthenticationSection({
   readonly provider: ServerProvider;
   readonly readOnly: boolean;
 }) {
+  const gt = useGT();
   const target = { environmentId, input: { instanceId } };
-  const query = useEnvironmentQuery(serverEnvironment.providerAuthState(target));
+  const query = useEnvironmentQuery(serverEnvironment.providerAuthState(target), useMessages());
   const commands = { reportFailure: false, reportDefect: false };
   const start = useAtomCommand(serverEnvironment.startProviderAuth, commands);
   const respond = useAtomCommand(serverEnvironment.respondProviderAuth, commands);
@@ -79,25 +83,25 @@ export function ProviderAuthenticationSection({
     (provider.auth.type === "gemini-api-key" || provider.auth.type === "agent-platform");
   const accountDescription = active
     ? auth?.phase === "starting"
-      ? (auth.message ?? (usesCredentials ? "Connecting…" : uiText("Starting sign-in…")))
+      ? (auth.message ?? (usesCredentials ? gt("Connecting…") : gt("Starting sign-in…")))
       : auth?.phase === "verifying"
         ? usesCredentials
-          ? "Checking credentials and loading models…"
-          : uiText("Checking your account…")
+          ? gt("Checking credentials and loading models…")
+          : gt("Checking your account…")
         : interaction?.type === "terminal"
-          ? uiText("Complete sign-in in the terminal below.")
+          ? gt("Complete sign-in in the terminal below.")
           : interaction?.type === "credentials"
-            ? uiText("Enter your credentials below.")
-            : uiText("Finish signing in in your browser.")
+            ? gt("Enter your credentials below.")
+            : gt("Finish signing in in your browser.")
     : signedIn
-      ? uiText("Signed in.")
+      ? gt("Signed in.")
       : isDiscovering
-        ? uiText("Discovering sign-in methods…")
+        ? gt("Discovering sign-in methods…")
         : needsExternalSetup
-          ? uiText("No in-app sign-in advertised. Follow the provider's docs to finish setup.")
+          ? gt("No in-app sign-in advertised. Follow the provider's docs to finish setup.")
           : usesCredentials
-            ? uiText("Connect on {environment} to load models.", { environment: environmentLabel })
-            : uiText("Sign in on {environment}.", { environment: environmentLabel });
+            ? gt("Connect on {environment} to load models.", { environment: environmentLabel })
+            : gt("Sign in on {environment}.", { environment: environmentLabel });
   const statusMessage = auth?.phase === "failed" ? auth.message : null;
   const disabled = readOnly || pending || query.error !== null || isDiscovering;
   const draftId = `${auth?.flowId ?? ""}:${interaction?.id ?? ""}`;
@@ -119,11 +123,13 @@ export function ProviderAuthenticationSection({
       else if (!isAtomCommandInterrupted(result)) {
         const failure = squashAtomCommandFailure(result);
         setError(
-          failure instanceof Error ? failure.message : "Provider sign-in failed. Try again.",
+          failure instanceof Error
+            ? (thrownErrorMessage(failure, m) ?? failure.message)
+            : gt("Provider sign-in failed. Try again."),
         );
       }
     } catch {
-      setError("Provider sign-in failed. Try again.");
+      setError(gt("Provider sign-in failed. Try again."));
     }
     pendingRef.current = false;
     setPending(false);
@@ -142,6 +148,10 @@ export function ProviderAuthenticationSection({
 
   async function openBrowser() {
     if (!url || readOnly) return;
+    if (!isWebUrl(url)) {
+      setError(gt("This sign-in link is not a web address, so it was not opened."));
+      return;
+    }
     const requiresConsent = interaction?.type === "browser" && interaction.requiresConsent;
     // Reserve tabs before awaiting consent; browsers block later opens.
     const pending = requiresConsent && !window.desktopBridge ? window.open("", "_blank") : null;
@@ -156,7 +166,7 @@ export function ProviderAuthenticationSection({
       setError(null);
     } catch {
       pending?.close();
-      setError("Could not open the sign-in page. Copy the link and open it in your browser.");
+      setError(gt("Could not open the sign-in page. Copy the link and open it in your browser."));
     }
   }
 
@@ -166,19 +176,21 @@ export function ProviderAuthenticationSection({
 
   return (
     <SettingsRow
-      title={uiText("Account")}
+      title={gt("Account")}
       description={
         signedIn && !active && provider.auth.email?.trim() ? (
           <span>
-            {uiText("Signed in as")}
-            <RedactedSensitiveText
-              key={provider.auth.email}
-              value={provider.auth.email}
-              ariaLabel={"Toggle account email visibility"}
-              revealTooltip={"Click to reveal email"}
-              hideTooltip={"Click to hide email"}
-              className={"max-w-full truncate"}
-            />
+            <T>
+              Signed in as{" "}
+              <RedactedSensitiveText
+                key={provider.auth.email}
+                value={provider.auth.email}
+                ariaLabel={gt("Toggle account email visibility")}
+                revealTooltip={gt("Click to reveal email")}
+                hideTooltip={gt("Click to hide email")}
+                className="max-w-full truncate"
+              />
+            </T>
           </span>
         ) : (
           <span role={"status"}>{accountDescription}</span>
@@ -199,14 +211,16 @@ export function ProviderAuthenticationSection({
               disabled={disabled}
               onValueChange={(value) => setMethodId(value ?? "")}
             >
-              <SelectTrigger size={"sm"} aria-label={uiText("Sign-in method")} className={"w-44"}>
+              <SelectTrigger size="sm" aria-label={gt("Sign-in method")} className="w-44">
                 <SelectValue>
                   {auth?.methods?.find((method) => method.id === methodId)?.name ??
-                    uiText("Provider default")}
+                    gt("Provider default")}
                 </SelectValue>
               </SelectTrigger>
               <SelectPopup>
-                <SelectItem value={""}>{uiText("Provider default")}</SelectItem>
+                <SelectItem value="">
+                  <T>Provider default</T>
+                </SelectItem>
                 {auth?.methods?.map((method) => (
                   <SelectItem key={method.id} value={method.id}>
                     {method.name}
@@ -223,32 +237,42 @@ export function ProviderAuthenticationSection({
                 disabled={disabled}
                 onClick={() => void openBrowser()}
               >
-                {uiText("Open browser")}
+                <T>Open browser</T>
               </Button>
               <Tooltip>
                 <TooltipTrigger
                   render={
                     <Button
-                      aria-label={uiText("Copy sign-in link")}
-                      size={"icon-sm"}
-                      variant={"ghost-muted"}
+                      aria-label={gt("Copy sign-in link")}
+                      size="icon-sm"
+                      variant="ghost-muted"
                       disabled={disabled}
                       onClick={() => {
                         // Copy during the click to retain clipboard activation; consent must still be
                         // recorded before use.
-                        const copied = writeTextToClipboard(url, "Provider sign-in link");
+                        const copied = writeTextToClipboard(url, {
+                          target: "Provider sign-in link",
+                          unavailableMessage: msg(
+                            "Clipboard API is unavailable while copying Provider sign-in link.",
+                          ),
+                          failureMessage: msg(
+                            "Failed to copy Provider sign-in link to the clipboard.",
+                          ),
+                        });
                         void (async () => {
                           await copied;
                           if (interaction?.type === "browser" && interaction.requiresConsent)
                             await send({ type: "browser", action: "accept" });
-                        })().catch(() => setError("Could not copy the sign-in link."));
+                        })().catch(() => setError(gt("Could not copy the sign-in link.")));
                       }}
                     >
                       <CopyIcon />
                     </Button>
                   }
                 />
-                <TooltipPopup>{uiText("Copy sign-in link")}</TooltipPopup>
+                <TooltipPopup>
+                  <T>Copy sign-in link</T>
+                </TooltipPopup>
               </Tooltip>
             </>
           ) : null}
@@ -261,13 +285,13 @@ export function ProviderAuthenticationSection({
                   <a href={provider.setup.documentationUrl} target={"_blank"} rel={"noreferrer"} />
                 }
               >
-                {uiText("Open docs")}
+                <T>Open docs</T>
               </Button>
             ) : active && auth?.flowId ? (
               <Button
-                size={"sm"}
-                variant={"ghost-muted"}
-                aria-label={uiText("Cancel sign-in")}
+                size="sm"
+                variant="ghost-muted"
+                aria-label={gt("Cancel sign-in")}
                 disabled={disabled}
                 onClick={() =>
                   void run(() =>
@@ -275,7 +299,7 @@ export function ProviderAuthenticationSection({
                   )
                 }
               >
-                {uiText("Cancel")}
+                <T>Cancel</T>
               </Button>
             ) : !active && !needsExternalSetup && provider.setup?.canAuthenticate !== false ? (
               <Button
@@ -297,14 +321,14 @@ export function ProviderAuthenticationSection({
                 }
               >
                 {signedIn
-                  ? uiText("Change account")
+                  ? gt("Change account")
                   : auth?.phase === "failed" || auth?.phase === "cancelled"
                     ? usesCredentials
-                      ? "Retry connection"
-                      : uiText("Retry sign-in")
+                      ? gt("Retry connection")
+                      : gt("Retry sign-in")
                     : usesCredentials
-                      ? "Connect"
-                      : uiText("Sign in")}
+                      ? gt("Connect")
+                      : gt("Sign in")}
               </Button>
             ) : null}
             {!active && signedIn && (provider.auth.canLogout ?? provider.setup?.canAuthenticate) ? (
@@ -315,14 +339,20 @@ export function ProviderAuthenticationSection({
                 onClick={() => {
                   void ensureLocalApi()
                     .dialogs.confirm(
-                      `Sign out of ${provider.displayName ?? provider.driver} on ${environmentLabel}? This stops running threads that share this sign-in. Thread history is kept.`,
+                      gt(
+                        "Sign out of {provider} on {environment}? This stops running threads that share this sign-in. Thread history is kept.",
+                        {
+                          provider: provider.displayName ?? provider.driver,
+                          environment: environmentLabel,
+                        },
+                      ),
                     )
                     .then((confirmed) => {
                       if (confirmed) void run(() => logout(target));
                     });
                 }}
               >
-                {uiText("Sign out")}
+                <T>Sign out</T>
               </Button>
             ) : null}
           </>
@@ -337,18 +367,22 @@ export function ProviderAuthenticationSection({
       query.error ? (
         <>
           {interaction?.type === "deviceCode" ? (
-            <p className={"py-2 text-sm text-muted-foreground"}>
-              {uiText("Enter code")}
-              <code className={"select-all font-mono text-foreground"}>{interaction.userCode}</code>
-              {uiText("in your browser.")}
+            <p className="py-2 text-sm text-muted-foreground">
+              <T>
+                Enter code{" "}
+                <code className="select-all font-mono text-foreground">
+                  <Var>{interaction.userCode}</Var>
+                </code>{" "}
+                in your browser.
+              </T>
             </p>
           ) : null}
           {interaction?.type === "terminal" ? (
             <div className={"py-2"}>
               <Suspense
                 fallback={
-                  <p className={"text-xs text-muted-foreground"}>
-                    {uiText("Loading sign-in terminal…")}
+                  <p className="text-xs text-muted-foreground">
+                    <T>Loading sign-in terminal…</T>
                   </p>
                 }
               >
@@ -361,7 +395,7 @@ export function ProviderAuthenticationSection({
                     for (
                       let offset = 0;
                       offset < Math.max(1, response.data.length);
-                      offset += 4096
+                      offset += 4_096
                     ) {
                       terminalQueue.current.push({
                         instanceId,
@@ -369,7 +403,7 @@ export function ProviderAuthenticationSection({
                         interactionId: interaction.id,
                         response: {
                           ...response,
-                          data: response.data.slice(offset, offset + 4096),
+                          data: response.data.slice(offset, offset + 4_096),
                         },
                       });
                     }
@@ -382,14 +416,14 @@ export function ProviderAuthenticationSection({
                         if (result._tag !== "Success") {
                           terminalQueue.current = [];
                           if (!isAtomCommandInterrupted(result))
-                            setError("The provider sign-in terminal is no longer available.");
+                            setError(gt("The provider sign-in terminal is no longer available."));
                           break;
                         }
                       }
                     })()
                       .catch(() => {
                         terminalQueue.current = [];
-                        setError("Could not send input to the provider sign-in terminal.");
+                        setError(gt("Could not send input to the provider sign-in terminal."));
                       })
                       .finally(() => {
                         terminalSending.current = false;
@@ -401,7 +435,7 @@ export function ProviderAuthenticationSection({
           ) : null}
           {interaction?.type === "credentials" ? (
             <form
-              className={"grid gap-2 py-2 text-sm leading-normal"}
+              className="grid gap-2 py-2 text-sm leading-normal"
               onSubmit={(event) => {
                 event.preventDefault();
                 void send({ type: "credentials", values }).then((sent) => {
@@ -410,33 +444,33 @@ export function ProviderAuthenticationSection({
               }}
             >
               {interaction.fields.map((field) => (
-                <label key={field.name} className={"grid gap-1"}>
+                <label key={field.name} className="grid gap-1">
                   {field.label}
                   <Input
-                    size={"sm"}
+                    size="sm"
                     type={field.secret ? "password" : "text"}
-                    autoComplete={"off"}
+                    autoComplete="off"
                     value={values[field.name] ?? ""}
                     disabled={disabled}
-                    maxLength={16384}
+                    maxLength={16_384}
                     onChange={(event) => updateDraft(field.name, event.target.value)}
                   />
                 </label>
               ))}
               <Button
-                type={"submit"}
-                size={"sm"}
-                variant={"outline"}
-                className={"w-fit"}
+                type="submit"
+                size="sm"
+                variant="outline"
+                className="w-fit"
                 disabled={disabled}
               >
-                {uiText("Connect")}
+                <T>Connect</T>
               </Button>
             </form>
           ) : null}
           {url && (interaction?.type === "browser" ? interaction.acceptsCallback : !interaction) ? (
             <form
-              className={"grid gap-2 py-2 text-sm leading-normal"}
+              className="grid gap-2 py-2 text-sm leading-normal"
               onSubmit={(event) => {
                 event.preventDefault();
                 if (!auth?.flowId || !values.callback?.trim()) return;
@@ -450,32 +484,32 @@ export function ProviderAuthenticationSection({
                 });
               }}
             >
-              <label className={"grid gap-1"}>
-                {uiText("If the final localhost page does not load, paste its full URL here.")}
+              <label className="grid gap-1">
+                <T>If the final localhost page does not load, paste its full URL here.</T>
                 <Input
-                  size={"sm"}
+                  size="sm"
                   id={`provider-callback-${instanceId}`}
-                  type={"url"}
-                  autoComplete={"off"}
+                  type="url"
+                  autoComplete="off"
                   value={values.callback ?? ""}
                   disabled={disabled}
-                  maxLength={16384}
+                  maxLength={16_384}
                   onChange={(event) => updateDraft("callback", event.target.value)}
                 />
               </label>
               <Button
-                type={"submit"}
-                size={"sm"}
-                variant={"outline"}
-                className={"w-fit"}
+                type="submit"
+                size="sm"
+                variant="outline"
+                className="w-fit"
                 disabled={disabled || !values.callback?.trim()}
               >
-                {uiText("Continue")}
+                <T>Continue</T>
               </Button>
             </form>
           ) : null}
           {error || query.error ? (
-            <p role={"alert"} className={"py-2 text-xs text-destructive"}>
+            <p role="alert" className="py-2 text-xs text-destructive">
               {error ?? query.error}
             </p>
           ) : null}

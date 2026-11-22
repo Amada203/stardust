@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vite-plus/test";
-import type { RuntimeMode } from "@t3tools/contracts";
+import type { EnvironmentId, ProjectId, RuntimeMode } from "@t3tools/contracts";
+
 const testState = vi.hoisted(() => {
   let completeProjectFileRead: (value: null) => void = () => undefined;
   let projectFileRead = Promise.resolve<null>(null);
@@ -21,19 +22,15 @@ const testState = vi.hoisted(() => {
   let draftsWithUserText = new Set<string>();
   const router = {
     state: {
-      location: { href: "/", pathname: "/" },
+      location: { href: "/" },
       matches: [{ params: {} }],
     },
-    navigate: vi.fn(
-      async (request: {
-        readonly params: {
-          readonly draftId: string;
-        };
-      }) => {
-        router.state.location.href = `/draft/${request.params.draftId}`;
-        router.state.location.pathname = router.state.location.href;
-      },
-    ),
+    navigate: vi.fn(async (request: { readonly params: { readonly draftId: string } }) => {
+      router.state.location.href = `/draft/${request.params.draftId}`;
+    }),
+    buildLocation: (request: { readonly params: { readonly draftId: string } }) => ({
+      href: `/draft/${request.params.draftId}`,
+    }),
   };
   const draftStore = {
     getComposerDraft: vi.fn((draftId: string) => ({ draftId })),
@@ -57,6 +54,7 @@ const testState = vi.hoisted(() => {
     setModelSelection: vi.fn(),
     setPrompt: vi.fn(),
   };
+
   return {
     completeProjectFileRead: (value: null) => completeProjectFileRead(value),
     draftStore,
@@ -83,6 +81,9 @@ const testState = vi.hoisted(() => {
     get openDraftRoute() {
       return openDraftRoute;
     },
+    registerDraft(draft: NonNullable<typeof storedDraft>) {
+      storedDraft = draft;
+    },
     openEmptyDraft(draftId: string) {
       openDraftRoute = { kind: "draft", draftId };
     },
@@ -108,7 +109,6 @@ const testState = vi.hoisted(() => {
         defaultRuntimeMode: "full-access",
       };
       router.state.location.href = "/";
-      router.state.location.pathname = "/";
       router.navigate.mockClear();
       draftStore.setDraftThreadContext.mockClear();
       draftStore.setLogicalProjectDraftThreadId.mockClear();
@@ -120,6 +120,7 @@ const testState = vi.hoisted(() => {
     router,
   };
 });
+
 const testServerConfigs = () =>
   new Map([
     [
@@ -133,6 +134,7 @@ const testServerConfigs = () =>
     ],
     ["environment-ssh", { settings: testState.targetSettings }],
   ]);
+
 vi.mock("../rpc/atomRegistry", () => ({
   appAtomRegistry: {
     get: (atom: unknown) =>
@@ -141,6 +143,7 @@ vi.mock("../rpc/atomRegistry", () => ({
         : testServerConfigs(),
   },
 }));
+
 vi.mock("@effect/atom-react", () => ({
   useAtomValue: (atom: unknown) =>
     atom === "primary-settings"
@@ -148,11 +151,13 @@ vi.mock("@effect/atom-react", () => ({
       : testServerConfigs(),
 }));
 vi.mock("@t3tools/client-runtime/environment", () => ({
-  scopedProjectKey: () => "remote-project",
+  scopedProjectKey: (ref: { environmentId: string; projectId: string }) =>
+    `${ref.environmentId}:${ref.projectId}`,
   scopeProjectRef: (environmentId: string, projectId: string) => ({ environmentId, projectId }),
   scopeThreadRef: (environmentId: string, threadId: string) => ({ environmentId, threadId }),
 }));
-vi.mock("@t3tools/contracts", () => ({
+vi.mock("@t3tools/contracts", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@t3tools/contracts")>()),
   DEFAULT_RUNTIME_MODE: "default",
   DEFAULT_SERVER_SETTINGS: {},
 }));
@@ -161,9 +166,7 @@ vi.mock("@t3tools/shared/projectSettings", () => ({
     settings: Record<string, unknown>,
     _projectId: unknown,
     _project: unknown,
-    projectFile?: {
-      defaultThreadEnvMode?: "local" | "worktree";
-    } | null,
+    projectFile?: { defaultThreadEnvMode?: "local" | "worktree" } | null,
   ) => ({
     settings:
       projectFile === undefined
@@ -177,11 +180,7 @@ vi.mock("@t3tools/shared/projectSettings", () => ({
     overrides: {},
   }),
   resolveNewThreadEnvMode: (input: {
-    projectSettings: {
-      settings: {
-        defaultThreadEnvMode: "local" | "worktree";
-      };
-    };
+    projectSettings: { settings: { defaultThreadEnvMode: "local" | "worktree" } };
   }) => input.projectSettings.settings.defaultThreadEnvMode,
 }));
 vi.mock("@tanstack/react-router", () => ({
@@ -192,7 +191,9 @@ vi.mock("react", () => ({
   useCallback: <T>(callback: T) => callback,
   useMemo: <T>(factory: () => T) => factory(),
 }));
-vi.mock("../components/Sidebar.logic", () => ({ orderItemsByPreferredIds: () => [] }));
+vi.mock("../components/Sidebar.logic", () => ({
+  orderItemsByPreferredIds: ({ items }: { items: unknown[] }) => items,
+}));
 vi.mock("../composerDraftStore", () => {
   const useComposerDraftStore = Object.assign(() => null, {
     getState: () => testState.draftStore,
@@ -206,6 +207,7 @@ vi.mock("../composerDraftStore", () => {
 });
 vi.mock("../lib/chatThreadActions", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../lib/chatThreadActions")>()),
+  hasExplicitComposerModelSelection: () => false,
   resolveNewThreadModelSelectionOverride: () => null,
 }));
 vi.mock("../providerInstances", () => ({ resolveDefaultProviderModelSelection: () => null }));
@@ -238,6 +240,7 @@ vi.mock("../state/entities", () => {
     useThread: () => null,
   };
 });
+vi.mock("../state/projects", () => ({ defaultProjectFallbackReadyAtom: () => true }));
 vi.mock("../state/olderSettledShelf", () => ({ readUnloadedThreadCount: () => 0 }));
 vi.mock("../state/presentation", () => ({
   environmentSummaries: { connectedEnvironmentIdsAtom: "connected-environment-ids" },
@@ -247,15 +250,16 @@ vi.mock("../state/server", () => ({
   primaryServerSettingsAtom: "primary-settings",
 }));
 vi.mock("../threadRoutes", () => ({
-  resolveThreadRouteTarget: (params: { draftId?: string }) =>
-    params.draftId ? { kind: "draft", draftId: params.draftId } : testState.openDraftRoute,
+  resolveThreadRouteTarget: () => testState.openDraftRoute,
 }));
 vi.mock("../uiStateStore", () => ({
   legacyProjectCwdPreferenceKey: () => "remote-project",
   useUiStateStore: () => [],
 }));
 vi.mock("./useSettings", () => ({ getClientSettings: () => ({}) }));
-import { useNewThreadHandler } from "./useHandleNewThread";
+
+import { resolveDefaultProjectRef, useNewThreadHandler } from "./useHandleNewThread";
+
 describe.each([
   ["new", null],
   [
@@ -275,10 +279,37 @@ describe.each([
       { environmentId: "environment-ssh", projectId: "project-remote" } as never,
       { replace: true },
     );
+
     testState.router.state.location.href = "/usage";
     testState.completeProjectFileRead(null);
     await pendingOpen;
+
     expect(testState.router.state.location.href).toBe("/usage");
+    expect(testState.router.navigate).not.toHaveBeenCalled();
+    expect(testState.draftStore.setLogicalProjectDraftThreadId).not.toHaveBeenCalled();
+  });
+
+  it("resolves to the draft another opener showed for the same project meanwhile", async () => {
+    testState.reset(draft);
+    const pendingOpen = useNewThreadHandler()(
+      { environmentId: "environment-ssh", projectId: "project-remote" } as never,
+      { replace: true },
+    );
+
+    // The location moves before the route matches do.
+    testState.registerDraft({
+      draftId: "draft-home",
+      environmentId: "environment-ssh",
+      promotedTo: null,
+      threadId: "thread-home",
+    });
+    testState.router.state.location.href = "/draft/draft-home";
+    testState.completeProjectFileRead(null);
+
+    await expect(pendingOpen).resolves.toEqual({
+      draftId: "draft-home",
+      threadId: "thread-home",
+    });
     expect(testState.router.navigate).not.toHaveBeenCalled();
     expect(testState.draftStore.setLogicalProjectDraftThreadId).not.toHaveBeenCalled();
   });
@@ -308,48 +339,38 @@ describe.each([
       { environmentId: "environment-ssh", projectId: "project-remote" } as never,
       { replace: true },
     );
+
     testState.removeProject();
     testState.completeProjectFileRead(null);
+
     await expect(pendingOpen).resolves.toBeNull();
     expect(testState.router.navigate).not.toHaveBeenCalled();
     expect(testState.draftStore.setLogicalProjectDraftThreadId).not.toHaveBeenCalled();
   });
 });
+
 describe("useNewThreadHandler", () => {
-  it.each([
-    { navigated: false, reusable: false, pendingMatches: false },
-    { navigated: true, reusable: false, pendingMatches: false },
-    { navigated: true, reusable: false, pendingMatches: true },
-    { navigated: true, reusable: true, pendingMatches: false },
-    { navigated: true, reusable: true, pendingMatches: true },
-  ])(
-    "keeps a concurrently opened draft and its text ($navigated, $reusable, $pendingMatches)",
-    async ({ navigated, reusable, pendingMatches }) => {
-      const raced = {
-        draftId: "draft-raced",
-        environmentId: "environment-ssh",
-        promotedTo: null,
-        threadId: "thread-raced",
-      };
-      testState.reset(raced);
-      testState.draftStore.getDraftSessionByLogicalProjectKey.mockReturnValueOnce(
-        reusable ? (raced as never) : null,
-      );
-      const pendingOpen = useNewThreadHandler()(
-        { environmentId: "environment-ssh", projectId: "project-remote" } as never,
-        { prompt: "Read the playbook. " },
-      );
-      testState.giveUserText("draft-raced");
-      if (navigated) {
-        if (!pendingMatches) testState.openEmptyDraft("draft-raced");
-        testState.router.state.location.href = "/draft/draft-raced";
-        testState.router.state.location.pathname = "/draft/draft-raced";
-      }
-      const opened = await pendingOpen;
-      expect(opened?.draftId).toBe("draft-raced");
-      expect(testState.draftStore.setPrompt).not.toHaveBeenCalled();
-    },
-  );
+  it("keeps the text of a draft that gained some while it waited", async () => {
+    testState.reset(null);
+    const raced = {
+      draftId: "draft-raced",
+      environmentId: "environment-ssh",
+      promotedTo: null,
+      threadId: "thread-raced",
+    };
+    testState.draftStore.getDraftSessionByLogicalProjectKey
+      .mockReturnValueOnce(null)
+      .mockReturnValueOnce(raced as never);
+    testState.giveUserText("draft-raced");
+
+    const opened = await useNewThreadHandler()(
+      { environmentId: "environment-ssh", projectId: "project-remote" } as never,
+      { prompt: "Read the playbook. " },
+    );
+
+    expect(opened?.draftId).toBe("draft-raced");
+    expect(testState.draftStore.setPrompt).not.toHaveBeenCalled();
+  });
 
   it("seeds the prompt into the empty draft that is already open", async () => {
     testState.reset(null);
@@ -370,35 +391,69 @@ describe("useNewThreadHandler", () => {
   it("opens the draft without waiting on a project file from an offline machine", async () => {
     testState.reset(null, { envMode: null, startFromOrigin: false });
     testState.disconnect("environment-ssh");
+
     const opened = await useNewThreadHandler()({
       environmentId: "environment-ssh",
       projectId: "project-remote",
     } as never);
+
     expect(opened).toEqual({ draftId: "draft-delayed", threadId: "thread-delayed" });
     expect(testState.router.navigate).toHaveBeenCalledOnce();
   });
 });
-it("keeps the explicit preset captured by draft creation instead of applying sticky defaults", async () => {
-  testState.reset(null);
-  const selection = {
-    instanceId: "codex",
-    model: "gpt-6.1-sol",
-    options: [{ id: "reasoningEffort", value: "high" }],
-  };
-  using _draft = vi.spyOn(testState.draftStore, "getComposerDraft").mockImplementation(() => ({
-    modelSelectionExplicit: true,
-    activeProvider: "codex",
-    modelSelectionByProvider: { codex: selection },
-  }));
-  testState.draftStore.applyStickyState.mockClear();
-  testState.draftStore.setModelSelection.mockClear();
-  const pending = useNewThreadHandler()({
+
+describe("default project selection", () => {
+  it("prefers the last used project in its environment and falls back when unavailable", () => {
+    const projects = [
+      { id: "project", environmentId: "first", workspaceRoot: "/first" },
+      { id: "project", environmentId: "last-used", workspaceRoot: "/last-used" },
+    ].map((project) => ({
+      ...project,
+      id: project.id as ProjectId,
+      environmentId: project.environmentId as EnvironmentId,
+      title: project.environmentId,
+      defaultModelSelection: null,
+      scripts: [],
+      createdAt: "2026-11-09T00:00:00.000Z",
+      updatedAt: "2026-11-09T00:00:00.000Z",
+    }));
+    expect(resolveDefaultProjectRef(projects, [], "last-used:project")).toEqual({
+      environmentId: "last-used",
+      projectId: "project",
+    });
+    expect(
+      resolveDefaultProjectRef(projects.slice(0, 1), [], "last-used:project", false),
+    ).toBeNull();
+    expect(resolveDefaultProjectRef(projects.slice(0, 1), [], "last-used:project")).toEqual({
+      environmentId: "first",
+      projectId: "project",
+    });
+    expect(
+      resolveDefaultProjectRef(
+        [projects[0]!, { ...projects[1]!, archivedAt: "2026-11-09T00:00:00.000Z" }],
+        [],
+        "last-used:project",
+      ),
+    ).toEqual({ environmentId: "first", projectId: "project" });
+  });
+});
+
+it("opens a distinct setup draft without replacing an existing populated draft", async () => {
+  testState.reset({
+    draftId: "draft-existing",
     environmentId: "environment-ssh",
-    projectId: "project-remote",
-  } as never);
-  testState.completeProjectFileRead(null);
-  await pending;
-  expect(testState.draftStore.setLogicalProjectDraftThreadId).toHaveBeenCalledOnce();
-  expect(testState.draftStore.applyStickyState).not.toHaveBeenCalled();
-  expect(testState.draftStore.setModelSelection).not.toHaveBeenCalled();
+    promotedTo: null,
+    threadId: "thread-existing",
+  });
+  testState.giveUserText("draft-existing");
+  const opened = await useNewThreadHandler()(
+    { environmentId: "environment-ssh", projectId: "project-remote" } as never,
+    { prompt: "Connect Claude", forceNew: true, envMode: "local" },
+  );
+  expect(opened?.draftId).not.toBe("draft-existing");
+  expect(testState.draftStore.setPrompt).toHaveBeenCalledWith(opened?.draftId, "Connect Claude");
+  expect(testState.draftStore.setPrompt).not.toHaveBeenCalledWith(
+    "draft-existing",
+    expect.anything(),
+  );
 });

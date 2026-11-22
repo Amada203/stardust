@@ -11,28 +11,39 @@ import * as Option from "effect/Option";
 import * as PlatformError from "effect/PlatformError";
 import * as Redacted from "effect/Redacted";
 import * as Schema from "effect/Schema";
+
 import * as HostProcess from "@t3tools/shared/HostProcess";
+
 import * as SourceControlHost from "@t3tools/source-control-core/server/SourceControlHost";
 import { readSourceControlHostSettings } from "@t3tools/source-control-core/shared/definition";
-import { settingsSecretLiteral, type ServerSettings } from "@t3tools/contracts";
+import {
+  requireSettingsSecretLiteral,
+  type ServerSettings,
+  type SettingsSecretUnresolvedError,
+} from "@t3tools/contracts";
 
 import * as GitHubClient from "../shared/definition.ts";
+import { makeGhProcess } from "./gitHubCliProcess.ts";
+
 /**
  * Every gh run on the server shares this. A burst of them (a status poll across many checkouts)
  * otherwise starts enough at once to trip GitHub's secondary rate limit.
  */
 export const GH_PROCESS_CONCURRENCY = { key: "gh", limit: 4 } as const;
+
 const TOKEN_TTL = Duration.minutes(5);
 const MISSING_TTL = Duration.seconds(10);
 
 export const GitHubCredentialSource = Schema.Literals(["settings", "app", "env", "gh"]);
 export type GitHubCredentialSource = typeof GitHubCredentialSource.Type;
+
 export interface GitHubCredential {
   readonly host: string;
   readonly token: Redacted.Redacted<string>;
   readonly source: GitHubCredentialSource;
   readonly fingerprint: string;
 }
+
 export class GitHubCliMissingError extends Schema.TaggedError<GitHubCliMissingError>()(
   "GitHubCliMissingError",
   { host: Schema.String },
@@ -41,6 +52,7 @@ export class GitHubCliMissingError extends Schema.TaggedError<GitHubCliMissingEr
     return `No GitHub credential for ${this.host}: set GH_TOKEN, or install the GitHub CLI and run \`gh auth login\`.`;
   }
 }
+
 export class GitHubNotSignedInError extends Schema.TaggedError<GitHubNotSignedInError>()(
   "GitHubNotSignedInError",
   { host: Schema.String, account: Schema.optional(Schema.String) },
@@ -48,17 +60,19 @@ export class GitHubNotSignedInError extends Schema.TaggedError<GitHubNotSignedIn
   override get message(): string {
     return this.account === undefined
       ? `No GitHub credential for ${this.host}: run \`gh auth login --hostname ${this.host}\`.`
-      : `No GitHub credential for ${this.account} on ${this.host}: run \`gh auth login --hostname ${this.host}\` for that account or pick another in Settings → Source Control.`;
+      : `No GitHub credential for ${this.account} on ${this.host}: run \`gh auth login --hostname ${this.host}\` for that account or pick another in Settings → Source control & issues.`;
   }
 }
+
 export class GitHubHostDisabledError extends Schema.TaggedError<GitHubHostDisabledError>()(
   "GitHubHostDisabledError",
   { host: Schema.String },
 ) {
   override get message(): string {
-    return `GitHub host ${this.host} is turned off in Settings → Source Control.`;
+    return `GitHub host ${this.host} is turned off in Settings → Source control & issues.`;
   }
 }
+
 export class GitHubCliFailedError extends Schema.TaggedError<GitHubCliFailedError>()(
   "GitHubCliFailedError",
   { host: Schema.String, cause: Schema.Defect() },
@@ -67,11 +81,24 @@ export class GitHubCliFailedError extends Schema.TaggedError<GitHubCliFailedErro
     return `The GitHub CLI could not hand over a credential for ${this.host}. Check \`gh auth status\` on the server.`;
   }
 }
+
+export class GitHubCliTimeoutError extends Schema.TaggedError<GitHubCliTimeoutError>()(
+  "GitHubCliTimeoutError",
+  { host: Schema.String, timeoutMs: Schema.Number, cause: Schema.Defect() },
+) {
+  override get message(): string {
+    return `The GitHub CLI did not hand over a credential for ${this.host} within ${this.timeoutMs / 1000} seconds. The server may be overloaded; try again.`;
+  }
+}
+
 export type GitHubCredentialUnavailableError =
   | GitHubCliMissingError
   | GitHubNotSignedInError
   | GitHubHostDisabledError
-  | GitHubCliFailedError;
+  | GitHubCliFailedError
+  | GitHubCliTimeoutError
+  | SettingsSecretUnresolvedError;
+
 export class GitHubCredentials extends Context.Service<
   GitHubCredentials,
   {
@@ -83,7 +110,7 @@ export class GitHubCredentials extends Context.Service<
       host: string,
     ) => Effect.Effect<
       Option.Option<GitHubCredential>,
-      GitHubHostDisabledError | GitHubNotSignedInError
+      GitHubHostDisabledError | GitHubNotSignedInError | SettingsSecretUnresolvedError
     >;
     readonly fingerprint: (host: string, token: string) => Effect.Effect<string>;
     readonly invalidate: (host: string) => Effect.Effect<void>;
@@ -97,10 +124,11 @@ const HOSTNAME =
 export function isGitHubHost(host: string): boolean {
   return HOSTNAME.test(host);
 }
-/** Hosts gh treats as GitHub.com-like for `GH_TOKEN`: github.com and GHE.com data residency. */
+
 function isGitHubDotCom(host: string): boolean {
   return host === "github.com" || host.endsWith(".ghe.com");
 }
+
 /** Restrict GH_ENTERPRISE_TOKEN to GH_HOST to prevent remote URLs from leaking it. */
 export function environmentToken(
   host: string,
@@ -118,18 +146,21 @@ export function environmentToken(
   }
   return null;
 }
+
 /** @public */
 export const make = Effect.gen(function* () {
   const sourceControlHost = yield* SourceControlHost.SourceControlHost;
-  const process = sourceControlHost.process;
+  const process = yield* makeGhProcess;
   const crypto = yield* Digest.Digest;
   const environment = yield* HostProcess.Environment;
   const workingDirectory = yield* HostProcess.WorkingDirectory;
+
   const fingerprintOf = (host: string, token: string) =>
     crypto.digest(Digest.sha256, new TextEncoder().encode(token)).pipe(
       Effect.map((digest) => `${host}:${Hex.encode(digest)}`),
       Effect.orDie,
     );
+
   const fromGh = (host: string, account: string | undefined) =>
     process
       .run({
@@ -143,9 +174,15 @@ export const make = Effect.gen(function* () {
           ...(account === undefined ? [] : ["--user", account]),
         ],
         cwd: workingDirectory,
-        // Never let gh print the token into a debug log.
-        env: { GH_DEBUG: "", GH_PROMPT_DISABLED: "1" },
-        timeoutMs: 10000,
+        // Never let gh print the token into a debug log. gh answers any host but github.com with
+        // the enterprise variables, which would undo the GH_HOST restriction above.
+        env: {
+          GH_DEBUG: "",
+          GH_PROMPT_DISABLED: "1",
+          GH_ENTERPRISE_TOKEN: "",
+          GITHUB_ENTERPRISE_TOKEN: "",
+        },
+        timeoutMs: 10_000,
         concurrency: GH_PROCESS_CONCURRENCY,
       })
       .pipe(
@@ -157,7 +194,9 @@ export const make = Effect.gen(function* () {
             : // gh exits non-zero with "no oauth token" when it has no login for the host.
               error._tag === "VcsProcessExitError"
               ? new GitHubNotSignedInError({ host, ...(account === undefined ? {} : { account }) })
-              : new GitHubCliFailedError({ host, cause: error }),
+              : error._tag === "VcsProcessTimeoutError"
+                ? new GitHubCliTimeoutError({ host, timeoutMs: error.timeoutMs, cause: error })
+                : new GitHubCliFailedError({ host, cause: error }),
         ),
         Effect.map((output) => output.stdout.trim()),
         Effect.filterOrFail(
@@ -165,27 +204,37 @@ export const make = Effect.gen(function* () {
           () => new GitHubNotSignedInError({ host, ...(account === undefined ? {} : { account }) }),
         ),
       );
+
   const readSettings = (settings: ServerSettings) =>
     readSourceControlHostSettings(
       GitHubClient.settings,
       settings.sourceControlHosts[GitHubClient.definition.kind],
     );
+
   const hostChoice = (host: string) =>
     sourceControlHost.settings.get.pipe(
       Effect.map((settings) => readSettings(settings).hosts[host]),
       Effect.orElseSucceed(() => undefined),
     );
+
   const savedToken = (host: string) =>
     sourceControlHost.settings.getWithSecrets(GitHubClient.definition.kind).pipe(
-      Effect.map(
-        (settings) => settingsSecretLiteral(readSettings(settings).tokens[host]).trim() || null,
+      Effect.map((settings) => ({
+        token: readSettings(settings).tokens[host],
+        secretProviders: settings.secretProviders,
+      })),
+      Effect.orElseSucceed(() => ({ token: undefined, secretProviders: {} })),
+      Effect.flatMap(({ token, secretProviders }) =>
+        requireSettingsSecretLiteral(token, secretProviders),
       ),
-      Effect.orElseSucceed(() => null),
+      Effect.map((token) => token.trim() || null),
     );
+
   const cacheKey = (host: string, account: string | undefined) =>
     account === undefined ? host : `${host}\u0000${account}`;
+
   const lookup = Effect.fn("GitHubCredentials.lookup")(function* (key: string) {
-    const [host = key, choice] = key.split("\0");
+    const [host = key, choice] = key.split("\u0000");
     const fromEnv = environmentToken(host, environment);
     const token =
       fromEnv ??
@@ -202,13 +251,17 @@ export const make = Effect.gen(function* () {
       fingerprint: yield* fingerprintOf(host, token),
     } satisfies GitHubCredential;
   });
+
   const cache = yield* Cache.makeWith(lookup, {
     capacity: 32,
     timeToLive: (exit) =>
       Exit.isSuccess(exit)
         ? TOKEN_TTL
         : Exit.findErrorOption(exit).pipe(
-              Option.exists((error) => error._tag === "GitHubCliFailedError"),
+              Option.exists(
+                (error) =>
+                  error._tag === "GitHubCliFailedError" || error._tag === "GitHubCliTimeoutError",
+              ),
             )
           ? Duration.zero
           : MISSING_TTL,
@@ -247,4 +300,5 @@ export const make = Effect.gen(function* () {
     }),
   });
 });
+
 export const layer = Layer.effect(GitHubCredentials, make);

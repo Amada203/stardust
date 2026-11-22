@@ -77,14 +77,8 @@ export function useWorktreeSetup(input: {
     readonly routeThreadRef: ScopedThreadRef;
     readonly latestSnapshot: WorktreeSetupSnapshot | null | undefined;
   }>({ routeThreadRef, latestSnapshot: null });
-  if (
-    heldFor.routeThreadRef.environmentId !== routeThreadRef.environmentId ||
-    heldFor.routeThreadRef.threadId !== routeThreadRef.threadId ||
-    heldFor.latestSnapshot !== latestSnapshot
-  ) {
-    const routeChanged =
-      heldFor.routeThreadRef.environmentId !== routeThreadRef.environmentId ||
-      heldFor.routeThreadRef.threadId !== routeThreadRef.threadId;
+  if (heldFor.routeThreadRef !== routeThreadRef || heldFor.latestSnapshot !== latestSnapshot) {
+    const routeChanged = heldFor.routeThreadRef !== routeThreadRef;
     setHeldFor({ routeThreadRef, latestSnapshot });
     if (routeChanged) {
       setHeldSnapshot(null);
@@ -106,7 +100,7 @@ export function useWorktreeSetup(input: {
   const worktreeSetup = resolveVisibleWorktreeSetup({
     live: liveSnapshot,
     recorded: null,
-    turnStarted: activityRun?.startedAt != null,
+    runs: serverProjection?.runs ?? [],
     followUpSent,
   });
   // After agent handoff, sends queue behind setup without awaiting its scripts.

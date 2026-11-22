@@ -1,3 +1,4 @@
+import { uiText } from "./i18n";
 import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 import type { ScopedThreadRef } from "@t3tools/contracts";
 import { create } from "zustand";
@@ -56,14 +57,15 @@ export function refreshTaskBoard(): Promise<void> {
         `${TASK_BOARD_ORIGIN}/api/tasks${cwd ? "?cwd=" + encodeURIComponent(cwd) : ""}`,
         { signal: controller!.signal, credentials: "omit", cache: "no-store" },
       );
-      if (!response.ok) throw new Error("看板服务暂时不可用");
+      if (!response.ok) throw new Error(uiText("Task board service unavailable"));
       const raw = (await response.json()) as BoardData;
       const data: BoardData = {
         tasks: raw.tasks,
         counts: raw.counts,
         ...(raw.current !== undefined ? { current: raw.current } : {}),
       };
-      if (!Array.isArray(data.tasks) || !data.counts) throw new Error("看板数据格式不正确");
+      if (!Array.isArray(data.tasks) || !data.counts)
+        throw new Error(uiText("Invalid task board data"));
       if (revision !== generation) return;
       const previous = useTaskBoard.getState();
       const unchanged = JSON.stringify(previous.data) === JSON.stringify(data);
@@ -77,9 +79,10 @@ export function refreshTaskBoard(): Promise<void> {
     } catch {
       if (
         revision === generation &&
-        (useTaskBoard.getState().error !== "看板服务没开" || useTaskBoard.getState().loading)
+        (useTaskBoard.getState().error !== uiText("Task board service is offline") ||
+          useTaskBoard.getState().loading)
       )
-        useTaskBoard.setState({ error: "看板服务没开", loading: false });
+        useTaskBoard.setState({ error: uiText("Task board service is offline"), loading: false });
     } finally {
       clearTimeout(timeout);
       refreshing = null;
@@ -141,7 +144,7 @@ export async function mutateTaskBoard(
     action === "review" &&
     (!body.step || !body.decision || (body.decision === "reject" && !body.reason?.trim()))
   )
-    throw new Error("打回需要写一句原因");
+    throw new Error(uiText("Add a reason for requesting changes"));
   const response = await fetch(`${TASK_BOARD_ORIGIN}/api/${action}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -149,13 +152,13 @@ export async function mutateTaskBoard(
     body: JSON.stringify(body),
     signal: AbortSignal.timeout(5000),
   });
-  if (!response.ok) throw new Error("操作未保存，请刷新后重试");
+  if (!response.ok) throw new Error(uiText("Changes weren’t saved. Refresh and try again."));
   generation++;
   controller?.abort();
   await refreshing;
   await refreshTaskBoard();
   if (useTaskBoard.getState().error)
-    throw new Error("已提交，但状态回读失败；请刷新确认，勿重复提交");
+    throw new Error(uiText("Submitted. Refresh to verify the status before trying again."));
 }
 
 export function requestTaskBoardCurrent(ref: ScopedThreadRef) {

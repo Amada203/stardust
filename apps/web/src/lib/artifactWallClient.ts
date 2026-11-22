@@ -1,15 +1,19 @@
+import { uiText } from "../i18n";
 import { WallArtifactList, type EnvironmentId, type WallArtifact } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 import { readPreparedConnection } from "../state/session";
 import { readDesktopPrimaryBearerToken } from "../environments/primary/desktopAuth";
 
-class ArtifactWallError extends Error {}
+class ArtifactWallError extends Schema.TaggedError<ArtifactWallError>()("ArtifactWallError", {
+  message: Schema.String,
+}) {}
 
 const decodeWallArtifactList = Schema.decodeUnknownSync(WallArtifactList);
 
 async function listRequestInit(environmentId: EnvironmentId): Promise<RequestInit> {
   const connection = readPreparedConnection(environmentId);
-  if (!connection) throw new ArtifactWallError("连接尚未就绪，请稍后重试");
+  if (!connection)
+    throw new ArtifactWallError({ message: uiText("Connection pending. Try again in a moment.") });
   let token =
     connection.httpAuthorization?._tag === "Bearer" ? connection.httpAuthorization.token : null;
   // Primary HTTP calls use the same desktop bridge when the prepared session has no bearer.
@@ -17,9 +21,14 @@ async function listRequestInit(environmentId: EnvironmentId): Promise<RequestIni
     try {
       token = await readDesktopPrimaryBearerToken();
     } catch {
-      throw new ArtifactWallError("无法读取本机授权，请重新连接后重试");
+      throw new ArtifactWallError({
+        message: uiText("Couldn’t read local authorization. Reconnect and try again."),
+      });
     }
-    if (!token) throw new ArtifactWallError("本机连接未授权，请重新连接后重试");
+    if (!token)
+      throw new ArtifactWallError({
+        message: uiText("Local connection unauthorized. Reconnect and try again."),
+      });
   }
   return token
     ? { credentials: "omit", headers: { Authorization: `Bearer ${token}` } }
@@ -34,11 +43,13 @@ async function wallFetch(url: URL | string, init: RequestInit): Promise<Response
     const crossOriginCookie =
       init.credentials === "include" &&
       new URL(url, window.location.href).origin !== window.location.origin;
-    throw new ArtifactWallError(
-      crossOriginCookie
-        ? "此连接的登录状态无法跨来源读取，请使用本机连接后重试"
-        : "暂时无法连接产物服务，请重试",
-    );
+    throw new ArtifactWallError({
+      message: crossOriginCookie
+        ? uiText(
+            "This sign-in is unavailable across origins. Use a local connection and try again.",
+          )
+        : uiText("Couldn’t reach the artifact service. Try again."),
+    });
   }
 }
 
@@ -62,18 +73,26 @@ export async function loadWallArtifacts(
   signal: AbortSignal,
 ) {
   const origin = artifactWallOrigin(environmentId);
-  if (!origin) throw new ArtifactWallError("产物墙仅在本机连接可用");
+  if (!origin)
+    throw new ArtifactWallError({
+      message: uiText("Artifacts are available on local connections only."),
+    });
   const url = new URL("/api/artifact-wall/list", origin);
   url.searchParams.set("threadId", threadId);
   url.searchParams.set("scope", scope);
   const response = await wallFetch(url, { ...(await listRequestInit(environmentId)), signal });
-  if (response.status === 401) throw new ArtifactWallError("连接授权已失效，请重新连接后重试");
-  if (response.status === 403) throw new ArtifactWallError("此连接无权读取产物");
-  if (!response.ok) throw new ArtifactWallError("暂时无法读取产物，请重试");
+  if (response.status === 401)
+    throw new ArtifactWallError({
+      message: uiText("Authorization expired. Reconnect and try again."),
+    });
+  if (response.status === 403)
+    throw new ArtifactWallError({ message: uiText("This connection can’t read artifacts.") });
+  if (!response.ok)
+    throw new ArtifactWallError({ message: uiText("Couldn’t read artifacts. Try again.") });
   try {
     return decodeWallArtifactList(await response.json()).artifacts;
   } catch {
-    throw new ArtifactWallError("产物数据读取失败，请重试");
+    throw new ArtifactWallError({ message: uiText("Couldn’t read artifact data. Try again.") });
   }
 }
 export async function fileFromArtifact(
@@ -81,14 +100,14 @@ export async function fileFromArtifact(
   artifact: WallArtifact,
 ): Promise<File> {
   const url = artifactFileUrl(environmentId, artifact.id);
-  if (!url) throw new Error("产物墙仅在本机连接可用");
+  if (!url) throw new Error(uiText("Artifacts are available on local connections only."));
   // This route authenticates the collected, expiring capability ID (as images do).
   const response = await wallFetch(url, { credentials: "omit" });
-  if (!response.ok) throw new Error("文件已失效，请刷新产物墙");
+  if (!response.ok) throw new Error(uiText("This file is unavailable. Refresh artifacts."));
   try {
     const blob = await response.blob();
     return new File([blob], artifact.name, { type: blob.type });
   } catch {
-    throw new ArtifactWallError("文件读取失败，请重试");
+    throw new ArtifactWallError({ message: uiText("Couldn’t read the file. Try again.") });
   }
 }

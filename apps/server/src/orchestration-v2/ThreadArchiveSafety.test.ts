@@ -75,7 +75,7 @@ const reject = (id: string, reason: Orchestrator.OrchestratorArchiveBlockedError
       }),
     );
     assert.ok(Result.isFailure(result));
-    assert.ok(isArchiveBlocked(result.failure));
+    assert.ok(isArchiveBlocked(result.failure), String(result.failure));
     assert.equal(result.failure.reason, reason);
     assert.isNull((yield* projections.getThread(root)).archivedAt);
   });

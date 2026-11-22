@@ -1,3 +1,4 @@
+import { uiText } from "./i18n";
 export type BoardLevel = "none" | "self" | "review" | "user";
 export type BoardKind = "decide" | "review" | "do" | "unlock" | "blocked";
 export interface BoardStep {
@@ -55,10 +56,18 @@ export interface BoardData {
   current?: BoardTask | null;
 }
 export const boardStateLabel = {
-  user: "等你",
-  blocked: "阻塞",
-  agent: "Agent 在做",
-  done: "已完成",
+  get user() {
+    return uiText("Waiting for you");
+  },
+  get blocked() {
+    return uiText("Blocked.");
+  },
+  get agent() {
+    return uiText("Agent working");
+  },
+  get done() {
+    return uiText("Completed");
+  },
 };
 export function isBoardTaskPath(folder: string, cwd: string | null | undefined) {
   const normalize = (value: string) => value.replace(/\/+/g, "/").replace(/\/$/, "");
@@ -164,7 +173,7 @@ export function boardTaskHeading(task: BoardTask) {
   return (
     task.judge?.trim() ||
     task.blocked?.trim() ||
-    (current ? `${current.name}，你来做` : "所有步骤已通过")
+    (current ? uiText("Your action: {name}", { name: current.name }) : uiText("All steps passed"))
   );
 }
 export function boardWaitDays(task: BoardTask, now: number) {

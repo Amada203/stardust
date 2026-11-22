@@ -2,7 +2,13 @@ import type { ThreadStructure } from "@t3tools/client-runtime/state/shell";
 import { latestProviderTurnForAttempt } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 
-const terminal = new Set(["completed", "failed", "cancelled", "interrupted", "rolled_back"]);
+export const terminalRunStatuses = new Set([
+  "completed",
+  "failed",
+  "cancelled",
+  "interrupted",
+  "rolled_back",
+]);
 const active = new Set(["pending", "running", "waiting"]);
 const tools = new Set([
   "command_execution",
@@ -16,6 +22,14 @@ const tools = new Set([
 /** Same statuses client-runtime treats as owning live provider work (threadExecution.ts). */
 const working = new Set(["preparing", "starting", "running", "waiting"]);
 
+export function selectWorkingRun(runs: ThreadStructure["runs"]) {
+  return runs.reduce<(typeof runs)[number] | undefined>(
+    (latest, run) =>
+      working.has(run.status) && (!latest || run.ordinal > latest.ordinal) ? run : latest,
+    undefined,
+  );
+}
+
 const awaitingUserTypes = new Set(["approval_request", "user_input_request", "secret_request"]);
 
 /** Follow active provider work; keep a completed reading frozen without treating context size as generated tokens. */
@@ -27,8 +41,8 @@ export function selectTurnThroughput(projection: ThreadStructure) {
     );
   const latest = newest(projection.runs);
   const run =
-    newest(projection.runs.filter((r) => working.has(r.status))) ??
-    (latest && terminal.has(latest.status) && latest.completedAt ? latest : undefined);
+    selectWorkingRun(projection.runs) ??
+    (latest && terminalRunStatuses.has(latest.status) && latest.completedAt ? latest : undefined);
   if (!run) return null;
   const attempt = projection.attempts
     .filter((a) => a.runId === run.id)
@@ -40,7 +54,7 @@ export function selectTurnThroughput(projection: ThreadStructure) {
     projection.providerTurns,
     run.activeAttemptId ?? attempt?.id,
   );
-  const running = !terminal.has(run.status);
+  const running = !terminalRunStatuses.has(run.status);
   const sampling = running && turn?.status === "running";
   const start = turn?.startedAt ?? run.startedAt ?? run.requestedAt;
   const startMs = DateTime.toEpochMillis(start);
@@ -67,29 +81,30 @@ export function selectTurnThroughput(projection: ThreadStructure) {
   }
   if (Number.isFinite(reportMs) && reportMs >= startMs)
     lastActivityMs = Math.max(lastActivityMs, reportMs);
-  const terminalLabels: Record<string, string> = {
-    completed: "已完成",
-    failed: "失败",
-    cancelled: "已取消",
-    interrupted: "已中断",
-    rolled_back: "已回退",
+  const terminalLabels: Readonly<Record<string, string>> = {
+    completed: "Completed",
+    failed: "Failed",
+    cancelled: "Cancelled",
+    interrupted: "Interrupted",
+    rolled_back: "Rolled back",
   };
-  let phase = "等待模型活动";
+  let phase = "Waiting for model activity";
   if (!running) phase = terminalLabels[run.status] ?? run.status;
-  else if (run.status === "queued") phase = "排队中";
-  else if (run.status === "preparing" || run.status === "starting") phase = "准备中";
-  else if (lastType !== null && awaitingUserTypes.has(lastType)) phase = "等待你操作";
+  else if (run.status === "preparing" || run.status === "starting") phase = "Preparing";
+  else if (lastType !== null && awaitingUserTypes.has(lastType)) phase = "Waiting for your input";
   else if (
     projection.turnItems.some(
       (item) => item.runId === run.id && item.type === "compaction" && active.has(item.status),
     )
   )
-    phase = "压缩上下文中";
-  else if (lastType && tools.has(lastType)) phase = "执行工具 / 子任务";
-  else if (lastType === "reasoning") phase = "思考中";
-  else if (lastType === "assistant_message" || lastType === "proposed_plan") phase = "输出中";
-  else if (run.status === "waiting") phase = "等待中";
-  else if (turn && terminal.has(turn.status)) phase = "等待后续 / 收尾";
+    phase = "Compacting context";
+  else if (lastType && tools.has(lastType)) phase = "Running tools or subtasks";
+  else if (lastType === "reasoning") phase = "Thinking";
+  else if (lastType === "assistant_message" || lastType === "proposed_plan")
+    phase = "Generating output";
+  else if (run.status === "waiting") phase = "Waiting";
+  else if (turn && terminalRunStatuses.has(turn.status))
+    phase = "Waiting for follow-up or completion";
   return {
     key: `${run.id}:${turn?.id ?? "pending"}`,
     // Run selection is fixed at dispatch; the composer's selection can already be the next model.
@@ -128,8 +143,4 @@ export function throughputReading(snapshot: TurnThroughputSnapshot, now: number)
     quietMs: Math.max(0, end - snapshot.lastActivityMs),
     reportAgeMs: snapshot.reportMs === null ? null : Math.max(0, end - snapshot.reportMs),
   };
-}
-export function formatThroughputDuration(ms: number) {
-  const seconds = Math.floor(Math.max(0, ms) / 1000);
-  return seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
 }

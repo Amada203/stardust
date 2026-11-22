@@ -1,3 +1,4 @@
+import { testUiLocale } from "../test/uiLocale";
 import { describe, expect, it } from "vite-plus/test";
 import {
   PROJECT_FIRST_LABEL,
@@ -25,12 +26,14 @@ const names = (list: SidebarProjectSnapshot[]) => list.map((project) => project.
 
 describe("preferences", () => {
   it("defaults to category grouping and keeps explicit project or model choices", () => {
+    using _locale = testUiLocale("zh-CN");
     expect(parseSidebarGrouping(null)).toBe("category");
     expect(parseSidebarGrouping("garbage")).toBe("category");
     expect(parseSidebarGrouping("project")).toBe("project");
     expect(parseSidebarGrouping("model")).toBe("model");
   });
   it("ignores corrupt or duplicate pinned entries and round-trips pin/unpin", () => {
+    using _locale = testUiLocale("zh-CN");
     expect(parsePinnedProjects("{")).toEqual([]);
     expect(parsePinnedProjects('{"a":1}')).toEqual([]);
     expect(
@@ -47,6 +50,7 @@ describe("preferences", () => {
 
 describe("mergeSnapshotsByProject", () => {
   it("joins the per-model slices of one project and unions their threads", () => {
+    using _locale = testUiLocale("zh-CN");
     const codex = snap("AI 工作台", {
       projectKey: '["provider-project","Codex","src"]',
       sourceProjectKey: "src",
@@ -71,6 +75,7 @@ describe("mergeSnapshotsByProject", () => {
     expect([...codex.providerThreadKeys!]).toEqual(["t1"]);
   });
   it("treats per-model automation collections as one project", () => {
+    using _locale = testUiLocale("zh-CN");
     const make = (label: string, thread: string) =>
       snap("自动化与测试", {
         projectKey: `["provider-project","${label}","a"]`,
@@ -105,6 +110,7 @@ describe("partitionProjects", () => {
     sortByActivity: true,
   };
   it("pins first by pin time (even when quiet), then recent by activity, then quiet ones", () => {
+    using _locale = testUiLocale("zh-CN");
     const sections = partitionProjects({
       ...input,
       pinned: [
@@ -117,17 +123,20 @@ describe("partitionProjects", () => {
     expect(names(sections.more)).toEqual(["旧"]);
   });
   it("keeps the incoming order when the user sorts manually", () => {
+    using _locale = testUiLocale("zh-CN");
     const sections = partitionProjects({ ...input, pinned: [], sortByActivity: false });
     expect(names(sections.recent)).toEqual(["新", "置顶B", "其他项目", "空"]);
     expect(names(sections.more)).toEqual(["旧", "置顶A"]);
   });
   it("unpinning returns a project to the section its activity decides", () => {
+    using _locale = testUiLocale("zh-CN");
     const pinned = partitionProjects({ ...input, pinned: [{ key: "p:新", at: 1 }] });
     expect(names(pinned.pinned)).toEqual(["新"]);
     const unpinned = partitionProjects({ ...input, pinned: [] });
     expect(names(unpinned.recent)).toContain("新");
   });
   it("also pins projects pinned on the server, ahead of local pins", () => {
+    using _locale = testUiLocale("zh-CN");
     const sections = partitionProjects({
       ...input,
       projects: projects.map((project) =>

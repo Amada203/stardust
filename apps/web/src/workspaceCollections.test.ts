@@ -1,3 +1,4 @@
+import { testUiLocale } from "../test/uiLocale";
 import { describe, expect, it } from "vite-plus/test";
 import { EnvironmentId, ProjectId, ProviderInstanceId, ThreadId } from "@t3tools/contracts";
 import { buildWorkspaceCollections } from "./workspaceCollections";
@@ -42,11 +43,13 @@ const thread = (id: string, projectId: string, date: string, title = id): Sideba
 
 describe("workspace collections and recent projects", () => {
   it("migrates saved physical filters and opens settings for the selected workspace", () => {
+    using _locale = testUiLocale("zh-CN");
     const projects = [
       project("root", "/Users/a/Documents/Codex"),
       project("dated", "/Users/a/Documents/Codex/2026-10-12/task"),
     ];
     const groups = buildSidebarProjectSnapshots({
+      workspaceCollections: true,
       projects,
       settings,
       primaryEnvironmentId: env,
@@ -63,6 +66,7 @@ describe("workspace collections and recent projects", () => {
       }),
     ).toBe(key);
     const scratchGroups = buildSidebarProjectSnapshots({
+      workspaceCollections: true,
       projects: projects.map((p) => ({ ...p, isScratch: true })),
       settings,
       primaryEnvironmentId: env,
@@ -77,6 +81,7 @@ describe("workspace collections and recent projects", () => {
     ).toBeNull();
   });
   it("does not choose a machine when an old repository filter matches two collections", () => {
+    using _locale = testUiLocale("zh-CN");
     const repositoryIdentity = {
       canonicalKey: "github.com/example/shared",
       locator: {
@@ -94,6 +99,7 @@ describe("workspace collections and recent projects", () => {
     ];
     const physicalSettings = { ...settings, sidebarProjectGroupingMode: "separate" as const };
     const groups = buildSidebarProjectSnapshots({
+      workspaceCollections: true,
       projects,
       settings: physicalSettings,
       primaryEnvironmentId: env,
@@ -113,6 +119,7 @@ describe("workspace collections and recent projects", () => {
     ).toBe(groups[1]?.projectKey);
   });
   it("keeps every workspace identity while collecting dated folders and preserving machine boundaries", () => {
+    using _locale = testUiLocale("zh-CN");
     const projects = [
       project("root", "/Users/a/Documents/Codex"),
       project("n", "/Users/a/Documents/Codex/2026-09-27/n"),
@@ -125,6 +132,7 @@ describe("workspace collections and recent projects", () => {
     expect(groups[0]?.memberProjectRefs).toHaveLength(3);
     expect(groups.flatMap((g) => g.memberProjectRefs)).toHaveLength(4);
     const mapping = buildPhysicalToLogicalProjectKeyMap({
+      workspaceCollections: true,
       projects,
       settings,
       primaryEnvironmentId: env,
@@ -143,6 +151,7 @@ describe("workspace collections and recent projects", () => {
     expect(physical.find((g) => g.id === "n")?.displayName).toBe("n");
   });
   it("collects automation from business projects into one provider bucket without losing or duplicating threads", () => {
+    using _locale = testUiLocale("zh-CN");
     const projects = [
       project("trade", "/Users/a/Documents/交易"),
       project("work", "/Users/a/Documents/Codex"),
@@ -154,6 +163,7 @@ describe("workspace collections and recent projects", () => {
     ];
     const groups = groupSidebarByProvider(
       buildSidebarProjectSnapshots({
+        workspaceCollections: true,
         projects,
         settings,
         primaryEnvironmentId: env,
@@ -171,6 +181,7 @@ describe("workspace collections and recent projects", () => {
     expect(recentProjectRecords(groups, threads).map((r) => r.thread.id)).toEqual(["research"]);
   });
   it("uses actual conversations for recent projects, not rename/import timestamps, with one entry per collection", () => {
+    using _locale = testUiLocale("zh-CN");
     const projects = [
       project("content", "/Users/a/Documents/自媒体"),
       project("notes", "/Users/a/Documents/自媒体/notes"),
@@ -183,6 +194,7 @@ describe("workspace collections and recent projects", () => {
     ];
     const groups = groupSidebarByProvider(
       buildSidebarProjectSnapshots({
+        workspaceCollections: true,
         projects,
         settings,
         primaryEnvironmentId: env,

@@ -1,6 +1,5 @@
-import { describe, expect, it } from "@effect/vitest";
-
 import { ProjectId } from "@t3tools/contracts";
+import { describe, expect, it } from "@effect/vitest";
 
 import { resolveModelAliases, UsageAggregator } from "./usageAggregation.ts";
 import type { RateTable } from "./usagePricing.ts";
@@ -14,13 +13,16 @@ const rates: RateTable = new Map([
       outputCostPerToken: 5e-5,
       cacheReadCostPerToken: 1e-6,
       cacheCreationCostPerToken: 1.25e-5,
+      cacheCreation1hCostPerToken: 2e-5,
       fast: {
         inputCostPerToken: 2e-5,
         outputCostPerToken: 1e-4,
         cacheReadCostPerToken: 2e-6,
         cacheCreationCostPerToken: 2.5e-5,
+        cacheCreation1hCostPerToken: 4e-5,
       },
       ultrafast: null,
+      contextTiers: [],
     },
   ],
 ]);
@@ -87,17 +89,107 @@ describe("UsageAggregator", () => {
     expect(bucket).not.toHaveProperty("ultrafastCostUsd");
   });
 
-  it("keeps only the first record for a repeated dedupe key", () => {
+  it("merges partial copies of a key by channel maximum in the first copy's bucket", () => {
+    const zeroTotals = {
+      uncachedInputTokens: 0,
+      cachedInputTokens: 0,
+      cacheCreationTokens: 0,
+      outputTokens: 0,
+      reasoningTokens: 0,
+    };
+    const partial = record({
+      dedupeKey: "msg_1:",
+      speed: "fast",
+      reportedCostUsd: 1,
+      totals: { ...record().totals, cachedInputTokens: 1200, outputTokens: 3, reasoningTokens: 5 },
+    });
+    const complete = record({
+      dedupeKey: "msg_1:",
+      model: "claude-fable-5[1m]",
+      timestampMs: Date.parse("2026-08-08T12:00:00Z"),
+      sessionId: "session-fork",
+      reportedCostUsd: 2,
+      totals: {
+        uncachedInputTokens: 2,
+        cachedInputTokens: 1000,
+        cacheCreationTokens: 40,
+        outputTokens: 264,
+        reasoningTokens: 135,
+      },
+    });
+    const zero = { ...partial, totals: zeroTotals, reportedCostUsd: null };
+    const merged = {
+      reportedCostUsd: 2,
+      totals: { ...complete.totals, uncachedInputTokens: 100, cachedInputTokens: 1200 },
+    };
+
+    for (const copies of [
+      [zero, partial, complete, complete],
+      [complete, partial, zero, zero],
+    ]) {
+      const aggregator = new UsageAggregator({
+        timeZone: "UTC",
+        sinceDay: "2026-08-01",
+        untilDay: "2026-08-31",
+        rates,
+        attributeProject: (_record, transcriptPath) => ProjectId.make(transcriptPath ?? "unbound"),
+      });
+      copies.forEach((copy, index) => aggregator.add(copy, `${index}.jsonl`, `project-${index}`));
+      const result = aggregator.finish();
+      const expected = aggregate([{ ...copies[0]!, ...merged }]).buckets[0];
+
+      expect(result.projectTotals).toEqual([
+        {
+          projectId: "project-0",
+          provider: expected!.provider,
+          sourcePath: "0.jsonl",
+          totals: expected!.totals,
+          costUsd: expect.closeTo(expected!.costUsd, 8),
+          records: expected!.records,
+          unpricedRecords: expected!.unpricedRecords,
+          sessions: expected!.sessions,
+        },
+      ]);
+      expect(result.duplicatesDropped).toBe(3);
+      expect(result.buckets).toEqual([{ ...expected, sourcePath: "0.jsonl" }]);
+    }
+  });
+
+  it("keeps a live Grok turn over a saved pre-v17 maximum in either source order", () => {
+    const turn = (timestampMs: number, outputTokens: number) =>
+      record({
+        provider: "grok",
+        model: "grok-4.5",
+        timestampMs,
+        dedupeKey: `s:p:${timestampMs}:grok-4.5`,
+        reportedCostUsd: outputTokens / 10,
+        totals: { ...record().totals, uncachedInputTokens: 0, outputTokens },
+      });
+    const first = turn(Date.parse("2026-08-08T10:00:00Z"), 10);
+    const resumed = turn(Date.parse("2026-08-08T11:00:00Z"), 20);
+    const savedMaximum = { ...first, totals: resumed.totals, reportedCostUsd: 2 };
+
+    const expected = aggregate([first, resumed]).buckets;
+
+    for (const order of [
+      [first, resumed, savedMaximum],
+      [savedMaximum, first, resumed],
+    ]) {
+      const result = aggregate(order);
+      expect(result.duplicatesDropped).toBe(1);
+      expect(result.buckets).toEqual(expected);
+    }
+  });
+
+  it("does not count a key whose first copy fell outside the window", () => {
     const result = aggregate([
-      record({ dedupeKey: "msg_1:" }),
-      record({ dedupeKey: "msg_1:" }),
-      record({ dedupeKey: "msg_1:" }),
+      record({ dedupeKey: "msg_1:", timestampMs: Date.parse("2026-07-01T12:00:00Z") }),
+      record({ dedupeKey: "msg_1:", totals: { ...record().totals, outputTokens: 500 } }),
     ]);
 
-    expect(result.duplicatesDropped).toBe(2);
-    expect(result.buckets).toHaveLength(1);
-    expect(result.buckets[0]?.records).toBe(1);
-    expect(result.buckets[0]?.totals.outputTokens).toBe(50);
+    expect(result.duplicatesDropped).toBe(1);
+    expect(result.outOfWindow).toBe(1);
+    expect(result.buckets).toHaveLength(0);
   });
 
   it("buckets by the day in the requested time zone", () => {
@@ -199,6 +291,7 @@ describe("UsageAggregator", () => {
       untilDay: "2026-08-31",
       rates,
       modelAliases: resolveModelAliases({ "example-preview": "claude-fable-5" }),
+      rateModel: () => "claude-fable",
     });
     aggregator.add(record());
     aggregator.add(record({ model: "example-preview", rateModel: "example-preview-high" }));
@@ -210,74 +303,28 @@ describe("UsageAggregator", () => {
     expect(result.buckets[0]?.costUsd).toBeCloseTo(0.00925, 9);
     expect(result.buckets[0]?.unpricedRecords).toBe(0);
   });
-
-  it("totals each project per source from only the records that count", () => {
-    const aggregator = new UsageAggregator({
-      timeZone: "UTC",
-      sinceDay: "2026-08-01",
-      untilDay: "2026-08-31",
-      rates,
-      modelFilter: { exclude: [{ model: "claude-opus-5" }] },
-      attributeProject: (item) => (item.sessionId === "session-a" ? ProjectId.make("p1") : null),
-    });
-    aggregator.add(record({ dedupeKey: "msg_1:" }), "/claude");
-    aggregator.add(record({ dedupeKey: "msg_1:" }), "/claude");
-    aggregator.add(record({ timestampMs: Date.parse("2026-07-01T00:00:00Z") }), "/claude");
-    aggregator.add(record({ model: "claude-opus-5" }), "/claude");
-    aggregator.add(record({ sessionId: "session-b", model: "kimi-k3" }), "/claude");
-    aggregator.add(record({ timestampMs: Date.parse("2026-08-09T00:00:00Z") }), "/claude");
-    const result = aggregator.finish();
-    const singleCost = aggregate([record()]).buckets[0]!.costUsd;
-
-    expect(result.projectTotals).toEqual([
-      {
-        projectId: "p1",
-        provider: "claude",
-        sourcePath: "/claude",
-        totals: {
-          uncachedInputTokens: 200,
-          cachedInputTokens: 2000,
-          cacheCreationTokens: 20,
-          outputTokens: 100,
-          reasoningTokens: 0,
-        },
-        costUsd: expect.closeTo(2 * singleCost, 9),
-        records: 2,
-        unpricedRecords: 0,
-        sessions: 1,
-      },
-      {
-        provider: "claude",
-        sourcePath: "/claude",
-        totals: expect.objectContaining({ outputTokens: 50 }),
-        costUsd: 0,
-        records: 1,
-        unpricedRecords: 1,
-        sessions: 1,
-      },
-    ]);
-    const bucketCost = result.buckets.reduce((sum, bucket) => sum + bucket.costUsd, 0);
-    expect(bucketCost).toBeCloseTo(2 * singleCost, 9);
-    expect(aggregate([record()]).projectTotals).toBeUndefined();
-  });
 });
 
 describe("resolveModelAliases", () => {
   it("follows chains to the final model and drops chains that enter a loop", () => {
-    expect(
-      resolveModelAliases({
+    expect([
+      ...resolveModelAliases({
         "preview[1m]": "preview",
         preview: "example-model",
+        shared: "preview",
+        intoLoop: "loop",
         loop: "back",
         back: "loop",
-        intoLoop: "loop",
+        laterIntoLoop: "back",
+        deepIntoLoop: "intoLoop",
         self: "self",
+        validAfterLoops: "shared",
       }),
-    ).toEqual(
-      new Map([
-        ["preview[1m]", "example-model"],
-        ["preview", "example-model"],
-      ]),
-    );
+    ]).toEqual([
+      ["preview[1m]", "example-model"],
+      ["preview", "example-model"],
+      ["shared", "example-model"],
+      ["validAfterLoops", "example-model"],
+    ]);
   });
 });

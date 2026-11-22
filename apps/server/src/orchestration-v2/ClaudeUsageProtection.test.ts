@@ -326,3 +326,43 @@ it.effect(
       }
     }),
 );
+
+it.effect(
+  "isolates individual notice dispatch failures so remaining notices and resumeQueuedRuns still run",
+  () =>
+    Effect.gen(function* () {
+      const Guard = yield* Effect.promise(() => import("./ClaudeUsageProtection.ts"));
+      const Worker = yield* Effect.promise(() => import("./ClaudeUsageProtectionWorker.ts"));
+      let resumed = 0;
+      const delivered: string[] = [];
+      const guard = Layer.mock(Guard.ClaudeUsageProtection)({
+        refresh: Effect.void,
+        activeNotices: Effect.succeed([
+          { work: row("broken", "running"), stage: "warn", key: "k", usedPercent: 82 },
+          { work: row("healthy", "running"), stage: "finish", key: "k", usedPercent: 91 },
+        ]),
+      });
+      const orchestrator = Layer.mock(Orchestrator.OrchestratorV2)({
+        dispatch: (cmd) =>
+          cmd.type === "message.dispatch" && cmd.threadId === "broken"
+            ? Effect.fail(
+                new Orchestrator.OrchestratorDispatchError({
+                  commandId: cmd.commandId,
+                  commandType: cmd.type,
+                  cause: "run ended",
+                }),
+              )
+            : Effect.sync(() => {
+                if (cmd.type === "message.dispatch") delivered.push(cmd.threadId);
+                return { sequence: 0, storedEvents: [] };
+              }),
+        resumeQueuedRuns: Effect.sync(() => ++resumed),
+      });
+      const { sweep } = yield* Worker.makeSweep.pipe(
+        Effect.provide(Layer.merge(guard, orchestrator)),
+      );
+      yield* sweep;
+      assert.deepEqual(delivered, ["healthy"]);
+      assert.equal(resumed, 1);
+    }),
+);

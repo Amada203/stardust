@@ -1,3 +1,4 @@
+import { uiText } from "../../i18n";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { memo, useState } from "react";
 import {
@@ -98,7 +99,7 @@ export const StickyProjectsPanel = memo(function StickyProjectsPanel({
       <div className="flex items-center justify-between border-b border-border/60 px-3 py-2 bg-muted/30">
         <div className="flex items-center gap-1.5 font-medium text-xs">
           <PinIcon className="size-3.5 text-primary" />
-          <span>常驻项目</span>
+          <span>{uiText("Persistent projects")}</span>
           <span className="text-2xs text-muted-foreground">({resolvedItems.length})</span>
         </div>
         <div className="flex items-center gap-1">
@@ -108,7 +109,7 @@ export const StickyProjectsPanel = memo(function StickyProjectsPanel({
                 render={
                   <Button size="xs" variant="ghost">
                     <PlusIcon className="size-3 mr-1" />
-                    添加
+                    {uiText("Add")}
                   </Button>
                 }
               />
@@ -132,7 +133,12 @@ export const StickyProjectsPanel = memo(function StickyProjectsPanel({
               </MenuPopup>
             </Menu>
           )}
-          <Button size="icon-xs" variant="ghost" onClick={onClose} aria-label="关闭常驻项目面板">
+          <Button
+            size="icon-xs"
+            variant="ghost"
+            onClick={onClose}
+            aria-label={uiText("Close persistent projects")}
+          >
             <XIcon className="size-3.5" />
           </Button>
         </div>
@@ -143,9 +149,11 @@ export const StickyProjectsPanel = memo(function StickyProjectsPanel({
         {resolvedItems.length === 0 ? (
           <div className="flex flex-col items-center justify-center p-6 text-center text-muted-foreground gap-1.5">
             <PinIcon className="size-6 text-muted-foreground/40 mb-1" />
-            <p className="text-xs font-medium text-foreground">暂无常驻项目</p>
+            <p className="text-xs font-medium text-foreground">
+              {uiText("No persistent projects")}
+            </p>
             <p className="text-2xs text-muted-foreground/80 leading-relaxed max-w-[220px]">
-              可在侧边栏右键点击项目设为常驻，或点击上方“添加”置顶常用项目。
+              {uiText("Right-click a project in the sidebar or use Add to keep it here.")}
             </p>
           </div>
         ) : (
@@ -161,10 +169,11 @@ export const StickyProjectsPanel = memo(function StickyProjectsPanel({
                   <div className="flex items-center gap-1.5 min-w-0">
                     <PinOffIcon className="size-3 text-muted-foreground shrink-0" />
                     <span className="truncate text-muted-foreground line-through">
-                      不可用项目 ({item.identity.projectId.slice(0, 8)})
+                      {uiText("Unavailable projects (")}
+                      {item.identity.projectId.slice(0, 8)})
                     </span>
                     <span className="text-3xs px-1 py-0.5 rounded bg-muted text-muted-foreground border">
-                      不可用
+                      {uiText("Unavailable")}
                     </span>
                   </div>
                   <Button
@@ -180,8 +189,8 @@ export const StickyProjectsPanel = memo(function StickyProjectsPanel({
                           removeStickyProject(identity);
                       }
                     }}
-                    title="从常驻列表中移除"
-                    aria-label="移除不可用项目"
+                    title={uiText("Remove from persistent projects.")}
+                    aria-label={uiText("Remove unavailable projects")}
                   >
                     <Trash2Icon className="size-3 text-destructive" />
                   </Button>
@@ -199,7 +208,11 @@ export const StickyProjectsPanel = memo(function StickyProjectsPanel({
                       type="button"
                       onClick={() => toggleExpanded(item.key)}
                       className="p-0.5 text-muted-foreground hover:text-foreground rounded"
-                      aria-label={isExpanded ? "收起最近会话" : "展开最近会话"}
+                      aria-label={
+                        isExpanded
+                          ? uiText("Hide recent conversations")
+                          : uiText("Show recent conversations")
+                      }
                     >
                       <ChevronRightIcon
                         className={cn(
@@ -224,7 +237,9 @@ export const StickyProjectsPanel = memo(function StickyProjectsPanel({
                           </button>
                         }
                       />
-                      <TooltipPopup>点击定位到侧边栏原项目</TooltipPopup>
+                      <TooltipPopup>
+                        {uiText("Find the original project in the sidebar")}
+                      </TooltipPopup>
                     </Tooltip>
                   </div>
 
@@ -235,8 +250,8 @@ export const StickyProjectsPanel = memo(function StickyProjectsPanel({
                       variant="ghost"
                       disabled={index === 0}
                       onClick={() => moveGroup(groupKeys, item.key, "up")}
-                      aria-label={`将 ${item.title} 上移`}
-                      title="上移"
+                      aria-label={uiText("Move {title} up", { title: item.title })}
+                      title={uiText("Move up")}
                     >
                       <ArrowUpIcon className="size-3" />
                     </Button>
@@ -245,8 +260,8 @@ export const StickyProjectsPanel = memo(function StickyProjectsPanel({
                       variant="ghost"
                       disabled={index === resolvedItems.length - 1}
                       onClick={() => moveGroup(groupKeys, item.key, "down")}
-                      aria-label={`将 ${item.title} 下移`}
-                      title="下移"
+                      aria-label={uiText("Move {title} down", { title: item.title })}
+                      title={uiText("Move down")}
                     >
                       <ArrowDownIcon className="size-3" />
                     </Button>
@@ -263,8 +278,10 @@ export const StickyProjectsPanel = memo(function StickyProjectsPanel({
                             removeStickyProject(identity);
                         }
                       }}
-                      aria-label={`取消常驻 ${item.title}`}
-                      title="取消常驻"
+                      aria-label={uiText("Remove {title} from persistent projects", {
+                        title: item.title,
+                      })}
+                      title={uiText("Remove from persistent list")}
                     >
                       <PinOffIcon className="size-3 text-muted-foreground" />
                     </Button>
@@ -276,7 +293,7 @@ export const StickyProjectsPanel = memo(function StickyProjectsPanel({
                   <div className="pl-6 pr-2 pt-1 pb-1 space-y-0.5">
                     {item.recentThreads.length === 0 ? (
                       <div className="text-2xs text-muted-foreground/70 py-1 pl-1">
-                        暂无未归档会话
+                        {uiText("No unarchived conversations")}
                       </div>
                     ) : (
                       item.recentThreads.map((thread) => (
@@ -290,7 +307,7 @@ export const StickyProjectsPanel = memo(function StickyProjectsPanel({
                           className="w-full flex items-center justify-between py-1 px-1.5 text-left text-xs rounded hover:bg-accent/60 group/thread text-muted-foreground hover:text-foreground transition-colors"
                         >
                           <span className="truncate flex-1 font-normal group-hover/thread:text-foreground">
-                            {thread.title || "未命名会话"}
+                            {thread.title || uiText("Untitled thread")}
                           </span>
                           <span className="text-3xs text-muted-foreground/70 ml-2 whitespace-nowrap">
                             {formatRelativeTimeLabel(thread.updatedAt ?? thread.createdAt)}
@@ -307,7 +324,10 @@ export const StickyProjectsPanel = memo(function StickyProjectsPanel({
                           onClose();
                         }}
                       >
-                        <span>查看全部会话 ({item.totalThreadCount})</span>
+                        <span>
+                          {uiText("View all conversations (")}
+                          {item.totalThreadCount})
+                        </span>
                         <ExternalLinkIcon className="size-2.5 ml-1 opacity-60" />
                       </Button>
                     )}
@@ -321,13 +341,13 @@ export const StickyProjectsPanel = memo(function StickyProjectsPanel({
 
       {/* Footer Info */}
       <div className="px-3 py-1.5 border-t border-border/40 bg-muted/20 text-3xs text-muted-foreground flex items-center justify-between">
-        <span>支持键盘操作 · 重命名自动同步</span>
+        <span>{uiText("Keyboard navigation · Names sync automatically")}</span>
         <button
           type="button"
           onClick={onClose}
           className="hover:underline text-3xs text-muted-foreground"
         >
-          返回 (Esc)
+          {uiText("Back (Esc)")}
         </button>
       </div>
     </div>
@@ -364,7 +384,7 @@ export function StickyProjectsTrigger({
       data-testid="sidebar-sticky-projects-trigger"
     >
       <PinIcon className="size-3" />
-      <span>常驻项目</span>
+      <span>{uiText("Persistent projects")}</span>
       {stickyCount > 0 && (
         <span className="rounded-full bg-primary/10 px-1 text-3xs font-medium text-primary">
           {stickyCount}
@@ -378,7 +398,7 @@ export function StickyProjectsTrigger({
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetTrigger render={triggerButton} />
         <SheetPopup side="bottom" className="max-h-[85vh] overflow-hidden" showCloseButton={false}>
-          <SheetTitle className="sr-only">常驻项目</SheetTitle>
+          <SheetTitle className="sr-only">{uiText("Persistent projects")}</SheetTitle>
           <StickyProjectsPanel
             sidebarProjects={sidebarProjects}
             threadsByProjectKey={threadsByProjectKey}

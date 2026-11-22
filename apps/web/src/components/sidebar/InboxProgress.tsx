@@ -1,3 +1,5 @@
+import { inboxLabel } from "~/i18n/inboxLabel";
+import { uiText } from "../../i18n";
 import { derivePendingThreadRequests } from "@t3tools/client-runtime/state/thread-requests";
 import { approvalPresentation } from "../../approvalPresentation";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
@@ -44,7 +46,7 @@ export function InboxProgress({
     <>
       <span className="block truncate text-xs text-sidebar-muted-foreground">
         <span className={reason === "运行失败" ? "text-destructive" : "text-warning"}>
-          {reason}
+          {inboxLabel(reason)}
         </span>
         {approval
           ? ` · ${approvalPresentation(approval).summary}`
@@ -54,7 +56,10 @@ export function InboxProgress({
       </span>
       {model.steps.length > 0 ? (
         <span
-          aria-label={`已完成 ${model.steps.filter((step) => step.status === "completed").length}/${model.steps.length} 步`}
+          aria-label={uiText("{count}/{total} steps completed", {
+            count: model.steps.filter((step) => step.status === "completed").length,
+            total: model.steps.length,
+          })}
           className="mt-1 flex h-0.75 gap-0.5 overflow-hidden rounded-full"
         >
           {model.steps.map((step, index) => (

@@ -1,161 +1,168 @@
 <p align="center">
-  <a href="https://github.com/zds-xiaoxin/xiaoxin-t3code/releases/latest">
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="assets/banner-zh-dark.webp">
-      <img src="assets/banner-zh-light.webp" width="100%" alt="T3 星尘版：面向 AI 编码助手的桌面工作台。">
-    </picture>
-  </a>
+  <img src="assets/community/v1.2.0/stardust-icon.png" width="92" height="92" alt="T3 星尘版图标：午夜星尘" />
 </p>
 
-<h1 align="center">T3 星尘版</h1>
+<h1 align="center">T3 星尘版 · Stardust</h1>
 
 <p align="center">
-  看清 AI 编码助手在做什么，还剩多少额度。<br>
-  给 Claude、Codex 等你已在用的助手准备的 macOS 工作台。
+  <strong>基于 T3 Code 深度打磨的中文 AI 桌面工作台</strong><br />
+  V18 星舰发射栈流体推理滑块 · 多账号用量与限额洞察 · 新版本应用内提醒 · 苹果风极简质感
 </p>
 
 <p align="center">
-  <a href="https://github.com/zds-xiaoxin/xiaoxin-t3code/releases/latest"><b>下载 macOS 版（Apple 芯片）</b></a> ·
-  <a href="#从-c67-或更早版本升级">升级与备份</a> ·
-  <a href="https://github.com/zds-xiaoxin/xiaoxin-t3code/releases/tag/v1.0.7">更新说明</a> ·
-  <a href="#下载与首次打开">首次打开</a> ·
-  <a href="README.md">English</a>
+  <a href="#download">下载 v1.2.0</a> ·
+  <a href="#highlights">核心亮点</a> ·
+  <a href="#workshop">星尘积木工坊</a> ·
+  <a href="#compare">与官方对比</a> ·
+  <a href="#updates-privacy">更新与隐私</a> ·
+  <a href="README.en.md"><strong>English</strong></a>
 </p>
 
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="assets/hero-zh-dark.webp">
-    <img src="assets/hero-zh-light.webp" width="100%" alt="T3 星尘版：对话进行中，输入框上方有步骤胶囊，侧栏已按分类整理。">
-  </picture>
+  <img src="https://img.shields.io/github/stars/zds-xiaoxin/xiaoxin-t3code?label=Stars&color=ff5a1f&style=flat" alt="GitHub Stars" />
+  <img src="https://img.shields.io/github/v/release/zds-xiaoxin/xiaoxin-t3code?label=%E6%9C%80%E6%96%B0%E7%89%88%E6%9C%AC&color=1d1d1f" alt="Latest Release" />
+  <img src="https://img.shields.io/github/downloads/zds-xiaoxin/xiaoxin-t3code/total?label=%E7%B4%AF%E8%AE%A1%E4%B8%8B%E8%BD%BD&color=0a84ff" alt="Total Downloads" />
+  <img src="https://img.shields.io/badge/macOS-Apple%20Silicon-1d1d1f" alt="macOS Apple Silicon" />
+  <img src="https://img.shields.io/badge/License-MIT-30d158" alt="MIT License" />
 </p>
 
-T3 星尘版是给你已经在用的 AI 编码助手（比如 Claude 和 Codex）准备的桌面工作台。它告诉你每个助手正在做什么、每个账号还剩多少额度，并替你把会话分好类。它运行在你的 Mac 上，用的是你自己的订阅。
-
-> [!NOTE]
-> **原 Xiaoxin T3 Code，现名 T3 星尘版。** 同一个仓库、同一个项目；之前的版本（C67、C47 及更早）仍保留在 Releases 页面。
->
-> 这是 [T3 Code](https://github.com/pingdotgg/t3code)（MIT）的非官方社区版，与 T3 Tools 无关联。星尘版的问题请在本仓库反馈，不要发到上游。
-
-## 你会得到什么
-
-### 看计划，不看命令堆
-
-输入框上方有一个悬浮的小胶囊，告诉你助手做到哪了：三到六个阶段、一个进度环、一个计数。点开能看到每个阶段和它做过的操作。支持 Claude 和 Codex。
-
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="assets/steps-zh-dark.gif">
-  <img src="assets/steps-zh-light.gif" width="100%" alt="步骤胶囊展开，显示各阶段，再点开一个阶段看它的操作，最后完成。">
+  <source media="(prefers-color-scheme: dark)" srcset="assets/community/v1.2.0/hero-dark.jpg" />
+  <img src="assets/community/v1.2.0/hero-light.jpg" alt="T3 星尘版 v1.2苹果主题主界面：任务步骤卡、星舰推理滑块与底部令牌缓存弹窗" width="100%" />
 </picture>
 
-### 知道哪个账号还有额度
+<p align="center"><sub>T3 星尘版 v1.2.0苹果主题浅 / 深色自适应宣传图 · 演示数据全部本地生成，不涉及任何真实隐私信息。</sub></p>
 
-每个账号一张卡，一排四张：还剩多少，最多两条额度条。绿色、橙色、红色表示能不能撑到重置。同一家的账号排在一起，也可以拖动卡片按自己的习惯排序。「这周的重置」时间轴显示每个限额什么时候恢复。
+---
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="assets/quota-zh-dark.webp">
-  <img src="assets/quota-zh-light.webp" width="100%" alt="一排四张额度卡，每张显示剩余比例和额度条，下方是「这周的重置」时间轴。">
-</picture>
+<a id="highlights"></a>
 
-### 在侧栏直接收尾
+## 核心亮点与动效实录
 
-鼠标放到「待我处理」里的任务上，就能标记完成、归档或停止，不用点进对话。点左边的状态圆点，可以改成已完成或稍后提醒。完成的任务收在「今天已完成」里。
+**v1.2.0** 基于官方 T3 Code 截至 2026-11-21 的最新代码（`0.1.11`，提交 `f9b19a7f85`）深度定制，正式更名为 **`T3 Stardust.app`**，重点打磨推理交互、用量可视化、界面流畅度与新版本提醒。
+
+### 1. V18「星舰发射栈」流体推理强度滑块（离屏贴图 + 静止 2 秒停止重绘）
+
+每次切换模型推理强度，不再是枯燥的下拉菜单——一艘不锈钢星舰随档位连续演进 5 个高对比视觉阶段：**发射台冷态待命 → 猛禽点火 → Max-Q 音爆破云 → 地球弧线钟形真空羽流 → 深空曲速巡航**，升档自带 180ms 过载打击反馈（2 帧定格、曝光闪、胶囊微震、旋钮反冲、色散与音爆环）与 Liquid Glass 折射放大镜。
+
+- **流畅度优化**：将羽流、激波菱形、星轨、云层与粒子全部预烘焙为离屏精灵贴图（每帧新建的渐变对象从约 120–180 个降到 6 个以内），切档结束静置 **2 秒后自动停止重绘**，鼠标移入、聚焦或拖拽时立即恢复。
 
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="assets/inbox-zh-dark.webp">
-    <img src="assets/inbox-zh-light.webp" width="60%" alt="侧栏任务上的完成、归档、更多按钮，以及状态菜单：进行中、待我处理、已完成、稍后提醒。">
-  </picture>
+  <img src="assets/community/v1.2.0/demo-starship-slider.gif" alt="V18 星舰发射栈推理强度滑块 5 档连续演进实录" width="92%" />
 </p>
 
-### 第一轮就有统计
+### 2. Composer V9 统一输入台与底部「会话概览 / 令牌缓存」弹簧浮层
 
-步骤数、速度、令牌和缓存命中显示在输入框下方，第一轮还在运行时就会跟着增长。点一下看完整明细。
+- **统一模型触发胶囊（输入台右侧）**：显示当前提供方图标、模型名称与推理档位色点；点击向上展开弹窗，依次集成 Spotlight 模型搜索、横向提供方药丸标签、模型列表（含剩余额度）、V18 星舰推理滑块与底部三段式弹性权限滑块（默认「完全访问」不占底栏，切换为「自动 / 需审批」时在模型胶囊左侧显示独立权限芯片）。
+- **居中会话统计浮层**：底部悬停磁吸 Dock 药丸顺滑跟手，点击纯合成层弹簧弹出「会话概览」（轮次/步数/速率/思考与工具耗时占比）与「令牌与缓存」（总计/缓存命中读取与命中率）。
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="assets/stats-zh-dark.webp">
-  <img src="assets/stats-zh-light.webp" width="100%" alt="会话统计栏的数字在增长，随后展开明细。">
-</picture>
+<p align="center">
+  <img src="assets/community/v1.2.0/demo-composer-stats.gif" alt="底部会话概览与令牌缓存 3 层毛玻璃弹簧弹窗演示" width="92%" />
+</p>
 
-### 会自己分类的侧栏
+### 3. 用量、费用、多账号限额与 macOS 清理中心
 
-选一个预设，新会话会按标题自动归类。也可以请模型给出建议，先看清楚再决定，确认之前什么都不会移动。
+- **四分页数据工作台**（费用 / 令牌 / 限额 / 清理与整理）：采用一次性数据动效（数字滚动、曲线绘制、双限额圆环、燃尽预测与前一时段对比），首次打开极速渲染。
+- **顶栏常驻额度胶囊**：不用切页面就能随时看清 Claude / Codex 剩余额度与重置倒计时。
+- **先预览再执行的磁盘清理（macOS）**：按卷查看占用与受保护项，每一条清理建议都先预览路径和去向，确认后才执行。
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="assets/categories-zh-dark.webp">
-  <img src="assets/categories-zh-light.webp" width="100%" alt="分类建议对话框，每个会话都有勾选框和理由。">
-</picture>
+<p align="center">
+  <img src="assets/community/v1.2.0/demo-usage-dashboard.gif" alt="用量、费用与多账号限额圆环动态可视化" width="92%" />
+</p>
 
-### 首次打开说清楚哪些已就绪，清理前先预览
+### 4. 任务步骤卡、内置预览图钉批注与产物墙
 
-欢迎页用大白话告诉你这台 Mac 上哪些工具已安装、已登录（例如 Codex、Claude、Antigravity、Cursor）。清理会先列出要删什么、能腾出多少空间，由你决定。
+- **任务步骤卡与命令人话描述**：把晦涩终端命令自动折叠成可读步骤卡（如 `跑测试`、`类型检查`），展示耗时与产出数，展开保留原始命令。
+- **预览图钉批注**：在内置浏览器预览里直接点元素钉图钉、按「待改 / 已改」筛选、双向定位，发送给助手时自动附带局部截图。
+- **产物面板**：集中管理当前会话与项目产出的文档、图片和代码文件。
 
-<table>
-  <tr>
-    <td width="50%">
-      <picture>
-        <source media="(prefers-color-scheme: dark)" srcset="assets/welcome-zh-dark.webp">
-        <img src="assets/welcome-zh-light.webp" width="100%" alt="欢迎页，列出检测到的助手和状态。">
-      </picture>
-    </td>
-    <td width="50%">
-      <picture>
-        <source media="(prefers-color-scheme: dark)" srcset="assets/cleanup-zh-dark.webp">
-        <img src="assets/cleanup-zh-light.webp" width="100%" alt="清理方案预览，在删除任何东西之前列出项目和大小。">
-      </picture>
-    </td>
-  </tr>
-</table>
+---
 
-以上都是真实的应用界面，演示数据，没有调用任何模型。
+<a id="workshop"></a>
 
-## 下载与首次打开
+## 星尘积木工坊 · 把喜欢的动画装进你自己的 T3
 
-**需要 macOS 13 及以上，Apple 芯片（M1 或更新）。** 暂无 Intel、Windows、Linux 版本。
+在打磨 V18 流体星舰的过程中，我们还做出了多套风格迥异的高完成度推理滑块方案（**V16 星尘观测站**、**V19-A 16-Bit 街机像素星舰**、**V19-B 赛博机甲 HUD**、**V17 聚变核心 / 日食弹弓 / 星钢淬火**）。
 
-1. 从[最新版本](https://github.com/zds-xiaoxin/xiaoxin-t3code/releases/latest)下载 `.zip`，解压后把应用拖进「应用程序」。
-2. 应用**只做了 ad-hoc 签名，没有 Apple Developer ID 签名，也未经公证**，所以 macOS 会拦截第一次打开。先尝试打开一次，然后进入**系统设置 → 隐私与安全性**，往下滚动，点击**仍要打开**。macOS 13 和 14 也可以右键点击应用，选择**打开**。
-3. 登录你已经在用的助手。T3 星尘版不代售模型额度。你登录自己已经在用的助手，费用仍由那些服务商收取。
+不想拘泥于默认样式？打开本仓库的 **[`stardust-kit/`](stardust-kit/README.md)** 目录：每套方案都带一个可直接在浏览器打开的 `demo.html`，以及独立源码和 AI 改造 Prompt，可以装进你自己的 T3 工作台。
 
-想核对下载文件：把发布页上的 `SHA256SUMS.txt` 下载到同一个文件夹，运行 `shasum -a 256 -c SHA256SUMS.txt`。
+<p align="center">
+  <img src="assets/community/v1.2.0/demo-slider-gallery.gif" alt="星尘积木工坊：V18 流体星舰 / V16 星尘观测站 / V19 像素星舰 / V19 赛博机甲 HUD" width="94%" />
+</p>
 
-使用统计**默认关闭**，可以在「设置 → 关于」里打开。
+| 积木方案 | 视觉风格 | 仓库目录 | 在线体验 |
+| --- | --- | --- | --- |
+| **V18 流体写实星舰** | 正式版默认搭载 · 连续飞行 + 离屏贴图 + 2s 自动休眠 | [`stardust-kit/v18-starship-fluid`](stardust-kit/v18-starship-fluid/) | [demo.html](stardust-kit/v18-starship-fluid/demo.html) |
+| **V16 星尘观测站** | 治愈像素叙事 · 小机器人夜间逐件点亮观测站与流星 | [`stardust-kit/v16-stardust-observatory`](stardust-kit/v16-stardust-observatory/) | [demo.html](stardust-kit/v16-stardust-observatory/demo.html) |
+| **V19-A 16-Bit 像素星舰** | 复古街机高精像素火箭与圆润火焰烟球 | [`stardust-kit/v19-pixel-starship`](stardust-kit/v19-pixel-starship/) | [demo.html](stardust-kit/v19-pixel-starship/demo.html) |
+| **V19-B 赛博机甲 HUD** | 高达 / EVA 遥测网格、流体光带尾迹与曲速护盾 | [`stardust-kit/v19-cyber-hud`](stardust-kit/v19-cyber-hud/) | [demo.html](stardust-kit/v19-cyber-hud/demo.html) |
+| **V17 高对比实验 4 套** | 星舰 / 聚变核心超频 / 日食引力弹弓 / 星钢淬火 | [`stardust-kit/v17-thrill-experiments`](stardust-kit/v17-thrill-experiments/) | [demo.html](stardust-kit/v17-thrill-experiments/demo.html) |
 
-暂时需要手动更新，请关注[发布页](https://github.com/zds-xiaoxin/xiaoxin-t3code/releases)。
+---
 
-## 从 C67 或更早版本升级
+<a id="compare"></a>
 
-1. **先彻底退出旧版本**，然后给数据目录做一份冷备份：把 `~/.t3` 复制到安全的地方。
-2. 安装并打开 T3 星尘版，首次启动时会迁移数据。
-3. **迁移是单向的**（数据库 schema 79 → 95）。请保留旧版应用，但不要再用它打开已迁移的数据，否则旧版可能用旧数据库覆盖新数据。
+## 和官方 T3 Code 的完整对比
 
-**要回退：**
+仅列出可在源码中核实的差异，不包含官方原生已有且未改动的通用能力：
 
-1. 彻底退出新版 T3 星尘版。
-2. 把迁移后的数据文件夹改名，例如 `~/.t3` → `~/.t3-migrated`，先留着，不要删。
-3. 把你的备份复制回 `~/.t3`。
-4. 打开旧版应用。
+| 维度 / 功能 | 官方 T3 Code | T3 星尘版 v1.2 |
+| --- | --- | --- |
+| **推理强度交互** | 下拉 / 基础选项列表 | **✓ V18 星舰流体滑块**（5 档连续演进、180ms 升档反馈、离屏贴图、2s 休眠）+ 开源积木工坊多套方案 |
+| **Composer 输入台** | 基础选择栏 | **✓ Composer V9**（一体化触发胶囊、Spotlight 搜索、三段式弹性权限滑块） |
+| **底部会话与令牌浮层** | — | **✓ 居中磁吸 Dock 栏 + 3 层纯合成弹簧弹窗**（轮次/速率/思考占比/缓存命中率） |
+| **顶栏常驻额度胶囊** | — | **✓ 常驻顶栏毛玻璃圆环胶囊**，实时预览多账号剩余额度 |
+| **用量、费用与限额页** | 基础用量与明细 | **✓ 费用 / 令牌 / 限额 / 清理四分页**，含圆环、燃尽预测、前一时段对比与首次打开加速 |
+| **任务步骤卡** | 原始工具日志 | **✓ 人话步骤卡**（耗时、产出数、展开看原始命令） |
+| **内置预览批注** | 画笔涂鸦 | **✓ 图钉批注**（待改/已改筛选、双向定位、附带局部截图） |
+| **产物面板 & 磁盘清理** | — | **✓ 右侧产物墙 + macOS 先预览再执行磁盘清理** |
+| **中文界面 & 主题** | 部分翻译 | **✓ 补充约 1.2 万行中文翻译 + Apple 极简浅/深双色主题 + `T3 Stardust.app` 正式正名** |
+| **社区版更新提醒** | 上游通道 | **✓ 自动检查本仓库 GitHub 发行版**（启动时及每 6 小时），有新版时提醒并直达下载页；下载、安装与重启由你手动完成 |
 
+---
 
-## 隐私与数据
+<a id="updates-privacy"></a>
 
-- 本地优先。会话记录、设置和数据库保存在你的 Mac 上。
-- 运行助手时，请求由你选择的服务处理；T3 星尘版不会在中间加自己的服务器。
-- 分类建议会把会话标题发给你选的模型，只在你点击之后才发，并可能消耗该账号的额度。
-- 使用统计默认关闭，需要你主动开启。默认配置下本版本不会向上游检查更新。
-- 安装包里不含维护者的数据。每次发布前都会扫描个人路径、账号名和密钥。检查方式见 [docs/VERIFY.md](docs/VERIFY.md)。
+## 更新提醒与隐私说明
 
-## 常见问题
+### 应用内新版本提醒
+- 启动时及之后每 6 小时，应用会请求 GitHub 公开接口，查看本仓库最新的正式发行版（只认带完整 macOS Apple Silicon 安装包和 SHA256 摘要的版本）。
+- 发现新版本时弹出提醒，点击直达发行页下载。**应用不会自动下载、替换或重启**，升级请按下方「下载与安装」步骤手动完成。
+- 在 **设置 → 关于** 中可以：
+  - 切换 **社区更新模式**：「标准版 · 手动确认更新」（默认，跳转发行下载页）或「自行改造 · 仅提醒」（跳转源码差异页，适合自己魔改过代码的用户）；
+  - 关闭 **自动检查社区更新**。
+- 检查更新不发送聊天、账号或项目数据。
 
-**这是官方的 T3 Code 吗？** 不是。它是基于 T3 Code、遵循 MIT 许可的社区版，界面有自己的改动。
+### 使用统计
+- 星尘版**没有新增**任何统计，也没有自己的统计服务器。
+- 上游 T3 Code 自带的匿名使用统计在星尘版里**默认关闭**，未开启时不记录、不缓存、不发送任何数据。
+- 如愿意帮助上游改进，可在 **设置 → 关于 →「共享匿名使用数据」** 手动开启：只发送功能使用、应用版本和操作系统信息（不含提示词、文件或路径）到上游项目的 `ingest.t3.codes`；关闭后立即停止发送并丢弃未发送的事件。
 
-**看不到步骤胶囊。** 只有助手创建了任务清单才会出现。有些 Claude 会话从不创建清单，所以没什么可显示的。
+---
 
-**会消耗我的额度吗？** 运行助手时会，和平时一样。请求分类建议会把标题发给模型，也可能消耗额度。查看额度、统计和清理预览不会调用模型。
+<a id="download"></a>
 
-**能退回旧版本吗？** 可以，用升级步骤里的冷备份。不要让旧版去打开已迁移的数据。
+## 下载与安装（macOS Apple Silicon）
 
-**Bug 去哪里报？** [提交 Issue](https://github.com/zds-xiaoxin/xiaoxin-t3code/issues/new)。贴日志前请先去掉姓名、路径和密钥。
+> **系统要求**：macOS 13 及以上 · Apple Silicon（M1 / M2 / M3 / M4）
 
-## 致谢与许可
+- **安装包下载**：[T3-Stardust-v1.2.0-macOS-arm64.zip](https://github.com/zds-xiaoxin/xiaoxin-t3code/releases/download/v1.2.0/T3-Stardust-v1.2.0-macOS-arm64.zip) · [Releases 发行页 & SHA256SUMS.txt](https://github.com/zds-xiaoxin/xiaoxin-t3code/releases/tag/v1.2.0) · [详细发行说明](docs/community/v1.2.0/RELEASE.zh.md)
 
-基于 T3 Tools Inc. 的 [T3 Code](https://github.com/pingdotgg/t3code)，遵循 [MIT 许可](LICENSE)，保留原始版权。第三方声明见 [third-party-licenses](third-party-licenses/)。检查与校验和：[docs/VERIFY.md](docs/VERIFY.md)。
+### 快速校验与安装
+1. 下载 ZIP 与 `SHA256SUMS.txt` 到同一目录，终端校验完整性：
+   ```bash
+   shasum -a 256 -c SHA256SUMS.txt
+   ```
+2. 解压后将 `T3 Stardust.app` 拖入 `/Applications`（升级旧版前建议先等待运行中的任务结束）。
+   > **注意**：星尘版与官方 T3 Code 共用同一份本机数据（对话、设置、钥匙串），从官方版切换过来历史不会丢；但两者**不能同时运行**，打开其中一个前请先完全退出另一个。
+3. 公开版为社区 **ad-hoc 签名**（未经 Apple 付费公证），首次打开若出现系统提示，在 **系统设置 → 隐私与安全性** 点击「仍要打开」，或运行：
+   ```bash
+   xattr -dr com.apple.quarantine "/Applications/T3 Stardust.app"
+   ```
+4. 使用你本机已登录的智能体 CLI（Claude Code、Codex、Cursor、OpenCode 或任意 ACP 智能体）。
+
+---
+
+## 开源协议与致谢
+
+本项目基于开源项目 [pingdotgg/t3code](https://github.com/pingdotgg/t3code) 定制开发，完整保留上游 [MIT 许可证](LICENSE)。T3 星尘版为独立社区定制版本，与上游官方无隶属关系。公开构建均经过隐私扫描并去除维护者私有签名与个人路径，随发行页附带构建校验与隐私扫描回执。

@@ -4,6 +4,7 @@ import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import { afterEach, describe, expect, it } from "@effect/vitest";
 import { isolateClaudeTerminalOptions } from "./ClaudeTerminalIsolation.ts";
+import { makeTerminalArgs } from "./ClaudeTerminalMessages.ts";
 
 const roots: string[] = [];
 afterEach(() => {
@@ -25,6 +26,8 @@ function fixture() {
         CLAUDE_CONFIG_DIR: NodePath.join(root, "home/.claude"),
         PATH: "/usr/bin:/bin",
         T3CODE_THREAD_ID: "fixture-thread",
+        CLAUDE_CODE_RESUME_INTERRUPTED_TURN: "1",
+        CLAUDE_CODE_RESUME_REASON: "user_resume",
         HOME: NodeOS.homedir(),
         ANTHROPIC_API_KEY: "must-not-inherit",
         CLAUDE_CODE_OAUTH_TOKEN: "must-not-inherit",
@@ -62,6 +65,8 @@ describe("Claude terminal account isolation", () => {
     expect(isolated.env?.HOME).toBe(NodeFS.realpathSync(NodeOS.homedir()));
     expect(isolated.env?.XDG_CONFIG_HOME).toBe(NodePath.join(config, ".t3-terminal/home/.config"));
     expect(isolated.env?.T3CODE_THREAD_ID).toBe("fixture-thread");
+    expect(isolated.env?.CLAUDE_CODE_RESUME_INTERRUPTED_TURN).toBe("1");
+    expect(isolated.env?.CLAUDE_CODE_RESUME_REASON).toBe("user_resume");
     expect(isolated.env).not.toHaveProperty("ANTHROPIC_API_KEY");
     expect(isolated.env).not.toHaveProperty("CLAUDE_CODE_OAUTH_TOKEN");
     expect(isolated.env?.T3_CLAUDE_TUI_TEST_UPSTREAM).toBe(options.env.T3_CLAUDE_TUI_TEST_UPSTREAM);
@@ -208,4 +213,58 @@ describe("Claude terminal account isolation", () => {
       ).toThrow("Claude TUI prototype isolation:");
     },
   );
+});
+
+// Root cause of "no step capsule in T3 Claude sessions": the terminal launch runs `claude` with
+// `--setting-sources ""` and a filtered environment, so neither the account's settings.json nor the
+// instance environment carried CLAUDE_CODE_ENABLE_TODO_TOOLS, and Claude Code left TaskCreate,
+// TaskUpdate and TaskList out for models it does not know.
+describe("Claude terminal launch keeps the task-list tools", () => {
+  const launch = (isolated: ReturnType<typeof isolateClaudeTerminalOptions>) => ({
+    args: makeTerminalArgs(
+      {
+        ...isolated,
+        sessionId: "11111111-1111-4111-8111-111111111111",
+        model: "claude-sonnet-5-5",
+      },
+      { settingsPath: "/tmp/settings.json" },
+    ),
+    env: isolated.env ?? {},
+  });
+
+  it("turns the tools on for the selected account and the sandbox, and disables none", () => {
+    const { root, options } = fixture();
+    const config = NodeFS.realpathSync(NodePath.join(root, "home/.claude"));
+    const account = isolateClaudeTerminalOptions(undefined, {
+      ...options,
+      env: { ...options.env, CLAUDE_CONFIG_DIR: config },
+    });
+    const sandbox = isolateClaudeTerminalOptions(root, options);
+    for (const isolated of [account, sandbox]) {
+      const { args, env } = launch(isolated);
+      expect(env.CLAUDE_CODE_ENABLE_TODO_TOOLS).toBe("1");
+      // The launch still ignores the account's settings.json, which is why the variable is set here.
+      expect(args).toContain("--setting-sources");
+      expect(args).not.toContain("--tools");
+      expect(args.join(" ")).not.toMatch(
+        /--disallowedTools|TaskCreate|TaskUpdate|TaskList|TodoWrite/,
+      );
+    }
+  });
+
+  it("keeps an explicit value and stays stable when isolated twice", () => {
+    const { root, options } = fixture();
+    const config = NodeFS.realpathSync(NodePath.join(root, "home/.claude"));
+    const input = {
+      ...options,
+      env: { ...options.env, CLAUDE_CONFIG_DIR: config, CLAUDE_CODE_ENABLE_TODO_TOOLS: "0" },
+    };
+    const isolated = isolateClaudeTerminalOptions(undefined, input);
+    expect(isolated.env?.CLAUDE_CODE_ENABLE_TODO_TOOLS).toBe("0");
+    const defaulted = isolateClaudeTerminalOptions(undefined, {
+      ...options,
+      env: { ...options.env, CLAUDE_CONFIG_DIR: config },
+    });
+    expect(isolateClaudeTerminalOptions(undefined, defaulted)).toEqual(defaulted);
+  });
 });

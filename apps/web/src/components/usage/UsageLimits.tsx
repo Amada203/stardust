@@ -1,3 +1,16 @@
+import { readUiLocale } from "~/i18n";
+import { quotaWindowLabel } from "./usageQuotaPresentation";
+import {
+  resetAdvanceLabel,
+  resetFailureReason,
+  resetCreditChoices,
+  resetAffectedWindows,
+  resetEffectLabel,
+  resetExpiry,
+  RESET_EARLY_REMAINING_PERCENT,
+} from "./usageResetCreditPresentation";
+import { toastManager } from "../ui/toast";
+import { useUiText } from "~/i18n/useUiText";
 import { uiText } from "~/i18n";
 import {
   AuthProvidersManageScope,
@@ -11,16 +24,10 @@ import {
 } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
 import { normalizeProviderAccentColor } from "@t3tools/client-runtime/state/provider-instance-display";
-import {
-  formatDuration,
-  formatResetsIn,
-  type LimitPace,
-  paceOf,
-  paceRemainingPercent,
-  remainingPercent,
-} from "@t3tools/shared/usageLimits";
+import { type LimitPace, paceOf, paceRemainingPercent, remainingPercent, type ResetCreditChoice } from "@t3tools/shared/usageLimits";
+import { formatResetsIn } from "@t3tools/shared/usageLimitsCopy";
 import { GaugeIcon, TrendingDownIcon, TrendingUpIcon } from "lucide-react";
-import { Fragment, type ReactNode, useLayoutEffect, useState } from "react";
+import { Fragment, useLayoutEffect, useState, type ReactNode } from "react";
 
 import { usePrimarySettings } from "../../hooks/useSettings";
 import { observeResize } from "../../lib/observeResize";
@@ -50,12 +57,21 @@ const PACE: Record<
   }
 > = {
   ahead: {
-    label: uiText("Ahead of pace: spending faster than the window elapses"),
+    get label() {
+      return uiText("Ahead of pace: spending faster than the window elapses");
+    },
     icon: TrendingUpIcon,
   },
-  on: { label: uiText("On pace with the window"), icon: GaugeIcon },
+  on: {
+    get label() {
+      return uiText("On pace with the window");
+    },
+    icon: GaugeIcon,
+  },
   under: {
-    label: uiText("Under pace: headroom left for the rest of the window"),
+    get label() {
+      return uiText("Under pace: headroom left for the rest of the window");
+    },
     icon: TrendingDownIcon,
   },
 };
@@ -82,7 +98,9 @@ export function PaceIcon({ pace }: { readonly pace: LimitPace }) {
       >
         <Icon className={"size-3.5"} aria-hidden />
       </TooltipTrigger>
-      <TooltipPopup side={"top"}>{PACE[pace].label}</TooltipPopup>
+      <TooltipPopup data-usage-portal side={"top"}>
+        {PACE[pace].label}
+      </TooltipPopup>
     </Tooltip>
   );
 }
@@ -134,6 +152,7 @@ function WindowBar({
   readonly window: ServerProviderUsageWindow;
   readonly now: number;
 }) {
+  const uiText = useUiText();
   const timestampFormat = usePrimarySettings((settings) => settings.timestampFormat);
   const remaining = remainingPercent(window);
   const timeLeft = paceRemainingPercent(window, now);
@@ -177,7 +196,7 @@ function WindowBar({
           />
         ) : null}
       </TooltipTrigger>
-      <TooltipPopup side={"top"}>
+      <TooltipPopup data-usage-portal side={"top"}>
         <div className={"flex flex-col gap-0.5"}>
           <span className={"text-foreground"}>
             {remaining}
@@ -215,6 +234,7 @@ export function LimitWindows({
   readonly now: number;
   readonly compact?: boolean;
 }) {
+  const uiText = useUiText();
   const color = normalizeProviderAccentColor(accentColor) ?? barColor(driver);
   return (
     <div
@@ -259,35 +279,85 @@ const OUTCOME_TEXT: Record<ProviderConsumeResetCreditOutcome, string> = {
   alreadyRedeemed: "That credit was already redeemed.",
 };
 
-export function useResetCredit(
-  environmentId: EnvironmentId,
-  input: ProviderConsumeResetCreditInput,
-) {
+export function useResetCredit(environmentId: EnvironmentId, totalCredits?: number) {
+  const text = useUiText();
+  const refresh = useAtomCommand(serverEnvironment.refreshProviders, { reportFailure: false });
   const canManageProviders = useEnvironmentScope(environmentId, AuthProvidersManageScope);
   const consume = useAtomCommand(serverEnvironment.consumeResetCredit, { reportFailure: false });
+  // Kept after close so the dialog's text survives its exit animation.
+  const [choice, setChoice] = useState<ResetCreditChoice | null>(null);
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
 
-  const redeem = async () => {
+  const executeRedeem = async (target: ResetCreditChoice | null) => {
     setConfirming(false);
-    if (!readEnvironmentScope(environmentId, AuthProvidersManageScope)) return;
+    if (!target || !readEnvironmentScope(environmentId, AuthProvidersManageScope)) return;
     setBusy(true);
     setStatus(null);
-    const result = await consume({ environmentId, input });
-    setBusy(false);
-    if (result._tag === "Success") {
-      setStatus(result.value.warning ?? OUTCOME_TEXT[result.value.outcome]);
-      return;
-    }
-    setStatus(
-      "error" in result.cause && result.cause.error instanceof Error
-        ? result.cause.error.message
-        : "Could not use the reset credit.",
-    );
+    await (async () => {
+      const result = await consume({ environmentId, input: target.input });
+      if (result._tag === "Success") {
+        if (result.value.outcome === "reset") {
+          const refreshed = await refresh({ environmentId, input: {} });
+          if (refreshed._tag === "Failure") {
+            const message = text(
+              "Reset applied, but quota refresh failed. Refresh the quota to check its current status.",
+            );
+            setStatus(message);
+            toastManager.add({ type: "warning", title: message });
+            return;
+          }
+          const message = text("Reset applied · {count} credits left", {
+            count: Math.max(0, (totalCredits ?? target.availableCount) - 1),
+          });
+          setStatus(message);
+          toastManager.add({ type: "success", title: message });
+        } else setStatus(text(OUTCOME_TEXT[result.value.outcome]));
+        if (result.value.warning)
+          toastManager.add({
+            type: "warning",
+            title: text("Reset status notice"),
+            description: text("The provider returned a warning: {reason}", {
+              reason: text(result.value.warning),
+            }),
+          });
+        return;
+      }
+      const reason =
+        "error" in result.cause && result.cause.error instanceof Error
+          ? result.cause.error.message
+          : text("Unknown provider error");
+      setStatus(
+        text("Could not use the reset credit: {reason}", { reason: resetFailureReason(reason) }),
+      );
+    })().finally(() => setBusy(false));
   };
 
-  return { canManageProviders, confirming, setConfirming, busy, status, redeem };
+  const redeem = async () => executeRedeem(choice);
+
+  const redeemChoice = async (next: ResetCreditChoice) => {
+    setChoice(next);
+    await executeRedeem(next);
+  };
+
+  const confirm = (next: ResetCreditChoice) => {
+    if (!readEnvironmentScope(environmentId, AuthProvidersManageScope)) return;
+    setChoice(next);
+    setConfirming(true);
+  };
+
+  return {
+    canManageProviders,
+    choice,
+    confirming,
+    setConfirming,
+    confirm,
+    busy,
+    status,
+    redeem,
+    redeemChoice,
+  };
 }
 
 /** Require confirmation because redemption spends credits. Mount outside popovers, which stack above
@@ -295,50 +365,141 @@ export function useResetCredit(
 export function ResetCreditDialog({
   open,
   onOpenChange,
+  choice,
+  choices = [],
+  onChoice,
+  credits,
+  windows = [],
+  provider = "",
+  now,
   onConfirm,
   disabled = false,
 }: {
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
+  readonly choice: ResetCreditChoice | null;
+  readonly choices?: readonly ResetCreditChoice[];
+  readonly onChoice?: (choice: ResetCreditChoice) => void;
+  readonly credits?: ServerProviderResetCredits | undefined;
+  readonly windows?: readonly ServerProviderUsageWindow[];
+  readonly provider?: string;
+  readonly now: number;
   readonly onConfirm: () => void;
   readonly disabled?: boolean;
 }) {
+  const text = useUiText();
+  const affected = resetAffectedWindows(choice, credits, windows);
+  const early =
+    affected.length > 0 &&
+    affected.every((w) => remainingPercent(w) >= RESET_EARLY_REMAINING_PERCENT);
+  const multiple = choices.length > 1;
+  const available = credits?.availableCount ?? choice?.availableCount ?? 0;
+  const timestampFormat = usePrimarySettings((s) => s.timestampFormat);
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogPopup>
+      <AlertDialogPopup data-usage-portal variant="usage-reset">
         <AlertDialogHeader>
-          <AlertDialogTitle>{uiText("Use a reset credit?")}</AlertDialogTitle>
-          <AlertDialogDescription>
-            {uiText(
-              "This redeems one credit on your account and clears the current rate-limit windows. It cannot be undone.",
-            )}
-          </AlertDialogDescription>
+          <AlertDialogTitle>
+            {early
+              ? text("It's a little early to use this")
+              : multiple
+                ? text("Choose a reset credit")
+                : text("Use one reset credit to refill {provider}?", { provider })}
+          </AlertDialogTitle>
+          <AlertDialogDescription>{choice?.confirmDescription}</AlertDialogDescription>
         </AlertDialogHeader>
+        {multiple ? (
+          <fieldset className="usage-reset-options">
+            <legend className="sr-only">{text("Choose a reset credit")}</legend>
+            {choices.map((c) => {
+              const option = credits?.options?.find((o) => o.creditId === c.key);
+              return (
+                <label key={c.key}>
+                  <input
+                    type="radio"
+                    name="reset-credit"
+                    value={c.key}
+                    checked={c.key === choice?.key}
+                    disabled={disabled || c.availableCount <= 0}
+                    onChange={() => onChoice?.(c)}
+                  />
+                  <span>
+                    <b>{resetEffectLabel(option?.label ?? c.actionLabel)}</b>
+                    <small>{c.summary}</small>
+                  </span>
+                </label>
+              );
+            })}
+          </fieldset>
+        ) : null}
+        <div className="usage-reset-effects">
+          {affected.map((w) => (
+            <div className="usage-reset-window" key={w.id}>
+              <div>
+                <span>{quotaWindowLabel(w.label, readUiLocale() === "zh-CN")}</span>
+                <b>{remainingPercent(w)}% → 100%</b>
+              </div>
+              {w.resetsAt ? (
+                <div>
+                  <span>{text("Natural reset")}</span>
+                  <span>
+                    {formatUpcomingTimestamp(w.resetsAt, timestampFormat, now)} ·{" "}
+                    {resetAdvanceLabel(w.resetsAt, now)}
+                  </span>
+                </div>
+              ) : null}
+            </div>
+          ))}
+          {!affected.length ? (
+            <p>
+              {text(
+                "The provider has not reported the exact affected windows. Check the selected reset's effect before using it.",
+              )}
+            </p>
+          ) : null}
+          <div>
+            <span>{text("Reset credits")}</span>
+            <span>
+              {text("{before} → {after} credits · earliest expiry {date}", {
+                before: available,
+                after: Math.max(0, available - 1),
+                date: resetExpiry(
+                  [credits?.nextExpiresAt, ...(credits?.options?.map((o) => o.expiresAt) ?? [])]
+                    .filter((at): at is string => Boolean(at))
+                    .toSorted()[0],
+                ),
+              })}
+            </span>
+          </div>
+        </div>
+        {early ? (
+          <p className="usage-reset-warning">
+            {text(
+              "You still have at least {percent}% left. Waiting will make this credit go further.",
+              { percent: RESET_EARLY_REMAINING_PERCENT },
+            )}
+          </p>
+        ) : null}
+        <p className="usage-reset-note">
+          {text(
+            "One credit is deducted by the provider and cannot be restored. The provider decides which credit to spend.",
+          )}
+        </p>
         <AlertDialogFooter>
-          <AlertDialogClose render={<Button variant={"outline"} />}>
-            {uiText("Cancel")}
+          <AlertDialogClose render={<Button variant={early ? "default" : "outline"} />}>
+            {early ? text("Keep this credit for later") : text("Cancel")}
           </AlertDialogClose>
-          <Button disabled={disabled} onClick={onConfirm}>
-            {uiText("Use credit")}
+          <Button
+            variant={early ? "outline" : "default"}
+            disabled={disabled || !choice || choice.availableCount <= 0}
+            onClick={onConfirm}
+          >
+            {early ? text("Use anyway") : multiple ? text("Use selected") : text("Use one credit")}
           </Button>
         </AlertDialogFooter>
       </AlertDialogPopup>
     </AlertDialog>
   );
-}
-
-export function resetCreditsSummary(
-  credits: ServerProviderResetCredits,
-  now: number,
-  compact = false,
-): string {
-  const expiresIn = credits.nextExpiresAt
-    ? formatDuration(Date.parse(credits.nextExpiresAt) - now)
-    : null;
-  if (credits.availableCount === 0) return "No reset credits banked";
-  if (compact)
-    return `${credits.availableCount} banked${expiresIn ? ` · expires in ${expiresIn}` : ""}`;
-  return `${credits.availableCount} ${credits.availableCount === 1 ? "reset credit" : "reset credits"} banked${expiresIn ? ` · next expires in ${expiresIn}` : ""}`;
 }
 
 export function ResetCredits({
@@ -352,30 +513,36 @@ export function ResetCredits({
   readonly credits: ServerProviderResetCredits;
   readonly now: number;
 }) {
-  const { canManageProviders, confirming, setConfirming, busy, status, redeem } = useResetCredit(
-    environmentId,
-    input,
-  );
+  const { canManageProviders, choice, confirming, setConfirming, confirm, busy, status, redeem } =
+    useResetCredit(environmentId, credits.availableCount);
+  const choices = resetCreditChoices(credits, input, now);
   if (credits.availableCount === 0 && status === null) return null;
   return (
-    <div className={"flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground"}>
-      <span className={"tabular-nums"}>{resetCreditsSummary(credits, now)}</span>
-      {credits.availableCount > 0 ? (
-        <Button
-          size={"xs"}
-          variant={"outline"}
-          disabled={busy || !canManageProviders}
-          onClick={() => {
-            if (readEnvironmentScope(environmentId, AuthProvidersManageScope)) setConfirming(true);
-          }}
-        >
-          {busy ? uiText("Using…") : uiText("Use reset")}
-        </Button>
-      ) : null}
-      {status ? <span className={"text-foreground"}>{status}</span> : null}
+    <div className="flex flex-col gap-1 text-xs text-muted-foreground">
+      {choices.map((choice) => (
+        <div key={choice.key} className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <span className="tabular-nums">{choice.summary}</span>
+          {choice.availableCount > 0 ? (
+            <Button
+              size="xs"
+              variant="outline"
+              disabled={busy || !canManageProviders}
+              onClick={() => confirm(choice)}
+            >
+              {busy ? uiText("Using…") : choice.actionLabel}
+            </Button>
+          ) : null}
+        </div>
+      ))}
+      {status ? <span className="text-foreground">{status}</span> : null}
       <ResetCreditDialog
         open={confirming}
         onOpenChange={setConfirming}
+        choice={choice}
+        choices={choices}
+        onChoice={confirm}
+        credits={credits}
+        now={now}
         onConfirm={() => void redeem()}
         disabled={!canManageProviders}
       />
@@ -388,12 +555,12 @@ export function UsageLimitsSection({
   selectedEnvironmentIds,
   hiddenProviders,
   now,
-  cursorPrompt,
+  refreshControl,
 }: {
+  readonly refreshControl?: ReactNode;
   readonly selectedEnvironmentIds: ReadonlySet<EnvironmentId> | null;
   readonly hiddenProviders: ReadonlySet<UsageProviderKind>;
   readonly now: number;
-  readonly cursorPrompt?: ReactNode;
 }) {
   const presentations = useAtomValue(environmentPresentations.presentationsWithProvidersAtom);
   const hiddenDrivers = new Set<ServerProvider["driver"]>(
@@ -425,5 +592,5 @@ export function UsageLimitsSection({
       ];
     }),
   );
-  return <UsageLimitsPooled presentations={selected} now={now} cursorPrompt={cursorPrompt} />;
+  return <UsageLimitsPooled presentations={selected} now={now} refreshControl={refreshControl} />;
 }

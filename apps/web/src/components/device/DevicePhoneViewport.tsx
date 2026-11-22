@@ -1,4 +1,4 @@
-import { uiText } from "~/i18n";
+import { useGT } from "gt-react";
 import { useEffect, useRef } from "react";
 import type { PhoneViewer } from "@t3tools/client-runtime/device/phone-viewer";
 import type {
@@ -9,7 +9,9 @@ import type { DeviceShapeProfile } from "@t3tools/client-runtime/device/shape-pr
 import type { createPhoneInteraction } from "@t3tools/client-runtime/device/phone-interaction";
 import type { DeviceScreenSize, DeviceStreamClient } from "@t3tools/client-runtime/device/stream";
 import { mountDeviceViewer } from "./mountDeviceViewer";
+
 const loadPhoneViewer = () => import("@t3tools/client-runtime/device/phone-viewer");
+
 export function DevicePhoneViewport(props: {
   readonly profile: DeviceShapeProfile;
   readonly model: DeviceModelSource | null;
@@ -23,6 +25,7 @@ export function DevicePhoneViewport(props: {
   readonly foldAngle: number | null;
   readonly onUnavailable: () => void;
 }) {
+  const gt = useGT();
   const viewerRef = useRef<PhoneViewer | null>(null);
   const interactionRef = useRef<ReturnType<typeof createPhoneInteraction> | null>(null);
   const screenRef = useRef(props.screen);
@@ -49,6 +52,7 @@ export function DevicePhoneViewport(props: {
     viewerRef.current?.setAccessory(props.accessory);
     viewerRef.current?.setScreen(props.screen, props.profile);
   }, [props.screen, props.profile, props.model, props.accessory]);
+
   // The 3D viewer lives as long as its canvas; later prop changes are pushed into it above.
   const mountViewer = (canvas: HTMLCanvasElement | null) => {
     const host = canvas?.parentElement;
@@ -82,6 +86,7 @@ export function DevicePhoneViewport(props: {
       },
     });
   };
+
   const point = (event: React.PointerEvent<HTMLCanvasElement>) => {
     const rect = event.currentTarget.getBoundingClientRect();
     return {
@@ -98,7 +103,7 @@ export function DevicePhoneViewport(props: {
         />
         <canvas
           ref={mountViewer}
-          aria-label={uiText(
+          aria-label={gt(
             "Interactive 3D device. Drag the screen to interact. Drag outside it or swipe with two fingers to turn.",
           )}
           className="size-full touch-none"

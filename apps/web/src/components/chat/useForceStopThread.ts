@@ -1,4 +1,6 @@
-import { uiText } from "~/i18n";
+import { msg } from "gt-react";
+import { thrownErrorMessage } from "@t3tools/client-runtime/errors";
+import { m } from "~/i18n/messages";
 import { useAtomValue } from "@effect/atom-react";
 import type { EnvironmentId, RunId, ThreadId } from "@t3tools/contracts";
 import { useState } from "react";
@@ -36,8 +38,8 @@ export function useForceStopThread(environmentId: EnvironmentId) {
       const error = squashAtomCommandFailure(result);
       toastManager.add({
         type: "error",
-        title: uiText("Could not force stop the agent"),
-        description: error instanceof Error ? error.message : undefined,
+        title: m(msg("Could not force stop the agent")),
+        description: thrownErrorMessage(error, m) ?? undefined,
       });
       return;
     }
@@ -45,22 +47,19 @@ export function useForceStopThread(environmentId: EnvironmentId) {
     if (result.value.outcome === "releasing") {
       toastManager.add({
         type: "info",
-        title: uiText("Turn stopped; the agent is still shutting down"),
+        title: m(msg("Turn stopped; the agent is still shutting down")),
       });
     }
     if (result.value.outcome === "shared") {
       toastManager.add({
         type: "info",
-        title: uiText("Turn stopped; the agent process kept running"),
-        description:
-          others === 0
-            ? uiText(
-                "The agent process is shared with other working threads. Stop those to free it.",
-              )
-            : uiText(
-                "The agent process is shared with {count} working threads. Stop those to free it.",
-                { count: others },
-              ),
+        title: m(msg("Turn stopped; the agent process kept running")),
+        description: m(
+          msg(
+            "{others, plural, =0 {It is shared with other working threads. Stop those to free it.} one {It is shared with {others} working thread. Stop those to free it.} other {It is shared with {others} working threads. Stop those to free it.}}",
+            { others },
+          ),
+        ),
       });
     }
   };

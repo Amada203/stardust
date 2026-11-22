@@ -1,3 +1,4 @@
+import { testUiLocale } from "../../../test/uiLocale";
 import { describe, expect, it } from "vite-plus/test";
 import { ProjectId, ProviderInstanceId, ThreadId } from "@t3tools/contracts";
 import {
@@ -44,6 +45,7 @@ describe("long conversation thresholds", () => {
     expect(longConversationLevel({ ...normal, ...change })).toBe(expected),
   );
   it("uses a reported denominator only", () => {
+    using _locale = testUiLocale("zh-CN");
     expect(contextRatio({ usedTokens: 600, maxTokens: 1000 })).toBe(0.6);
     expect(contextRatio({ usedTokens: 600 })).toBeNull();
     expect(contextRatio({ usedTokens: 600, maxTokens: 0 })).toBeNull();
@@ -83,6 +85,7 @@ describe("handoff line", () => {
     expect(parseHandoffPath(text, { strict: true })).toBe(path),
   );
   it("names the exact dated file in the instruction and asks to stop", () => {
+    using _locale = testUiLocale("zh-CN");
     const path = expectedHandoffPath("/work/demo/", "123456789abc", new Date(2026, 9, 7));
     expect(path).toBe("/work/demo/HANDOFF-12345678-20261007.md");
     const prompt = buildHandoffInstruction(path);
@@ -93,6 +96,7 @@ describe("handoff line", () => {
     expect(prompt).not.toContain("委派子任务");
   });
   it("asks for unfinished delegated work to be listed", () => {
+    using _locale = testUiLocale("zh-CN");
     expect(buildHandoffInstruction("/w/HANDOFF-x.md", 2)).toContain("2 个委派子任务");
   });
 });
@@ -112,6 +116,7 @@ describe("continuation parameters", () => {
     worktreePath: "/tmp/demo-worktree",
   };
   it("inherits project, checkout, model options and both modes without provider history", () => {
+    using _locale = testUiLocale("zh-CN");
     const result = continuationParameters(
       source,
       ThreadId.make("new-thread"),
@@ -134,6 +139,7 @@ describe("continuation parameters", () => {
     expect(result.prompt).not.toContain("按其中未完成事项继续");
   });
   it("starts only for explicit nonblank instructions, with no historical todo authorization", () => {
+    using _locale = testUiLocale("zh-CN");
     expect(continuationParameters(source, ThreadId.make("new"), null, "  \n ").shouldStart).toBe(
       false,
     );

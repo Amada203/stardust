@@ -1,3 +1,4 @@
+import { uiText } from "../i18n";
 import { useSyncExternalStore } from "react";
 import { manualClipboard } from "../manualClipboard";
 import { Dialog, DialogPopup, DialogTitle, DialogDescription } from "./ui/dialog";
@@ -16,12 +17,14 @@ export function ManualClipboardDialog() {
       }}
     >
       <DialogPopup>
-        <DialogTitle>请手动复制</DialogTitle>
+        <DialogTitle>{uiText("Copy manually")}</DialogTitle>
         <DialogDescription>
-          浏览器未允许自动复制。长按或选中下面的文字，使用系统「复制」。
+          {uiText(
+            "Your browser blocked automatic copying. Select or touch and hold the text below, then choose Copy.",
+          )}
         </DialogDescription>
         <textarea
-          aria-label="手动复制内容"
+          aria-label={uiText("Text to copy")}
           readOnly
           value={value ?? ""}
           className="mt-3 max-h-[50dvh] min-h-32 w-full resize-none rounded-lg border bg-background p-3 text-base select-text"

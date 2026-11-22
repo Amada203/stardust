@@ -23,6 +23,7 @@ import * as ServerConfig from "../config.ts";
 import * as HtmlRender from "./HtmlRender.ts";
 import { HtmlRenderBrowserError } from "./headlessChrome.ts";
 import * as PreviewBrowser from "../preview/PreviewBrowser.ts";
+import * as PreviewBrowserHost from "../preview/PreviewBrowserHost.ts";
 
 const TEST_BROWSER_ENV = "T3CODE_TEST_HEADLESS_SHELL";
 
@@ -241,6 +242,11 @@ describe("HtmlRender", () => {
       const reused = yield* htmlRender.publish({ threadId, ...page });
       yield* mcpSessions.set({ ...session, browserToolsAvailable: true });
       expect(yield* mcpSessions.takeHtmlRender(threadId, page)).toEqual(reused);
+      const first = yield* htmlRender.publish({ threadId, ...page });
+      const second = yield* htmlRender.publish({ threadId, ...page });
+      expect(yield* mcpSessions.takeHtmlRender(threadId, page)).toEqual(first);
+      expect(yield* mcpSessions.takeHtmlRender(threadId, page)).toEqual(second);
+      expect(yield* mcpSessions.takeHtmlRender(threadId, page)).toBe(undefined);
 
       yield* htmlRender.publish({ threadId, ...page });
       yield* mcpSessions.set({
@@ -452,6 +458,7 @@ process.on("SIGTERM", () => {});
 const quit = () => { fs.writeFileSync(${JSON.stringify(exitRecord)}, "asked to close"); process.exit(0); };
 const reply = (message) => fs.writeSync(4, JSON.stringify(message) + "\\0");
 const results = {
+  "Target.createBrowserContext": { browserContextId: "context" },
   "Target.createTarget": { targetId: "page" },
   "Target.attachToTarget": { sessionId: "session" },
   "Runtime.evaluate": { result: { value: 100 } },
@@ -464,19 +471,55 @@ fs.createReadStream(null, { fd: 3 }).on("end", quit).on("data", (chunk) => {
   for (const { id, method, sessionId } of messages.map((raw) => JSON.parse(raw))) {
     if (method === "Browser.close") quit();
     reply({ id, sessionId, result: results[method] ?? {} });
-    if (method === "Page.navigate") reply({ sessionId, method: "Page.loadEventFired", params: {} });
+    if (method === "Page.navigate") {
+      const value = "x" + "\u{1F600}".repeat(300);
+      const params = { type: "log", args: [{ type: "string", value }] };
+      reply({ sessionId, method: "Runtime.consoleAPICalled", params });
+      reply({ sessionId, method: "Page.loadEventFired", params: {} });
+    }
   }
 });
 `,
             { mode: 0o755 },
           );
 
-          yield* HtmlRender.HtmlRender.use((htmlRender) =>
+          const preview = yield* HtmlRender.HtmlRender.use((htmlRender) =>
             htmlRender.preview({ html: "<p>x</p>" }),
           ).pipe(Effect.provide(layerHtmlRender(executable)));
+          const logged = preview.consoleMessages[0]?.text ?? "";
+          expect(logged.isWellFormed()).toBe(true);
+          expect(logged).toHaveLength(500);
 
           const exitedBy = yield* fileSystem.readFileString(exitRecord).pipe(Effect.option);
           expect(Option.getOrElse(exitedBy, () => "killed by a signal")).toBe("asked to close");
+        }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+      );
+
+      it.live("names this server's home in the browser setup command", () =>
+        Effect.gen(function* () {
+          const fileSystem = yield* FileSystem.FileSystem;
+          const path = yield* Path.Path;
+          const directory = yield* fileSystem.makeTempDirectoryScoped({
+            prefix: "t3-fake-browser-",
+          });
+          const executable = path.join(directory, "chrome-headless-shell");
+          yield* fileSystem.writeFileString(
+            executable,
+            `#!${process.execPath}\nprocess.stderr.write(${JSON.stringify(PreviewBrowserHost.NO_SANDBOX_SIGNATURE)});\nprocess.exit(1);\n`,
+            { mode: 0o755 },
+          );
+
+          const { error, baseDir } = yield* Effect.gen(function* () {
+            const { baseDir } = yield* ServerConfig.ServerConfig;
+            const htmlRender = yield* HtmlRender.HtmlRender;
+            const error = yield* htmlRender.preview({ html: "<p>x</p>" }).pipe(Effect.flip);
+            return { error, baseDir };
+          }).pipe(
+            Effect.provide(layerHtmlRender(executable)),
+            Effect.provideService(HostProcess.UserId, 1000),
+          );
+          expect(error).toBeInstanceOf(PreviewBrowserHost.PreviewBrowserSandboxError);
+          expect(error.message).toContain(`browser setup --base-dir ${baseDir}`);
         }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
       );
     },
@@ -584,6 +627,6 @@ fs.createReadStream(null, { fd: 3 }).on("end", quit).on("data", (chunk) => {
       }).pipe(Effect.provide(layerHtmlRender(executable)));
       expect(requests).toEqual([]);
       expect(datagrams).toEqual([]);
-    }).pipe(Effect.scoped),
+    }),
   );
 });

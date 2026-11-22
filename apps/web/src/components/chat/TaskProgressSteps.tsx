@@ -1,11 +1,13 @@
+import { readUiLocale } from "~/i18n";
+import { chineseDuration } from "~/i18n/conversationLabel";
+import { useUiText } from "~/i18n/useUiText";
 import { useId, useState } from "react";
 import { ChevronDownIcon, ChevronRightIcon, CheckIcon } from "lucide-react";
 import type { OrchestrationV2PlanStep } from "@t3tools/contracts";
 import type { TaskProgressSnapshot } from "../../taskProgress";
-import { uiText } from "~/i18n";
+
 import { cn } from "~/lib/utils";
 import { Tooltip, TooltipTrigger, TooltipPopup } from "../ui/tooltip";
-import { TaskTrailCombo, type TaskTrailComboProps } from "./TaskTrailCombo";
 
 export const taskProgressStateLabels: Record<TaskProgressSnapshot["state"], string> = {
   loading: "Loading steps…",
@@ -46,12 +48,17 @@ const LIVE_STATES: ReadonlySet<TaskProgressSnapshot["state"]> = new Set([
   "waiting",
 ]);
 
-export function formatStepDuration(ms: number): string {
+function shortStepDuration(ms: number): string {
   const seconds = Math.max(0, Math.floor(ms / 1000));
   if (seconds < 60) return `${seconds}s`;
   const minutes = Math.floor(seconds / 60);
   if (minutes < 60) return `${minutes}m ${String(seconds % 60).padStart(2, "0")}s`;
   return `${Math.floor(minutes / 60)}h ${String(minutes % 60).padStart(2, "0")}m`;
+}
+
+export function formatStepDuration(ms: number): string {
+  const value = shortStepDuration(ms);
+  return readUiLocale() === "zh-CN" ? chineseDuration(value) : value;
 }
 
 /**
@@ -71,11 +78,16 @@ export function stepDurationSource(
   return Number.isFinite(anchorMs) ? { kind: "live", anchorMs } : null;
 }
 
-function PanelTaskProgressSteps({
+export function TaskProgressSteps({
   progress,
   compact = false,
   defaultExpanded = true,
-}: TaskTrailComboProps & { compact?: boolean }) {
+}: {
+  progress: TaskProgressSnapshot;
+  compact?: boolean;
+  defaultExpanded?: boolean;
+}) {
+  const uiText = useUiText();
   const [expanded, setExpanded] = useState(defaultExpanded);
   const listId = useId();
   const current = progress.steps.findIndex((step) => step.status === "running");
@@ -206,14 +218,5 @@ function PanelTaskProgressSteps({
         ) : null}
       </div>
     </section>
-  );
-}
-export function TaskProgressSteps(
-  props: TaskTrailComboProps & { compact?: boolean; variant?: "panel" | "trail" },
-) {
-  return props.variant === "trail" ? (
-    <TaskTrailCombo {...props} />
-  ) : (
-    <PanelTaskProgressSteps {...props} />
   );
 }

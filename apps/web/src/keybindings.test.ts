@@ -15,6 +15,7 @@ import {
   effectiveShortcutsForCommand,
   formatShortcutLabel,
   isRichTextBoldShortcut,
+  isSidebarToggleShortcut,
   isTerminalNewShortcut,
   isTerminalSplitShortcut,
   resolveChatShortcutCommand,
@@ -449,40 +450,6 @@ describe("chat/editor shortcuts", () => {
       );
     }
   });
-  it("opens and closes the thread details panel with mod+alt+i", () => {
-    for (const platform of ["MacIntel", "Win32"]) {
-      const input = event({
-        key: "i",
-        ...(platform === "MacIntel" ? { metaKey: true } : { ctrlKey: true }),
-        altKey: true,
-      });
-      assert.strictEqual(
-        resolveShortcutCommand(input, DEFAULT_RESOLVED_KEYBINDINGS, {
-          platform,
-          context: { terminalFocus: false },
-        }),
-        "threadPanel.toggle",
-      );
-    }
-    // On macOS, Option+I types "ˆ"; the physical key still matches.
-    assert.strictEqual(
-      resolveShortcutCommand(
-        event({ key: "ˆ", code: "KeyI", metaKey: true, altKey: true }),
-        DEFAULT_RESOLVED_KEYBINDINGS,
-        { platform: "MacIntel", context: { terminalFocus: false } },
-      ),
-      "threadPanel.toggle",
-    );
-    // mod+shift+i stays the inbox shortcut; the new chord does not shadow it.
-    assert.strictEqual(
-      resolveShortcutCommand(
-        event({ key: "i", metaKey: true, shiftKey: true }),
-        DEFAULT_RESOLVED_KEYBINDINGS,
-        { platform: "MacIntel", context: { terminalFocus: false } },
-      ),
-      "inbox.next",
-    );
-  });
 
   it("preserves a user-configured thread panel shortcut instead of its default", () => {
     const bindings = mergeWithDefaultKeybindings(
@@ -719,6 +686,53 @@ describe("resolveShortcutCommand", () => {
     );
   });
 
+  it('matches Ctrl+layout "+" as itself unless Shift, Alt or the number row is involved', () => {
+    assert.isNull(
+      resolveShortcutCommand(
+        event({ key: "+", code: "BracketRight", ctrlKey: true }),
+        DEFAULT_RESOLVED_KEYBINDINGS,
+        { platform: "Linux", context: { terminalFocus: false } },
+      ),
+    );
+    assert.strictEqual(
+      resolveShortcutCommand(
+        event({ key: "+", code: "Minus", ctrlKey: true }),
+        DEFAULT_RESOLVED_KEYBINDINGS,
+        { platform: "Linux", context: { previewFocus: true } },
+      ),
+      "preview.zoomIn",
+    );
+    assert.strictEqual(
+      resolveShortcutCommand(
+        event({ key: "+", code: "Digit1", ctrlKey: true }),
+        DEFAULT_RESOLVED_KEYBINDINGS,
+        { platform: "Linux", context: { isDesktop: true } },
+      ),
+      "thread.jump.1",
+    );
+    assert.strictEqual(
+      resolveShortcutCommand(
+        event({ key: "+", code: "BracketRight", altKey: true }),
+        compile([
+          {
+            shortcut: modShortcut("]", { modKey: false, altKey: true }),
+            command: "terminal.toggle",
+          },
+        ]),
+        { platform: "Linux" },
+      ),
+      "terminal.toggle",
+    );
+    assert.strictEqual(
+      resolveShortcutCommand(
+        event({ key: "+", code: "Equal", ctrlKey: true, shiftKey: true }),
+        compile([{ shortcut: modShortcut("=", { shiftKey: true }), command: "terminal.toggle" }]),
+        { platform: "Linux" },
+      ),
+      "terminal.toggle",
+    );
+  });
+
   it("does not let a punctuation position shadow a Latin layout key", () => {
     const keybindings = compile([
       { shortcut: modShortcut("m"), command: "diff.toggle" },
@@ -800,7 +814,51 @@ describe("isRichTextBoldShortcut", () => {
   });
 });
 
+describe("isSidebarToggleShortcut", () => {
+  it("leaves Ctrl+B to a focused terminal, where it is the tmux prefix", () => {
+    const ctrlB = event({ key: "b", ctrlKey: true });
+    assert.isFalse(
+      isSidebarToggleShortcut(ctrlB, DEFAULT_BINDINGS, {
+        platform: "Linux",
+        context: { terminalFocus: true },
+      }),
+    );
+    assert.isTrue(
+      isSidebarToggleShortcut(ctrlB, DEFAULT_BINDINGS, {
+        platform: "Linux",
+        context: { terminalFocus: false },
+      }),
+    );
+  });
+
+  it("keeps Cmd+B toggling the sidebar from a focused terminal on macOS", () => {
+    assert.isTrue(
+      isSidebarToggleShortcut(event({ key: "b", metaKey: true }), DEFAULT_BINDINGS, {
+        platform: "MacIntel",
+        context: { terminalFocus: true },
+      }),
+    );
+  });
+});
+
 describe("composer and pull request shortcuts", () => {
+  it("uses the dictation chord outside the terminal and preserves terminal split", () => {
+    const chord = event({ key: "d", ctrlKey: true, shiftKey: true });
+    assert.strictEqual(
+      resolveShortcutCommand(chord, DEFAULT_RESOLVED_KEYBINDINGS, {
+        platform: "Linux",
+        context: { terminalFocus: false },
+      }),
+      "composer.dictation",
+    );
+    assert.strictEqual(
+      resolveShortcutCommand(chord, DEFAULT_RESOLVED_KEYBINDINGS, {
+        platform: "Linux",
+        context: { terminalFocus: true },
+      }),
+      "terminal.splitVertical",
+    );
+  });
   it("fills missing number shortcuts without replacing the saved URL binding", () => {
     const olderServerBindings = DEFAULT_RESOLVED_KEYBINDINGS.filter(
       (binding) =>
@@ -952,70 +1010,5 @@ describe("Usage shortcuts", () => {
         platform: "Linux",
       }),
     );
-  });
-});
-describe("inbox.next", () => {
-  it("uses mod+shift+i on macOS and Windows and preserves terminal.toggle on mod+j", () => {
-    for (const [platform, modifier] of [
-      ["MacIntel", { metaKey: true }],
-      ["Win32", { ctrlKey: true }],
-    ] as const) {
-      for (const context of [{}, { editableFocus: true }]) {
-        assert.strictEqual(
-          resolveShortcutCommand(
-            event({ key: "i", shiftKey: true, ...modifier }),
-            DEFAULT_RESOLVED_KEYBINDINGS,
-            { platform, context },
-          ),
-          "inbox.next",
-        );
-      }
-      assert.isNull(
-        resolveShortcutCommand(event({ key: "i", ...modifier }), DEFAULT_RESOLVED_KEYBINDINGS, {
-          platform,
-        }),
-      );
-      assert.strictEqual(
-        resolveShortcutCommand(event({ key: "j", ...modifier }), DEFAULT_RESOLVED_KEYBINDINGS, {
-          platform,
-        }),
-        "terminal.toggle",
-      );
-    }
-    assert.strictEqual(
-      shortcutLabelForCommand(DEFAULT_RESOLVED_KEYBINDINGS, "inbox.next", "MacIntel"),
-      "⇧⌘I",
-    );
-  });
-  it("yields mod+shift+i to terminal focus, including an editable terminal target", () => {
-    for (const context of [{ terminalFocus: true }, { terminalFocus: true, editableFocus: true }]) {
-      assert.isNull(
-        resolveShortcutCommand(
-          event({ key: "i", metaKey: true, shiftKey: true }),
-          DEFAULT_RESOLVED_KEYBINDINGS,
-          { platform: "MacIntel", context },
-        ),
-      );
-    }
-  });
-  it("honors a user override and removes the former default shortcut", () => {
-    const bindings = mergeWithDefaultKeybindings(
-      compileResolvedKeybindingsConfig([
-        { key: "mod+alt+i", command: "inbox.next", when: "!terminalFocus" },
-      ]),
-    );
-    assert.strictEqual(
-      resolveShortcutCommand(event({ key: "i", metaKey: true, altKey: true }), bindings, {
-        platform: "MacIntel",
-        context: { editableFocus: true },
-      }),
-      "inbox.next",
-    );
-    assert.isNull(
-      resolveShortcutCommand(event({ key: "i", metaKey: true, shiftKey: true }), bindings, {
-        platform: "MacIntel",
-      }),
-    );
-    assert.strictEqual(shortcutLabelForCommand(bindings, "inbox.next", "MacIntel"), "⌥⌘I");
   });
 });

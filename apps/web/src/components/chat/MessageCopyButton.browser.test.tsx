@@ -15,8 +15,9 @@ it("explains a denied clipboard write and lets the same message be copied again"
     .spyOn(navigator.clipboard, "writeText")
     .mockRejectedValueOnce(new DOMException("Clipboard access denied", "NotAllowedError"))
     .mockResolvedValue(undefined);
-  using _console = vi.spyOn(console, "error").mockImplementation(() => undefined);
+  // Exercise total clipboard denial, including the approved browser fallback.
   using _fallback = vi.spyOn(document, "execCommand").mockReturnValue(false);
+  using _console = vi.spyOn(console, "error").mockImplementation(() => undefined);
 
   const copy = screen.getByRole("button", { name: "Copy message" });
   await copy.click();
@@ -26,6 +27,6 @@ it("explains a denied clipboard write and lets the same message be copied again"
   await page.getByRole("button", { name: "Dismiss notification" }).click();
   await copy.click();
 
-  await expect.element(page.getByText("Copied!", { exact: true })).toBeVisible();
+  await expect.element(page.getByText("Copied!", { exact: true })).not.toBeInTheDocument();
   await expect.element(copy).toBeDisabled();
 });

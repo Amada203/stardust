@@ -1,24 +1,26 @@
+import { useUiText } from "~/i18n/useUiText";
 import { useAtomRefresh, useAtomValue } from "@effect/atom-react";
 import type { DiskSpaceReport, EnvironmentId } from "@t3tools/contracts";
 import * as AsyncResult from "effect/reactivity/AsyncResult";
 import * as Option from "effect/Option";
 import { useEffect, useRef } from "react";
-import { uiText } from "~/i18n";
+
 import { formatBytes } from "../../lib/formatBytes";
 import { serverEnvironment } from "../../state/server";
 import { DISK_SPACE_KINDS, categoryFor, summarizeGrowth } from "./diskSpaceModel";
-import { cleanupText } from "./cleanupText";
 import { StorageManagementPanel } from "./StorageManagementPanel";
 
 export function DiskSpaceSection({
   environments,
   refreshTick,
+  onSettled,
 }: {
   readonly environments: ReadonlyArray<{
     readonly environmentId: EnvironmentId;
     readonly label: string;
   }>;
   readonly refreshTick: number;
+  readonly onSettled: (id: EnvironmentId) => void;
 }) {
   return (
     <div className="flex flex-col gap-10">
@@ -28,6 +30,7 @@ export function DiskSpaceSection({
           environmentId={environment.environmentId}
           label={environments.length > 1 ? environment.label : null}
           refreshTick={refreshTick}
+          onSettled={onSettled}
         />
       ))}
     </div>
@@ -37,35 +40,54 @@ function DiskSpaceEnvironment({
   environmentId,
   label,
   refreshTick,
+  onSettled,
 }: {
   readonly environmentId: EnvironmentId;
   readonly label: string | null;
   readonly refreshTick: number;
+  readonly onSettled: (id: EnvironmentId) => void;
 }) {
+  const uiText = useUiText();
   const atom = serverEnvironment.diskSpace({
     environmentId,
     input: { awaitMeasurement: true, ...(refreshTick > 0 ? { refresh: true } : {}) },
   });
   const result = useAtomValue(atom);
   const refresh = useAtomRefresh(atom);
-  const handledTick = useRef(refreshTick);
+  const handledTick = useRef(0);
+  const beforeRefresh = useRef(result);
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- The page refresh control invalidates the remote measurement cache.
   useEffect(() => {
-    if (refreshTick > 1 && refreshTick !== handledTick.current) refresh();
-    handledTick.current = refreshTick;
-  }, [refreshTick, refresh]);
+    if (refreshTick > 0 && refreshTick !== handledTick.current) {
+      beforeRefresh.current = result;
+      handledTick.current = refreshTick;
+      refresh();
+    }
+  }, [refreshTick, refresh, result]);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Report completion of the remote measurement requested by the page refresh control.
+  useEffect(() => {
+    if (
+      handledTick.current === refreshTick &&
+      refreshTick > 0 &&
+      result !== beforeRefresh.current &&
+      !result.waiting &&
+      result._tag !== "Initial"
+    )
+      onSettled(environmentId);
+  }, [result, refreshTick, environmentId, onSettled]);
   const report = Option.getOrNull(AsyncResult.value(result));
   return (
     <section className="flex min-w-0 flex-col gap-6">
       {label ? <h2 className="text-sm font-medium">{label}</h2> : null}
       <StorageManagementPanel
-        key={`${environmentId}:${refreshTick}`}
+        refreshTick={refreshTick}
         environmentId={environmentId}
+        diskReport={report}
         onOperationFinished={refresh}
       />
       <details>
         <summary className="cursor-pointer text-xs text-muted-foreground">
-          {cleanupText("Usage, history & measurement scope", "空间构成、历史与测量范围")}
+          {uiText("Usage, history & measurement scope")}
         </summary>
         {report ? (
           <div className="mt-4">
@@ -85,6 +107,7 @@ function DiskSpaceEnvironment({
   );
 }
 function DiskSpaceReportView({ report }: { readonly report: DiskSpaceReport }) {
+  const uiText = useUiText();
   const growth = summarizeGrowth(report.history);
   const total = report.volume?.totalBytes ?? 0;
   const free = report.volume?.freeBytes ?? 0;

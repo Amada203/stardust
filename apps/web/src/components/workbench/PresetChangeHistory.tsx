@@ -1,3 +1,4 @@
+import { useUiText } from "~/i18n/useUiText";
 import { useState } from "react";
 import { uiText } from "~/i18n";
 import { Button } from "../ui/button";
@@ -11,6 +12,7 @@ function describePreset(preset: WorkPreset | null) {
 }
 
 export function PresetChangeHistory() {
+  const uiText = useUiText();
   const state = useWorkPresets();
   const [error, setError] = useState(false);
   const changes = state.changes.toReversed();

@@ -1,3 +1,4 @@
+import { uiText } from "../i18n";
 import { normalizeSearchText } from "../lib/utils";
 
 const PROJECT_SEARCH_LIMIT = 5;
@@ -25,7 +26,7 @@ export function loadProjectPinyinConverter(): Promise<ProjectPinyinConverter> {
   pinyinModulePromise ??= import("pinyin-pro");
   return pinyinModulePromise.then(({ pinyin }) => {
     // The first conversion initialises pinyin-pro's lookup tables; pay for it before the first keystroke.
-    pinyin("项目", { toneType: "none", type: "array", v: true });
+    pinyin(uiText("Project"), { toneType: "none", type: "array", v: true });
     return createProjectPinyinConverter(pinyin);
   });
 }
