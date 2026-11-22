@@ -10,6 +10,7 @@
 </p>
 
 <p align="center">
+  <a href="https://www.xiaoxin666.cn/stardust"><strong>产品官网与积木工坊</strong></a> ·
   <a href="#download">下载 v1.2.0</a> ·
   <a href="#highlights">核心亮点</a> ·
   <a href="#workshop">星尘积木工坊</a> ·
@@ -84,7 +85,7 @@
 
 在打磨 V18 流体星舰的过程中，我们还做出了多套风格迥异的高完成度推理滑块方案（**V16 星尘观测站**、**V19-A 16-Bit 街机像素星舰**、**V19-B 赛博机甲 HUD**、**V17 聚变核心 / 日食弹弓 / 星钢淬火**）。
 
-不想拘泥于默认样式？打开本仓库的 **[`stardust-kit/`](stardust-kit/README.md)** 目录：每套方案都带一个可直接在浏览器打开的 `demo.html`，以及独立源码和 AI 改造 Prompt，可以装进你自己的 T3 工作台。
+不想拘泥于默认样式？可以在 **[开源小新 · 星尘积木工坊](https://www.xiaoxin666.cn/stardust#workshop)** 在线拖动全部方案试玩，或者打开本仓库的 **[`stardust-kit/`](stardust-kit/README.md)** 目录：每套方案都带一个可直接在浏览器打开的 `demo.html`，以及独立源码和 AI 改造 Prompt，可以装进你自己的 T3 工作台。
 
 <p align="center">
   <img src="assets/community/v1.2.0/demo-slider-gallery.gif" alt="星尘积木工坊：V18 流体星舰 / V16 星尘观测站 / V19 像素星舰 / V19 赛博机甲 HUD" width="94%" />

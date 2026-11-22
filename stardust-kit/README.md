@@ -1,6 +1,6 @@
 # 星尘积木工坊 · Stardust Kit（首期：推理强度滑块全系列）
 
-> **本地试玩**：每个目录里的 `demo.html` 都可以直接用浏览器打开。  
+> **在线试玩**：[xiaoxin666.cn/stardust](https://www.xiaoxin666.cn/stardust#workshop) · **本地试玩**：每个目录里的 `demo.html` 都可以直接用浏览器打开。  
 > **中文** · [English](#english)
 
 这里收录了我们在打磨 **T3 星尘版（Stardust）** 过程中设计并实测过的全部推理强度滑块动画方案。你可以直接在官网在线拖动体验，也可以挑选最合眼缘的一套，直接复制目录里的源码或 `PROMPT.zh.md` 交给 AI 助手装进自己的 T3 工作台。
@@ -21,7 +21,7 @@
 
 ## English — Stardust Kit (Phase 1: Reasoning Effort Slider Collection)
 
-**Try it locally**: open the `demo.html` in any engine folder in your browser.
+**Try it online**: [xiaoxin666.cn/stardust](https://www.xiaoxin666.cn/stardust#workshop) · **Try it locally**: open the `demo.html` in any engine folder in your browser.
 
 This directory packages every reasoning-effort slider animation explored while building **T3 Stardust**. Try them all live in your browser, then copy the standalone source or `PROMPT.en.md` into Claude Code / Codex / T3 Code to install your favorite theme into your own workbench.
 

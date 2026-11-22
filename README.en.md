@@ -10,6 +10,7 @@
 </p>
 
 <p align="center">
+  <a href="https://www.xiaoxin666.cn/stardust"><strong>Website & Interactive Workshop</strong></a> ·
   <a href="#download">Download v1.2.0</a> ·
   <a href="#highlights">Highlights</a> ·
   <a href="#workshop">Stardust Kit</a> ·
@@ -84,7 +85,7 @@ Switch reasoning effort across 5 high-contrast stages of a continuous Starship l
 
 Beyond the default **V18 Fluid Starship**, we open-sourced all alternative reasoning slider concepts explored during development — **V16 Stardust Observatory**, **V19-A 16-Bit Pixel Starship**, **V19-B Cyber Mecha HUD**, and **V17 High-Contrast Experiments** (Fusion Reactor / Solar Eclipse / Starsteel Forge).
 
-Open **[`stardust-kit/`](stardust-kit/README.md#english)**: every engine ships a `demo.html` you can open in any browser, plus standalone source code and an AI integration prompt for your own T3 Code workbench.
+Try every engine live in the **[Stardust Interactive Workshop](https://www.xiaoxin666.cn/stardust#workshop)**, or open **[`stardust-kit/`](stardust-kit/README.md#english)**: every engine ships a `demo.html` you can open in any browser, plus standalone source code and an AI integration prompt for your own T3 Code workbench.
 
 <p align="center">
   <img src="assets/community/v1.2.0/demo-slider-gallery.gif" alt="Stardust Kit slider engines running side-by-side" width="94%" />
