@@ -116,7 +116,7 @@ Only source-verified differences are listed below:
 | **Task Step Cards** | Raw tool feed | **✓ Human-readable step timeline** with raw command expand |
 | **Preview Annotations** | Brush draw | **✓ Pin annotations** with status filters, bidirectional jump & crop attach |
 | **Artifact Wall & Disk Cleanup** | — | **✓ Artifact panel + preview-first macOS cleanup** |
-| **Localization & Theme** | Partial Chinese | **✓ ~12,000+ Chinese strings + Apple Light/Dark theme + `T3 Stardust.app` branding** |
+| **Localization & Theme** | Chinese included upstream | **✓ Chinese for every Stardust-only feature + Apple Light/Dark theme + `T3 Stardust.app` branding** |
 | **Community Update Alerts** | Upstream feed | **✓ Checks this repo's GitHub Releases** (on launch and every 6 hours) and links to the download; downloading, installing, and restarting stay manual |
 
 ---
