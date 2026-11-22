@@ -11,6 +11,7 @@ import {
 } from "@t3tools/shared/toolOutput";
 import { makeProviderTextDeltaCoalescer } from "./ProviderTextDeltaCoalescer.ts";
 import { claudeTaskOutputRoot, tailClaudeTaskOutput } from "./ClaudeTaskOutputTail.ts";
+import { withClaudeTaskTools } from "./ClaudeTaskTools.ts";
 import {
   dynamicToolTitle,
   formatReadToolLabel,
@@ -1614,7 +1615,8 @@ export const layerQueryRunner: Layer.Layer<
       const binaryPath = queryOptions.pathToClaudeCodeExecutable;
       const launch =
         interactiveCli ||
-        binaryPath === undefined || CLAUDE_SCRIPT_EXTENSIONS.some((ext) => binaryPath.endsWith(ext))
+        binaryPath === undefined ||
+        CLAUDE_SCRIPT_EXTENSIONS.some((ext) => binaryPath.endsWith(ext))
           ? undefined
           : yield* agentScope.wrap({
               command: binaryPath,
@@ -1990,7 +1992,9 @@ export const layerQueryRunner: Layer.Layer<
           try: () =>
             "mcpServerStatus" in queryRuntime
               ? queryRuntime.mcpServerStatus()
-              : Promise.reject(new Error("Claude TUI does not expose MCP status control requests.")),
+              : Promise.reject(
+                  new Error("Claude TUI does not expose MCP status control requests."),
+                ),
           catch: (cause) => queryRunnerError(cause, "mcpServerStatus"),
         }),
         readMcpResource: ({ server, uri }) =>
@@ -2516,7 +2520,7 @@ export function makeClaudeQueryOptions(input: {
     ...(input.settings?.binaryPath
       ? { pathToClaudeCodeExecutable: input.settings.binaryPath }
       : {}),
-    ...(input.environment === undefined ? {} : { env: input.environment }),
+    ...(input.environment === undefined ? {} : { env: withClaudeTaskTools(input.environment) }),
     ...(input.mcpServers === undefined ? {} : { mcpServers: input.mcpServers }),
     systemPrompt: {
       type: "preset" as const,
@@ -2673,6 +2677,9 @@ export const CLAUDE_READ_ONLY_T3_MCP_ALLOWED_TOOLS: ReadonlyArray<string> = [
   "mcp__t3-code__html_render",
   "mcp__t3-code__send_to_user",
   "mcp__t3-code__t3_submit_output",
+  "mcp__t3-code__memory_list",
+  "mcp__t3-code__artifact_list",
+  "mcp__t3-code__usage_limits",
 ];
 
 // request_secret can wait an hour; exceed Claude's default 60 s timeout.
