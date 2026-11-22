@@ -1,3 +1,5 @@
+import { useUiText } from "~/i18n/useUiText";
+
 import { CheckIcon } from "lucide-react";
 import type { ComponentProps, ReactNode } from "react";
 
@@ -77,12 +79,13 @@ export function WizardSteps({
   readonly isStepDisabled?: (step: number) => boolean;
   readonly onStepChange?: (step: number) => void;
 }) {
+  const uiText = useUiText();
   const Step = onStepChange ? "button" : "div";
   return (
     <ol
       className="grid auto-cols-fr grid-flow-col gap-1 rounded-xl bg-background p-1 ring-1 ring-black/5 dark:bg-white/4 dark:ring-white/5"
       role="list"
-      aria-label="Setup progress"
+      aria-label={uiText("Setup progress")}
     >
       {steps.map((step, index) => (
         <li key={step} className="min-w-0">

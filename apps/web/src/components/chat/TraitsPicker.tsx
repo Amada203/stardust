@@ -1,3 +1,5 @@
+import { useUiText } from "~/i18n/useUiText";
+import { uiText } from "~/i18n";
 import {
   buildTraitsTriggerDisplay,
   getDescriptorStringValue,
@@ -42,32 +44,35 @@ import { ComposerControl, ComposerControlIcon, type ComposerControlSize } from "
 import { useComposerMenuState } from "./useComposerMenuState";
 
 type ProviderOptions = ReadonlyArray<ProviderOptionSelection>;
-
 /**
  * All the picker reads from the prompt while rendering. Passing this instead of
  * the prompt keeps the picker from re-rendering on every keystroke.
  */
 export type PromptUltrathink = "none" | "prefix" | "body";
-
 export function readPromptUltrathink(prompt: string): PromptUltrathink {
   if (!isClaudeUltrathinkPrompt(prompt)) return "none";
   return isClaudeUltrathinkPrompt(prompt.replace(/^Ultrathink:\s*/i, "")) ? "body" : "prefix";
 }
-
 const SAVED_OPTION_LABELS: Readonly<Record<string, string>> = {
-  agent: "Agent",
-  effort: "Effort",
-  reasoningEffort: "Reasoning effort",
-  variant: "Reasoning",
+  get agent() {
+    return uiText("Agent");
+  },
+  get effort() {
+    return uiText("Effort");
+  },
+  get reasoningEffort() {
+    return uiText("Reasoning effort");
+  },
+  get variant() {
+    return uiText("Reasoning");
+  },
 };
-
 function savedOptionLabel(id: string): string {
   return (
     SAVED_OPTION_LABELS[id] ??
     id.replace(/([a-z0-9])([A-Z])/g, "$1 $2").replace(/^./, (character) => character.toUpperCase())
   );
 }
-
 function buildUnavailableModelOptionDescriptors(
   selections: ProviderOptions | null | undefined,
 ): ReadonlyArray<ProviderOptionDescriptor> {
@@ -377,6 +382,7 @@ export const ULTRATHINK_IN_BODY_NOTE =
   'Your prompt contains "ultrathink" in the text. Remove it to change this option.';
 
 const TraitsMenuContent = memo(function TraitsMenuContentImpl(props: TraitsSelectionInput) {
+  const uiText = useUiText();
   const traits = useTraitsSelection(props);
   const {
     descriptors,
@@ -425,7 +431,7 @@ const TraitsMenuContent = memo(function TraitsMenuContentImpl(props: TraitsSelec
             </div>
             {ultrathinkInBodyText && descriptor.id === primarySelectDescriptor?.id ? (
               <div className="px-2 pb-1.5 text-muted-foreground/80 text-xs">
-                {ULTRATHINK_IN_BODY_NOTE}
+                {uiText(ULTRATHINK_IN_BODY_NOTE)}
               </div>
             ) : null}
             <MenuRadioGroup
@@ -471,7 +477,7 @@ const TraitsMenuContent = memo(function TraitsMenuContentImpl(props: TraitsSelec
               {(["on", "off"] as const).map((value) => (
                 <MenuRadioItem key={value} value={value} hideIndicator closeOnClick>
                   <span className="flex w-full min-w-0 items-center justify-between gap-3">
-                    <span>{value === "on" ? "On" : "Off"}</span>
+                    <span>{value === "on" ? uiText("On") : uiText("Off")}</span>
                   </span>
                 </MenuRadioItem>
               ))}

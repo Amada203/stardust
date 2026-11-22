@@ -1,4 +1,4 @@
-import { resolveLocale } from "@t3tools/client-runtime/locales";
+import { resolveStardustLocale, syncCustomLocale } from "./customLocale";
 import { getTranslationsSnapshot } from "gt-react";
 
 import {
@@ -45,6 +45,7 @@ function activateLocale(locale: string): void {
   if (snapshot.locale === locale && snapshot.translations[locale] === loadedTranslations[locale]) {
     return;
   }
+  syncCustomLocale(locale);
   snapshot = { locale, translations: { ...loadedTranslations } };
   document.documentElement.lang = locale;
   for (const listener of listeners) listener();
@@ -52,11 +53,10 @@ function activateLocale(locale: string): void {
 
 function applyLanguageSetting(): void {
   // Not desktopBridge.getSystemLocale(): that is the regional/time locale, not the UI language.
-  requestedLocale = resolveLocale(
+  requestedLocale = resolveStardustLocale(
     getClientSettings().language,
-    navigator.languages,
+    navigator.languages[0] ?? navigator.language,
     SUPPORTED_LOCALES,
-    DEFAULT_LOCALE,
   );
   void whenLocaleReady();
 }

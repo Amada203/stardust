@@ -1,3 +1,5 @@
+import { useUiText } from "~/i18n/useUiText";
+
 import {
   formatFilePathForClipboard,
   type MediaActionId,
@@ -119,6 +121,7 @@ export function MediaActions({
   children: ReactElement;
   showTooltip?: boolean;
 }) {
+  const uiText = useUiText();
   const { save, copyImage, canReadMedia, assertCanReadMedia } = useMediaActions(source);
   const [tooltipOpen, setTooltipOpen] = useState(false);
   const menuOpen = useRef(false);
@@ -130,7 +133,7 @@ export function MediaActions({
     if (!api || menuOpen.current) return;
     menuOpen.current = true;
     setTooltipOpen(false);
-    let failureTitle = "Could not open media menu";
+    let failureTitle = uiText("Could not open media menu");
     let progressToast: ReturnType<typeof toastManager.add> | undefined;
     const result = await settlePromise(async () => {
       const noun = source.kind === "image" ? "image" : "video";

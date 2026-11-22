@@ -1,3 +1,6 @@
+import { ArtifactToolkit } from "./toolkits/artifact/tools.ts";
+import * as ArtifactHandlers from "./toolkits/artifact/handlers.ts";
+import * as ArtifactWall from "../artifacts/ArtifactWall.ts";
 import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
@@ -1281,6 +1284,8 @@ const layerThemeToolkit = toolkitRegistration(ThemeToolkit, ThemeHandlers.layer)
   Layer.provide(ThreadCommandExecutor.layer),
 );
 
+export const layerArtifactToolkit = toolkitRegistration(ArtifactToolkit, ArtifactHandlers.layer);
+
 export const layerProjectRegistration = toolkitRegistration(ProjectToolkit, ProjectHandlers.layer);
 
 export const layerAttachmentToolkit = toolkitRegistration(
@@ -1344,6 +1349,7 @@ export const layerTools = Layer.mergeAll(
   layerOrchestratorToolkit,
   layerThreadToolkit,
   layerAttachmentToolkit,
+  layerArtifactToolkit,
   layerProjectRegistration,
   layerEnvironmentToolkit,
   layerThemeToolkit,
@@ -1395,4 +1401,6 @@ export const layerToolSearch = Layer.mergeAll(
   layerDeferredListing,
 ).pipe(Layer.provide(layerToolExposure));
 
-export const layer = layerMcpTransport(Layer.mergeAll(layerTools, layerToolSearch));
+export const layer = layerMcpTransport(Layer.mergeAll(layerTools, layerToolSearch)).pipe(
+  Layer.provide(ArtifactWall.layer),
+);

@@ -17,8 +17,11 @@ const CURRENCY = new Intl.NumberFormat("en-US", {
 
 const INTEGER = new Intl.NumberFormat("en-US");
 
+export const MALFORMED_USAGE_WARNING_TEMPLATE =
+  "{count} malformed or inconsistent usage record(s) were skipped; usage may be incomplete.";
+
 export function formatMalformedUsageWarning(count: number): string {
-  return `${count} malformed or inconsistent usage record(s) were skipped; usage may be incomplete.`;
+  return MALFORMED_USAGE_WARNING_TEMPLATE.replace("{count}", String(count));
 }
 
 export function usageSourceMessages(sources: readonly UsageSource[]): readonly string[] {
@@ -163,16 +166,13 @@ export function enumerateHourStarts(sinceTime: string, untilTime: string): reado
 }
 
 function hourOptions(hour12: boolean): Intl.DateTimeFormatOptions {
-  return hour12 ? { hour: "numeric" } : { hour: "2-digit", hourCycle: "h23" };
+  return hour12
+    ? { hour: "numeric", minute: "2-digit" }
+    : { hour: "2-digit", minute: "2-digit", hourCycle: "h23" };
 }
 
-function formatHour(formatter: Intl.DateTimeFormat, date: Date, hour12: boolean): string {
-  if (hour12) return formatter.format(date);
-  // Rolling buckets can start between whole hours, but their labels always name the hour.
-  return formatter
-    .formatToParts(date)
-    .map((part) => (part.type === "hour" ? `${part.value}:00` : part.value))
-    .join("");
+function formatHour(formatter: Intl.DateTimeFormat, date: Date): string {
+  return formatter.format(date);
 }
 
 /**
@@ -200,13 +200,13 @@ export function formatHourShort(hourStart: string, timeZone?: string, hour12 = t
     (offset) => wallHourFormat.format(new Date(instant.getTime() + offset)) === wallHour,
   );
 
-  if (!isRepeatedHour) return formatHour(hourFormat, instant, hour12);
+  if (!isRepeatedHour) return formatHour(hourFormat, instant);
   const zonedHourFormat = dateTimeFormatter("en-US", {
     ...options,
     ...hourOptions(hour12),
     timeZoneName: "short",
   });
-  return formatHour(zonedHourFormat, instant, hour12);
+  return formatHour(zonedHourFormat, instant);
 }
 
 export function formatDateTimeShort(instant: string, timeZone?: string, hour12 = true): string {
@@ -218,7 +218,7 @@ export function formatDateTimeShort(instant: string, timeZone?: string, hour12 =
     day: "numeric",
     ...hourOptions(hour12),
   });
-  return formatHour(dateHourFormat, date, hour12);
+  return formatHour(dateHourFormat, date);
 }
 
 export function formatRelativeHourShort(
@@ -275,7 +275,8 @@ export function makeWindow(
   const untilDay = format.format(now);
   if (resolution === "hour") {
     const untilTimeMs = Math.floor(now.getTime() / 60_000) * 60_000;
-    const sinceTimeMs = untilTimeMs - 24 * HOUR_MS;
+    // Day windows are 24 hours; the weekly activity heatmap asks for 7 × 24 hourly buckets.
+    const sinceTimeMs = untilTimeMs - Math.max(1, Math.min(days, 7)) * 24 * HOUR_MS;
     const sinceTime = new Date(sinceTimeMs);
     const untilTime = new Date(untilTimeMs);
     return {

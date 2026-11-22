@@ -1,3 +1,5 @@
+import { useUiText } from "~/i18n/useUiText";
+
 import { PlusIcon, XIcon } from "lucide-react";
 import { useState, type SetStateAction } from "react";
 import type { ProviderDriverKind, ServerProviderModel } from "@t3tools/contracts";
@@ -45,6 +47,7 @@ export function CustomModelEditor({
   onCancel,
   onDraftChange,
 }: CustomModelEditorProps) {
+  const uiText = useUiText();
   const [draft, setDraft] = useState<CustomModelDraft>(() => draftFromDefinition(entry));
   const [error, setError] = useState<string | null>(null);
   const updateDraft = (next: SetStateAction<CustomModelDraft>) => {
@@ -144,11 +147,11 @@ export function CustomModelEditor({
         size="compact"
         value={choice.id}
         onChange={(event) => updateChoice(descriptor.key, choice.key, { id: event.target.value })}
-        placeholder="value"
+        placeholder={uiText("value")}
         font="mono"
         className="w-28"
         spellCheck={false}
-        aria-label="Choice value"
+        aria-label={uiText("Choice value")}
       />
       <Input
         size="compact"
@@ -156,9 +159,9 @@ export function CustomModelEditor({
         onChange={(event) =>
           updateChoice(descriptor.key, choice.key, { label: event.target.value })
         }
-        placeholder="Label"
+        placeholder={uiText("Label")}
         className="min-w-0 flex-1"
-        aria-label="Choice label"
+        aria-label={uiText("Choice label")}
       />
       <label className="flex shrink-0 items-center gap-1.5 text-2xs text-muted-foreground">
         <Switch
@@ -167,14 +170,14 @@ export function CustomModelEditor({
           onCheckedChange={(checked) =>
             updateChoice(descriptor.key, choice.key, { isDefault: checked })
           }
-          aria-label="Default choice"
+          aria-label={uiText("Default choice")}
         />
-        Default
+        {uiText("Default")}
       </label>
       <Button
         size="icon-micro"
         variant="ghost-muted"
-        aria-label="Remove choice"
+        aria-label={uiText("Remove choice")}
         onClick={() =>
           updateDescriptor(descriptor.key, {
             choices: descriptor.choices.filter((candidate) => candidate.key !== choice.key),
@@ -212,7 +215,7 @@ export function CustomModelEditor({
                   </span>
                 </SelectItem>
               ))}
-              <SelectItem value={CUSTOM_ID_VALUE}>Custom…</SelectItem>
+              <SelectItem value={CUSTOM_ID_VALUE}>{uiText("Custom…")}</SelectItem>
             </SelectPopup>
           </Select>
         ) : null}
@@ -221,20 +224,20 @@ export function CustomModelEditor({
             size="compact"
             value={descriptor.id}
             onChange={(event) => updateDescriptor(descriptor.key, { id: event.target.value })}
-            placeholder="optionId"
+            placeholder={uiText("optionId")}
             font="mono"
             className="w-36"
             spellCheck={false}
-            aria-label="Option id"
+            aria-label={uiText("Option id")}
           />
         ) : null}
         <Input
           size="compact"
           value={descriptor.label}
           onChange={(event) => updateDescriptor(descriptor.key, { label: event.target.value })}
-          placeholder="Label"
+          placeholder={uiText("Label")}
           className="min-w-0 flex-1"
-          aria-label="Option label"
+          aria-label={uiText("Option label")}
         />
         <Select
           value={descriptor.type}
@@ -274,7 +277,7 @@ export function CustomModelEditor({
             }
           >
             <PlusIcon className="size-3" />
-            Add choice
+            {uiText("Add choice")}
           </Button>
         </div>
       ) : null}
@@ -293,7 +296,7 @@ export function CustomModelEditor({
     >
       <div className="flex flex-col gap-1">
         <label htmlFor={domId("name")} className="text-xs text-muted-foreground">
-          Display name
+          {uiText("Display name")}
         </label>
         <Input
           id={domId("name")}
@@ -309,15 +312,17 @@ export function CustomModelEditor({
 
       <div className="flex flex-col gap-2">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <span className="text-xs text-muted-foreground">Options shown in the composer</span>
+          <span className="text-xs text-muted-foreground">
+            {uiText("Options shown in the composer")}
+          </span>
           {startFromCandidates.length > 0 ? (
             <Select value={START_FROM_NONE} onValueChange={handleStartFrom}>
               <SelectTrigger
                 size="compact"
                 className="w-44"
-                aria-label="Copy options from a built-in model"
+                aria-label={uiText("Copy options from a built-in model")}
               >
-                <SelectValue>Copy from…</SelectValue>
+                <SelectValue>{uiText("Copy from…")}</SelectValue>
               </SelectTrigger>
               <SelectPopup align="end" alignItemWithTrigger={false}>
                 {startFromCandidates.map((model) => (
@@ -331,7 +336,7 @@ export function CustomModelEditor({
         </div>
         {draft.descriptors.length === 0 ? (
           <p className="text-xs text-muted-foreground/70">
-            No custom options. The composer uses the provider's default options.
+            {uiText("No custom options. The composer uses the provider's default options.")}
           </p>
         ) : null}
         {draft.descriptors.map(renderDescriptor)}
@@ -360,7 +365,7 @@ export function CustomModelEditor({
             onClick={() => addDescriptor(emptyEditorDescriptor())}
           >
             <PlusIcon className="size-3" />
-            Custom option
+            {uiText("Custom option")}
           </Button>
         </div>
       </div>
@@ -369,10 +374,10 @@ export function CustomModelEditor({
 
       <div className="flex gap-2">
         <Button size="sm" variant="outline" onClick={handleSave}>
-          Save
+          {uiText("Save")}
         </Button>
         <Button size="sm" variant="ghost" onClick={onCancel}>
-          Cancel
+          {uiText("Cancel")}
         </Button>
       </div>
     </div>

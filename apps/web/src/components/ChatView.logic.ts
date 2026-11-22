@@ -1,3 +1,4 @@
+import { uiText } from "../i18n";
 import { toServerClock } from "@t3tools/client-runtime/clock";
 import { type OrchestrationV2ProviderTurn, type RunAttemptId } from "@t3tools/contracts";
 import {
@@ -1133,6 +1134,7 @@ export function mergeDirectPreviewAnnotation(input: {
     | {
         readonly annotation: PreviewAnnotationPayload;
         readonly image: ComposerImageAttachment | null;
+        readonly images?: readonly ComposerImageAttachment[];
       }
     | undefined;
 }): {
@@ -1147,7 +1149,20 @@ export function mergeDirectPreviewAnnotation(input: {
     direct.image !== null &&
     !imageAlreadyAttached &&
     input.images.length + input.fileCount < PROVIDER_SEND_TURN_MAX_ATTACHMENTS;
-  const images = direct.image && imageAppended ? [...input.images, direct.image] : input.images;
+  const baseImages = direct.image && imageAppended ? [...input.images, direct.image] : input.images;
+  const additional = (direct.images ?? []).filter(
+    (image) => !baseImages.some((existing) => existing.id === image.id),
+  );
+  if (
+    additional.length &&
+    baseImages.length + additional.length + input.fileCount > PROVIDER_SEND_TURN_MAX_ATTACHMENTS
+  )
+    throw new Error(
+      uiText(
+        "Annotation screenshots exceed the attachment limit. Remove some unsent annotations and try again.",
+      ),
+    );
+  const images = [...baseImages, ...additional];
   const previewAnnotations = input.previewAnnotations.some(
     (annotation) => annotation.id === direct.annotation.id,
   )
@@ -1156,6 +1171,14 @@ export function mergeDirectPreviewAnnotation(input: {
         ...input.previewAnnotations,
         {
           ...direct.annotation,
+          ...(direct.annotation.pins
+            ? {
+                pins: direct.annotation.pins.map((pin) => ({
+                  ...pin,
+                  screenshot: pin.screenshot ? { ...pin.screenshot, dataUrl: "" } : null,
+                })),
+              }
+            : {}),
           screenshot:
             direct.annotation.screenshot && (imageAppended || imageAlreadyAttached)
               ? { ...direct.annotation.screenshot, dataUrl: "" }

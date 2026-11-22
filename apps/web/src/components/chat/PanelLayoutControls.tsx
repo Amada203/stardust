@@ -1,3 +1,4 @@
+import { observeResize } from "~/lib/observeResize";
 import {
   PanelBottomIcon,
   PanelRightIcon,
@@ -57,6 +58,41 @@ export const PanelLayoutControls = memo(function PanelLayoutControls({
   onToggleThreadPanel,
   onToggleRightPanel,
 }: PanelLayoutControlsProps) {
+  const layoutRef = useRef<HTMLDivElement>(null);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- measures active layout buttons and moves the Apple selection surface; observers and listeners are removed on unmount
+  useLayoutEffect(() => {
+    const root = layoutRef.current;
+    if (!root || document.documentElement.dataset.themeId !== "apple") return;
+    let last: HTMLElement | null = null;
+    const update = () => {
+      const active =
+        last?.getAttribute("aria-pressed") === "true"
+          ? last
+          : root.querySelector<HTMLElement>('button[aria-pressed="true"]');
+      const thumb = root.querySelector<HTMLElement>("[data-layout-thumb]");
+      if (!thumb) return;
+      thumb.style.opacity = active ? "1" : "0";
+      if (!active) return;
+      const r = root.getBoundingClientRect(),
+        b = active.getBoundingClientRect();
+      thumb.style.transform = `translateX(${b.left - r.left}px)`;
+      thumb.style.width = `${b.width}px`;
+    };
+    const click = (event: MouseEvent) => {
+      if (event.target instanceof Element) last = event.target.closest("button");
+      update();
+    };
+    const observer = new MutationObserver(update);
+    observer.observe(root, { subtree: true, attributes: true, attributeFilter: ["aria-pressed"] });
+    const stopResize = observeResize(root, update);
+    root.addEventListener("click", click);
+    update();
+    return () => {
+      observer.disconnect();
+      stopResize();
+      root.removeEventListener("click", click);
+    };
+  }, []);
   const threadPanelToggle = (
     <Toggle
       className="relative shrink-0 [-webkit-app-region:no-drag]"
@@ -89,7 +125,9 @@ export const PanelLayoutControls = memo(function PanelLayoutControls({
     <div
       className="flex h-full shrink-0 items-center gap-1 [-webkit-app-region:no-drag]"
       data-panel-layout-controls
+      ref={layoutRef}
     >
+      <span data-layout-thumb aria-hidden />
       {showThreadPanelControl ? threadPanelControl : null}
       {showTerminalControl ? (
         <Tooltip>

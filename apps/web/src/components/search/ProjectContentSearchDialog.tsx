@@ -1,3 +1,5 @@
+import { useUiText } from "~/i18n/useUiText";
+
 import { Spinner } from "~/components/ui/spinner";
 import { AuthFilesystemReadScope, type ProjectContentMatch } from "@t3tools/contracts";
 
@@ -79,19 +81,20 @@ function SearchOptionButton(props: {
 }
 
 function EmptyContentSearchDialog() {
+  const uiText = useUiText();
   return (
     <CommandPaletteContent
-      aria-label="Search project contents"
-      escapeLabel="Back"
-      footerActionLabel="Open file"
-      inputProps={{ disabled: true, placeholder: "Search project contents…" }}
-      mode="none"
-      panelSize="fill"
-      testId="project-content-search"
-      value=""
+      aria-label={uiText("Search project contents")}
+      escapeLabel={"Back"}
+      footerActionLabel={"Open file"}
+      inputProps={{ disabled: true, placeholder: uiText("Search project contents…") }}
+      mode={"none"}
+      panelSize={"fill"}
+      testId={"project-content-search"}
+      value={""}
     >
-      <p className="m-auto px-6 text-center text-muted-foreground text-sm">
-        Open a project to search its files.
+      <p className={"m-auto px-6 text-center text-muted-foreground text-sm"}>
+        {uiText("Open a project to search its files.")}
       </p>
     </CommandPaletteContent>
   );

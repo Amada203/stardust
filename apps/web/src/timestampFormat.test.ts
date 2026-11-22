@@ -1,6 +1,11 @@
-import { describe, expect, it } from "vite-plus/test";
+import { afterEach, describe, expect, it } from "vite-plus/test";
 
-import { formatDayAwareTimestamp, formatUpcomingTimestamp } from "./timestampFormat";
+import {
+  formatDayAwareTimestamp,
+  formatUpcomingTimestamp,
+  formatRelativeTimeLabel,
+  formatExpiresInLabel,
+} from "./timestampFormat";
 
 describe("timestamps in an explicit time zone", () => {
   // 23:00 UTC on July 1 is 7 PM on July 1 in New York, whatever the host zone.
@@ -18,4 +23,16 @@ describe("timestamps in an explicit time zone", () => {
       /^yesterday at /,
     );
   });
+});
+
+import { syncCustomLocale } from "./i18n/customLocale";
+afterEach(() => syncCustomLocale("en"));
+it("localizes relative days, elapsed and expiry labels without changing calendar boundaries", () => {
+  syncCustomLocale("zh");
+  const now = Date.parse("2026-11-16T04:00:00Z");
+  const zone = "America/Los_Angeles";
+  expect(formatDayAwareTimestamp("2026-11-15T00:16:00Z", "24-hour", now, zone)).toBe("昨天 16:16");
+  expect(formatUpcomingTimestamp("2026-11-16T16:00:00Z", "24-hour", now, zone)).toBe("明天 08:00");
+  expect(formatRelativeTimeLabel(new Date(now - 52 * 60000).toISOString(), now)).toBe("52 分钟前");
+  expect(formatExpiresInLabel(new Date(now + 65000).toISOString(), now)).toBe("1m 5s 后过期");
 });

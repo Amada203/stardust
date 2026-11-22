@@ -1,3 +1,4 @@
+import * as Semaphore from "effect/Semaphore";
 // @effect-diagnostics nodeBuiltinImport:off
 import * as NodeFSP from "node:fs/promises";
 import {
@@ -313,10 +314,14 @@ export class StorageCleanup extends Context.Service<
     readonly latestReport: Effect.Effect<StorageCleanupReport | null>;
     readonly reports: Stream.Stream<StorageCleanupReport | null>;
     readonly drain: Effect.Effect<void>;
+    readonly withMaintenanceLock: <A, E, R>(
+      effect: Effect.Effect<A, E, R>,
+    ) => Effect.Effect<A, E, R>;
   }
 >()("t3/storageCleanup") {}
 
 const make = Effect.gen(function* () {
+  const maintenance = yield* Semaphore.make(1);
   const config = yield* ServerConfig.ServerConfig;
   const settingsService = yield* Settings.ServerSettingsService;
   const projectStore = yield* ProjectStore.ProjectStoreV2;
@@ -1875,7 +1880,9 @@ const make = Effect.gen(function* () {
   const worker = yield* makeDrainableWorker(
     (completion: Deferred.Deferred<StorageCleanupReport, ServerSettingsError> | undefined) =>
       (completion === undefined ? Ref.set(automaticSweepQueued, false) : Effect.void).pipe(
-        Effect.andThen(sweep(completion === undefined ? "automatic" : "manual")),
+        Effect.andThen(
+          maintenance.withPermits(1)(sweep(completion === undefined ? "automatic" : "manual")),
+        ),
         Effect.exit,
         Effect.flatMap((exit) =>
           completion === undefined
@@ -1970,6 +1977,7 @@ const make = Effect.gen(function* () {
   yield* start();
   return StorageCleanup.of({
     runNow,
+    withMaintenanceLock: maintenance.withPermits(1),
     latestReport: SubscriptionRef.get(reportRef),
     reports: SubscriptionRef.changes(reportRef),
     drain: worker.drain,

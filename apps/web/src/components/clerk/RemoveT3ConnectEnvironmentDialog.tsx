@@ -1,3 +1,5 @@
+import { useUiText } from "~/i18n/useUiText";
+
 import { Discovery } from "@t3tools/client-runtime/relay";
 import type { EnvironmentId } from "@t3tools/contracts";
 import { useState } from "react";
@@ -26,6 +28,7 @@ export function RemoveT3ConnectEnvironmentDialog({
   readonly onCancel: () => void;
   readonly onConfirm: () => void;
 }) {
+  const uiText = useUiText();
   const accountPage = useT3ConnectAccountPage();
   const discovery = useRelayEnvironmentDiscovery();
   const registration = environmentId
@@ -46,10 +49,10 @@ export function RemoveT3ConnectEnvironmentDialog({
         openAccountPage();
       }}
     >
-      T3 Connect settings
+      {uiText("T3 Connect settings")}
     </InlineButton>
   ) : (
-    "T3 Connect settings"
+    uiText("T3 Connect settings")
   );
 
   return (

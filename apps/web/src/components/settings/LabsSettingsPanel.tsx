@@ -1,3 +1,5 @@
+import { useUiText } from "~/i18n/useUiText";
+
 import { useAuth } from "@clerk/react";
 import { Link } from "@tanstack/react-router";
 import { managedCapabilityDenial } from "@t3tools/contracts";
@@ -95,6 +97,7 @@ function GuestLinksRowWithSignIn() {
 }
 
 function GuestLinksRow() {
+  const uiText = useUiText();
   const settings = useScopedSettings();
   const updateSettings = useUpdateScopedSettings();
   const scope = useOptionalSettingsScope();
@@ -128,7 +131,7 @@ function GuestLinksRow() {
           settingKeys={["guestSharingEnabled"]}
           checked={settings.guestSharingEnabled}
           onCheckedChange={(checked) => updateSettings({ guestSharingEnabled: Boolean(checked) })}
-          aria-label="Guest links"
+          aria-label={uiText("Guest links")}
         />
       }
     />
@@ -136,6 +139,7 @@ function GuestLinksRow() {
 }
 
 function LinkedEnvironmentsRow() {
+  const uiText = useUiText();
   const settings = useScopedSettings();
   const updateSettings = useUpdateScopedSettings();
   return (
@@ -160,7 +164,7 @@ function LinkedEnvironmentsRow() {
           onCheckedChange={(checked) =>
             updateSettings({ linkedEnvironmentsEnabled: Boolean(checked) })
           }
-          aria-label="Linked environments"
+          aria-label={uiText("Linked environments")}
         />
       }
     />
@@ -191,6 +195,7 @@ function PromptSuggestionsRow() {
 }
 
 function SimlockHostsRow() {
+  const uiText = useUiText();
   const settings = useScopedSettings();
   const updateSettings = useUpdateScopedSettings();
   return (
@@ -223,7 +228,7 @@ function SimlockHostsRow() {
           onCheckedChange={(checked) =>
             updateSettings({ simlockDeviceHostsEnabled: Boolean(checked) })
           }
-          aria-label="Simlock device hosts"
+          aria-label={uiText("Simlock device hosts")}
         />
       }
     />

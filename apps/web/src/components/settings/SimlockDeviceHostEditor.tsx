@@ -1,3 +1,5 @@
+import { useUiText } from "~/i18n/useUiText";
+
 import { useAtomValue } from "@effect/atom-react";
 import { useId, useState, type ReactNode } from "react";
 import {
@@ -58,6 +60,7 @@ export function SimlockDeviceHostEditor(props: {
   ) => void;
   onClose: () => void;
 }) {
+  const uiText = useUiText();
   const [draft, setDraft] = useState(props.host);
   const [urlEdited, setUrlEdited] = useState(false);
   const machineGateways = useAtomValue(
@@ -148,7 +151,7 @@ export function SimlockDeviceHostEditor(props: {
           </DialogHeader>
           <DialogPanel>
             <label className="block space-y-1.5 text-sm">
-              <span>Name</span>
+              <span>{uiText("Name")}</span>
               <Input
                 autoFocus
                 required
@@ -161,7 +164,7 @@ export function SimlockDeviceHostEditor(props: {
               />
             </label>
             <label className="block space-y-1.5 text-sm">
-              <span>Gateway URL</span>
+              <span>{uiText("Gateway URL")}</span>
               <Input
                 required
                 type="url"
@@ -212,8 +215,10 @@ export function SimlockDeviceHostEditor(props: {
               {limit("maxLeaseMinutes", "Lease minutes", 5, 240)}
             </div>
             <p className="text-xs text-muted-foreground">
-              A lease ends after the lease minutes even while in use.
-              {props.isNew ? null : " Saving restarts this host, which releases its devices."}
+              {uiText("A lease ends after the lease minutes even while in use.")}
+              {props.isNew
+                ? null
+                : uiText(" Saving restarts this host, which releases its devices.")}
             </p>
             {problem === null || !gatewayUrl ? null : (
               <p className="text-xs text-destructive" role="alert">
@@ -223,10 +228,11 @@ export function SimlockDeviceHostEditor(props: {
           </DialogPanel>
           <DialogFooter>
             <Button type="button" variant="ghost" disabled={props.busy} onClick={props.onClose}>
-              Cancel
+              {uiText("Cancel")}
             </Button>
             <Button type="submit" disabled={props.busy || problem !== null}>
-              {props.busy ? <Spinner size="xs" /> : null} Save host
+              {props.busy ? <Spinner size="xs" /> : null}
+              {uiText("Save host")}
             </Button>
           </DialogFooter>
         </form>

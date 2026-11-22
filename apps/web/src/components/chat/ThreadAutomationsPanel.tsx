@@ -1,3 +1,5 @@
+import { useUiText } from "~/i18n/useUiText";
+
 import { useAtomValue } from "@effect/atom-react";
 import { ThreadDetailsControl } from "./ThreadDetailsControl";
 import { useNavigate } from "@tanstack/react-router";
@@ -62,6 +64,7 @@ export function ThreadAutomationsPanel(props: {
   readonly environmentId: EnvironmentId;
   readonly threadId: ThreadId;
 }) {
+  const uiText = useUiText();
   const canOperate = useAtomValue(
     serverEnvironment.runScheduledTaskNow.permissionAtom(props.environmentId),
   );
@@ -69,10 +72,10 @@ export function ThreadAutomationsPanel(props: {
     serverEnvironment.scheduledTasksLive({ environmentId: props.environmentId, input: {} }),
   );
   const setTaskEnabled = useAtomCommand(serverEnvironment.setScheduledTaskEnabled, {
-    label: "thread automation toggle",
+    label: uiText("thread automation toggle"),
   });
   const runTaskNow = useAtomCommand(serverEnvironment.runScheduledTaskNow, {
-    label: "thread automation run now",
+    label: uiText("thread automation run now"),
   });
   const navigate = useNavigate();
   const [busyTaskId, setBusyTaskId] = useState<string | null>(null);
@@ -129,18 +132,18 @@ export function ThreadAutomationsPanel(props: {
 
   return (
     <ThreadDetailsSection
-      headingId="thread-details-automations-heading"
-      title="Automations"
+      headingId={"thread-details-automations-heading"}
+      title={uiText("Automations")}
       data-thread-automations-panel
       actions={
         <Tooltip>
           <TooltipTrigger
             render={
               <ThreadDetailsControl
-                size="icon-xs"
-                variant="ghost"
-                part="icon"
-                aria-label="Manage scheduled tasks"
+                size={"icon-xs"}
+                variant={"ghost"}
+                part={"icon"}
+                aria-label={uiText("Manage scheduled tasks")}
                 onClick={() =>
                   void navigate({
                     to: "/settings/scheduled-tasks",
@@ -206,11 +209,11 @@ export function ThreadAutomationsPanel(props: {
                       })
                     }
                   >
-                    <PencilIcon className="size-3.5" />
+                    <PencilIcon className={"size-3.5"} />
                   </ThreadDetailsControl>
                 }
               />
-              <TooltipPopup>Edit automation</TooltipPopup>
+              <TooltipPopup>{uiText("Edit automation")}</TooltipPopup>
             </Tooltip>
             {/* Webhook tasks need a request from their URL. */}
             {task.schedule.type === "webhook" ? null : (

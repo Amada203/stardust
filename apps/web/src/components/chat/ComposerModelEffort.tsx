@@ -1,3 +1,5 @@
+import { useUiText } from "~/i18n/useUiText";
+
 import {
   buildTraitsTriggerDisplay,
   getDescriptorStringValue,
@@ -7,10 +9,19 @@ import {
 import type { ProviderOptionDescriptor, RuntimeMode } from "@t3tools/contracts";
 import type { EffortDisplay } from "@t3tools/contracts/settings";
 import { getProviderOptionCurrentLabel } from "@t3tools/shared/model";
-import { CheckIcon, ChevronRightIcon, ChevronUpIcon, WorkflowIcon } from "lucide-react";
-import { type KeyboardEvent, type ReactNode, use, useRef, useState } from "react";
+import { CheckIcon, GaugeIcon, ChevronRightIcon, WorkflowIcon } from "lucide-react";
+import {
+  type ComponentProps,
+  type KeyboardEvent,
+  type ReactNode,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 
+import { observeResize } from "~/lib/observeResize";
 import { cn } from "~/lib/utils";
+import "./composerV9.css";
 import {
   Menu,
   MenuPopup,
@@ -21,9 +32,16 @@ import {
 } from "../ui/menu";
 import { Switch } from "../ui/switch";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
-import type { ComposerControlSize } from "./ComposerControl";
-import { ComposerPermissionsSection, type RuntimeModeOption } from "./ComposerFooterControls";
-import { composerFloatingLayerProps, focusCheckedPermission } from "./composerEventScope";
+import { ComposerControl, type ComposerControlSize } from "./ComposerControl";
+import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
+import { useComposerMenuState } from "./useComposerMenuState";
+import type { RuntimeModeOption } from "./ComposerFooterControls";
+import { CosmicEffortSlider, cosmicColorAtRatio } from "./CosmicEffortSlider";
+import {
+  composerFloatingLayerProps,
+  takeOpenTarget,
+  useComposerMenuProps,
+} from "./composerEventScope";
 import { EffortGlyph, FastBolt, resolveEffortGlyph } from "./EffortGlyph";
 import { DockedPickerContext } from "./ProviderModelPicker";
 import {
@@ -74,6 +92,37 @@ function columnControls(
   ];
   const effort = controls.find((control) => isReasoningControl(control.descriptor)) ?? null;
   return { effort, others: controls.filter((control) => control !== effort) };
+}
+
+/** A small glowing dot coloured like the effort slider at this level (V9 model chip). */
+function CosmicLevelDot(props: { ratio: number }) {
+  const color = cosmicColorAtRatio(props.ratio);
+  return (
+    <span
+      aria-hidden="true"
+      data-cosmic-level-dot
+      style={{ background: color, boxShadow: `0 0 6px ${color}` }}
+    />
+  );
+}
+
+/** Translated tier label for the effort tier pill inside the model trigger. */
+function CosmicTierPill(props: { ratio: number | null; word: string }) {
+  const uiText = useUiText();
+  const label = uiText(props.word);
+  return (
+    <Tooltip>
+      <TooltipTrigger render={<span data-v9-cosmic-tier-pill />}>
+        {props.ratio !== null ? <CosmicLevelDot ratio={props.ratio} /> : null}
+        <span data-composer-control-label className="max-w-20 truncate">
+          {label}
+        </span>
+      </TooltipTrigger>
+      <TooltipPopup side="top">
+        {uiText("Reasoning effort · {level}", { level: label })}
+      </TooltipPopup>
+    </Tooltip>
+  );
 }
 
 /**
@@ -129,6 +178,19 @@ export function describeComposerEffort(
               modelSelection,
               traits.reportedModelSelection,
             ) ?? (reasoning.id === "thinking" ? reasoning.label : null));
+  // Where the picker's cosmic slider sits for this level, so the chip's dot matches its colour.
+  const sliderRatio = (() => {
+    if (reasoning?.type !== "select" || ultrathink) return null;
+    const choices = selectableProviderOptionChoices(reasoning);
+    if (choices.length < 2) return null;
+    const current = getDescriptorStringValue(
+      reasoning,
+      modelSelection,
+      traits.reportedModelSelection,
+    );
+    const index = choices.findIndex((choice) => choice.id === current);
+    return index < 0 ? null : index / (choices.length - 1);
+  })();
   const fast = display.speedLabel === "Fast" || display.speedLabel === "Ultrafast";
   // Agent options such as modes live in the picker; the trigger adds only the context window.
   const contextWindow =
@@ -138,7 +200,7 @@ export function describeComposerEffort(
       modelSelection,
       traits.reportedModelSelection,
     );
-  if (!word && !glyph && !fast && !display.ultracode && !contextWindow)
+  if (!word && !glyph && sliderRatio === null && !fast && !display.ultracode && !contextWindow)
     return { suffix: null, detail: display.label };
   return {
     detail: display.label,
@@ -146,16 +208,18 @@ export function describeComposerEffort(
       <span
         className={cn(
           "flex shrink-0 items-center gap-1.5 text-muted-foreground group-hover/model-trigger:text-foreground group-data-pressed/model-trigger:text-foreground group-data-popup-open/model-trigger:text-foreground",
-          // A word space after the model name: the regular trigger's gap is wider than one.
           size === "sm" && "-ms-0.5",
         )}
       >
         {word ? (
-          <span data-composer-control-label className="max-w-24 truncate">
-            {word}
-          </span>
+          <CosmicTierPill ratio={sliderRatio} word={word} />
         ) : glyph ? (
-          <EffortGlyph count={glyph.count} filled={glyph.filled} size={size} />
+          <>
+            {sliderRatio !== null ? <CosmicLevelDot ratio={sliderRatio} /> : null}
+            <EffortGlyph count={glyph.count} filled={glyph.filled} size={size} />
+          </>
+        ) : sliderRatio !== null ? (
+          <CosmicLevelDot ratio={sliderRatio} />
         ) : null}
         {fast ? <FastBolt ultra={display.speedLabel === "Ultrafast"} /> : null}
         {display.ultracode ? (
@@ -300,6 +364,7 @@ function EffortLevels(props: { traits: TraitsSelectionInput }) {
 type TraitsSelection = ReturnType<typeof useTraitsSelection>;
 
 function EffortRows(props: { control: ColumnControl; traits: TraitsSelection; locked: boolean }) {
+  const uiText = useUiText();
   const { control, traits } = props;
   const { descriptor } = control;
   if (control.kind === "boolean") {
@@ -322,25 +387,86 @@ function EffortRows(props: { control: ColumnControl; traits: TraitsSelection; lo
   const choices = selectableProviderOptionChoices(control.descriptor);
   // An "Ultrathink:" prefix selects a level the column does not offer.
   const shown = choices.some((option) => option.id === value);
+  const asSlider = choices.length >= 2;
   return (
-    <div role="radiogroup" aria-label={descriptor.label} className="flex flex-col gap-0.5">
+    // With the slider, the level radios live in its tier scale, which carries the group role so the
+    // slider-style switcher (its own radiogroup) is not nested inside this one.
+    <div
+      role={asSlider ? undefined : "radiogroup"}
+      aria-label={asSlider ? undefined : descriptor.label}
+      className="flex flex-col gap-0.5"
+    >
       {locked ? (
         <div className="px-2 pb-1.5 text-muted-foreground/80 text-xs">
-          {ULTRATHINK_IN_BODY_NOTE}
+          {uiText(ULTRATHINK_IN_BODY_NOTE)}
         </div>
       ) : null}
-      {choices.map((option, index) => (
-        <ColumnRow
-          key={option.id}
-          label={option.label}
-          selected={option.id === value}
-          tabStop={shown ? option.id === value : index === 0}
-          description={option.description}
-          isDefault={option.isDefault}
+      {asSlider ? (
+        <CosmicEffortSlider
+          label={descriptor.label}
+          options={choices}
+          value={value}
           disabled={locked}
-          onPick={() => traits.changeSelect(control.descriptor, option.id)}
-        />
-      ))}
+          onChange={(nextId) => traits.changeSelect(control.descriptor, nextId)}
+        >
+          {/* V9 tier scale: the level radios themselves, laid out under the track. */}
+          <div
+            role="radiogroup"
+            aria-label={descriptor.label}
+            data-cosmic-tier-scale
+          >
+            {choices.map((option, index) => {
+              const selected = option.id === value;
+              const translatedLabel = uiText(option.label);
+              return (
+                <HintButton
+                  key={option.id}
+                  hint={option.description}
+                  type="button"
+                  role="radio"
+                  aria-checked={selected}
+                  aria-label={option.isDefault ? `${translatedLabel} (Default)` : translatedLabel}
+                  disabled={locked}
+                  data-effort-row
+                  data-effort-level
+                  tabIndex={(shown ? selected : index === 0) ? 0 : -1}
+                  onClick={() => traits.changeSelect(control.descriptor, option.id)}
+                  onKeyDown={(event) => {
+                    if (event.key !== "ArrowRight" && event.key !== "ArrowLeft") return;
+                    const step = event.key === "ArrowRight" ? 1 : -1;
+                    const next = choices[index + step];
+                    if (!next) return;
+                    event.preventDefault();
+                    event.stopPropagation();
+                    traits.changeSelect(control.descriptor, next.id);
+                    const sibling =
+                      step > 0
+                        ? event.currentTarget.nextElementSibling
+                        : event.currentTarget.previousElementSibling;
+                    (sibling as HTMLElement | null)?.focus();
+                  }}
+                >
+                  {translatedLabel}
+                </HintButton>
+              );
+            })}
+          </div>
+        </CosmicEffortSlider>
+      ) : null}
+      {asSlider
+        ? null
+        : choices.map((option, index) => (
+            <ColumnRow
+              key={option.id}
+              label={option.label}
+              selected={option.id === value}
+              tabStop={shown ? option.id === value : index === 0}
+              description={option.description}
+              isDefault={option.isDefault}
+              disabled={locked}
+              onPick={() => traits.changeSelect(control.descriptor, option.id)}
+            />
+          ))}
     </div>
   );
 }
@@ -489,36 +615,16 @@ function NoEffortRow() {
   );
 }
 
-/** The model picker's effort column: the selected model's levels and its other options. */
+/** The model picker's embedded cosmic slider + extra model options (V9 single-column layout). */
 export function ComposerEffortColumn(props: { traits: TraitsSelectionInput | null }) {
-  const picker = use(DockedPickerContext);
-  const visibility = props.traits ? getTraitsSectionVisibility(props.traits) : null;
-  const controls =
-    props.traits && visibility
-      ? columnControls(visibility.selectDescriptors, visibility.booleanDescriptors)
-      : null;
   return (
-    <>
-      {/* Matches the search row's box, so one rule runs across the top of the popup. */}
-      <div className="shrink-0 px-3 pt-2.5">
-        <div className="flex h-8.25 -translate-y-px items-center gap-2 border-b border-border/70 pb-1.5 text-sm">
-          <span className="text-muted-foreground">
-            {controls?.effort?.descriptor.label ?? (controls?.others.length ? "Options" : "Effort")}
-          </span>
-          <span className="ms-auto min-w-0 truncate text-muted-foreground text-xs">
-            {picker.modelLabel}
-          </span>
-        </div>
-      </div>
-      {/* pt-2.5 puts the first level on the same line as the first model. */}
-      <div
-        className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto overscroll-contain px-2 pt-2.5 pb-1.5"
-        // Capture, so Up and Down on an option row move rows instead of opening its menu.
-        onKeyDownCapture={moveBetweenRows}
-      >
-        {props.traits ? <EffortLevels traits={props.traits} /> : <NoEffortRow />}
-      </div>
-    </>
+    <div
+      className="flex min-h-0 flex-col gap-1"
+      // Capture, so Up and Down on an option row move rows instead of opening its menu.
+      onKeyDownCapture={moveBetweenRows}
+    >
+      {props.traits ? <EffortLevels traits={props.traits} /> : <NoEffortRow />}
+    </div>
   );
 }
 
@@ -614,49 +720,149 @@ function UltracodeControl(props: { traits: TraitsSelectionInput }) {
   );
 }
 
-/** Permissions change rarely, so the footer names the mode and nests the choice in a menu. */
-function PermissionsMenu(props: {
+/** A button with an optional hover hint, using the app tooltip instead of a native title. */
+function HintButton(props: ComponentProps<"button"> & { hint?: string | undefined }) {
+  const { hint, children, ...buttonProps } = props;
+  if (!hint) return <button {...buttonProps}>{children}</button>;
+  return (
+    <Tooltip>
+      <TooltipTrigger render={<button {...buttonProps} />}>{children}</TooltipTrigger>
+      <TooltipPopup side="top" className="max-w-56">
+        {hint}
+      </TooltipPopup>
+    </Tooltip>
+  );
+}
+
+const V9_PERMISSION_ORDER: ReadonlyArray<RuntimeMode> = [
+  "full-access",
+  "auto",
+  "approval-required",
+];
+
+function selectInlinePermissionOptions(
+  options: ReadonlyArray<RuntimeModeOption>,
+  runtimeMode: RuntimeMode,
+): ReadonlyArray<RuntimeModeOption> {
+  const byMode = new Map(options.map((option) => [option.mode, option]));
+  const ordered: RuntimeModeOption[] = [];
+  for (const mode of V9_PERMISSION_ORDER) {
+    const found = byMode.get(mode);
+    if (found) ordered.push(found);
+  }
+  // Keep any non-standard active mode (e.g. auto-accept-edits) visible if currently selected.
+  if (!ordered.some((option) => option.mode === runtimeMode)) {
+    const active = byMode.get(runtimeMode);
+    if (active) ordered.push(active);
+  }
+  return ordered.length > 0 ? ordered : options;
+}
+
+/**
+ * V9: access permission as an always-visible 3-segment sliding control in the picker footer.
+ * The default mode stays out of the composer footer, so this is where it is changed.
+ */
+function InlinePermissions(props: {
   runtimeMode: RuntimeMode;
   options: ReadonlyArray<RuntimeModeOption>;
   onChange: (mode: RuntimeMode) => void;
 }) {
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const current = props.options.find((option) => option.mode === props.runtimeMode);
-  if (!current) return null;
-  const CurrentIcon = current.icon;
+  const uiText = useUiText();
+  const segRef = useRef<HTMLDivElement>(null);
+  const pillRef = useRef<HTMLSpanElement>(null);
+  const mountedRef = useRef(false);
+  const visibleOptions = selectInlinePermissionOptions(props.options, props.runtimeMode);
+
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- measures the active radio button to position the V9 sliding .seg-pill
+  useLayoutEffect(() => {
+    const seg = segRef.current;
+    const pill = pillRef.current;
+    if (!seg || !pill || visibleOptions.length === 0) return;
+
+    const positionPill = (instant: boolean) => {
+      const active =
+        seg.querySelector<HTMLButtonElement>(
+          `[data-composer-permission-option="${props.runtimeMode}"]`,
+        ) ?? seg.querySelector<HTMLButtonElement>("[data-composer-permission-option]");
+      if (!active || active.offsetWidth <= 0) {
+        pill.style.opacity = "0";
+        return;
+      }
+      if (instant) pill.style.transition = "none";
+      pill.style.opacity = "1";
+      pill.style.width = `${active.offsetWidth}px`;
+      pill.style.transform = `translateX(${active.offsetLeft}px)`;
+      if (instant) {
+        void pill.offsetHeight;
+        pill.style.transition = "";
+      }
+    };
+
+    positionPill(!mountedRef.current);
+    mountedRef.current = true;
+    const stopObserve = observeResize(seg, () => positionPill(true));
+    return stopObserve;
+  }, [props.runtimeMode, visibleOptions.length]);
+
+  if (visibleOptions.length === 0) return null;
   return (
-    <Menu
-      onOpenChangeComplete={(open) => {
-        if (open) focusCheckedPermission(triggerRef.current);
-      }}
-    >
-      <MenuTrigger
-        render={
-          <button
-            ref={triggerRef}
-            type="button"
-            data-composer-permissions-trigger
-            aria-label={`Permissions: ${current.label}`}
-            className="ms-auto flex h-7 cursor-pointer items-center gap-1.5 rounded-md px-2 text-muted-foreground text-xs outline-none hover:bg-foreground/[0.09] hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset data-popup-open:bg-foreground/[0.09] data-popup-open:text-foreground"
-          />
-        }
+    <div data-v9-perm-row>
+      <span data-v9-perm-label>{uiText("Access (default stays out of the footer)")}</span>
+      <div
+        ref={segRef}
+        role="radiogroup"
+        aria-label={uiText("Permissions")}
+        data-composer-permissions-segment
       >
-        <CurrentIcon aria-hidden="true" className="size-3.5" />
-        {current.label}
-        <ChevronUpIcon aria-hidden="true" className="size-3" />
-      </MenuTrigger>
-      <MenuPopup side="top" align="end" {...composerFloatingLayerProps}>
-        <ComposerPermissionsSection
-          runtimeMode={props.runtimeMode}
-          runtimeModeOptions={props.options}
-          onRuntimeModeChange={props.onChange}
-        />
-      </MenuPopup>
-    </Menu>
+        <span ref={pillRef} aria-hidden="true" data-v9-seg-pill />
+        {visibleOptions.map((option, index) => {
+          const checked = option.mode === props.runtimeMode;
+          const disabled = Boolean(option.disabledReason);
+          return (
+            <HintButton
+              key={option.mode}
+              hint={option.disabledReason ?? uiText(option.description)}
+              type="button"
+              role="radio"
+              aria-checked={checked}
+              disabled={disabled}
+              data-cosmic-chip-on={checked || undefined}
+              data-composer-permission-option={option.mode}
+              tabIndex={checked ? 0 : -1}
+              className="disabled:opacity-50"
+              onClick={() => {
+                if (!checked) props.onChange(option.mode);
+              }}
+              onKeyDown={(event) => {
+                if (event.key !== "ArrowRight" && event.key !== "ArrowLeft") return;
+                const step = event.key === "ArrowRight" ? 1 : -1;
+                let nextIndex = index + step;
+                while (visibleOptions[nextIndex]?.disabledReason) nextIndex += step;
+                const next = visibleOptions[nextIndex];
+                if (!next) return;
+                event.preventDefault();
+                event.stopPropagation();
+                props.onChange(next.mode);
+                const group = event.currentTarget.parentElement;
+                requestAnimationFrame(() =>
+                  group
+                    ?.querySelector<HTMLButtonElement>(
+                      `[data-composer-permission-option="${next.mode}"]`,
+                    )
+                    ?.focus(),
+                );
+              }}
+            >
+              {uiText(option.label)}
+            </HintButton>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
-/** The model picker's footer: speed stays one click away, permissions sit one menu deeper. */
+/** The model picker's footer: speed stays one click away; permissions are a V9 3-segment row. */
 export function ComposerPickerFooter(props: {
   traits: TraitsSelectionInput | null;
   runtimeMode: RuntimeMode;
@@ -664,14 +870,111 @@ export function ComposerPickerFooter(props: {
   onRuntimeModeChange: (mode: RuntimeMode) => void;
 }) {
   return (
-    <div className="flex flex-wrap items-center gap-2 border-t border-border/70 bg-muted/40 px-3 py-2">
-      {props.traits ? <SpeedControl traits={props.traits} /> : null}
-      {props.traits ? <UltracodeControl traits={props.traits} /> : null}
-      <PermissionsMenu
+    <div className="flex flex-col">
+      {props.traits ? (
+        <div className="mt-2 flex flex-wrap items-center gap-2 empty:hidden">
+          <SpeedControl traits={props.traits} />
+          <UltracodeControl traits={props.traits} />
+        </div>
+      ) : null}
+      <InlinePermissions
         runtimeMode={props.runtimeMode}
         options={props.runtimeModeOptions}
         onChange={props.onRuntimeModeChange}
       />
     </div>
+  );
+}
+
+/** Keep model selection small; parameter controls have their own keyboard-accessible popup. */
+export function ComposerEffortMenu(props: {
+  traits: TraitsSelectionInput | null;
+  modelLabel: string;
+  suffix: ReactNode;
+  detail: string | null;
+  size: ComposerControlSize;
+  hidden: boolean;
+  disabled: boolean;
+  ownsModeShortcut: boolean;
+  runtimeMode: RuntimeMode;
+  runtimeModeOptions: ReadonlyArray<RuntimeModeOption>;
+  onRuntimeModeChange: (mode: RuntimeMode) => void;
+}) {
+  const uiText = useUiText();
+  const [open, setOpen] = useComposerMenuState(props.hidden || props.disabled);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const popup = useRef<HTMLDivElement>(null);
+  const floatingProps = useComposerMenuProps();
+  const focusTarget = (target: "effort" | "permissions" | null) => {
+    if (target === "permissions") {
+      popup.current
+        ?.querySelector<HTMLButtonElement>('[data-composer-permission-option][aria-checked="true"]')
+        ?.focus({ preventScroll: true });
+      return;
+    }
+    const selected = popup.current?.querySelector<HTMLElement>(
+      '[data-effort-level][aria-checked="true"]:not(:disabled)',
+    );
+    const first = popup.current?.querySelector<HTMLElement>(
+      "[data-effort-row]:not(:disabled), [data-composer-permission-option]:not(:disabled)",
+    );
+    (selected ?? first)?.focus({ preventScroll: true });
+  };
+  return (
+    <Popover
+      open={open}
+      onOpenChange={setOpen}
+      onOpenChangeComplete={(isOpen) => {
+        if (!isOpen) return;
+        focusTarget(takeOpenTarget(trigger.current));
+      }}
+    >
+      <PopoverTrigger
+        render={
+          <ComposerControl
+            ref={trigger}
+            size={props.size}
+            disabled={props.disabled}
+            aria-label={uiText("Model options")}
+            title={props.detail ?? uiText("Model options")}
+            className="shrink-0 gap-1 px-1.5"
+            onClick={(event) => {
+              if (!open) return;
+              const target = takeOpenTarget(trigger.current);
+              if (!target) return;
+              (
+                event as typeof event & { preventBaseUIHandler?: () => void }
+              ).preventBaseUIHandler?.();
+              focusTarget(target);
+            }}
+            data-composer-shortcut={
+              props.ownsModeShortcut ? "composer.effort composer.mode" : "composer.effort"
+            }
+          />
+        }
+      >
+        {props.suffix ?? <GaugeIcon className="size-3.5" />}
+      </PopoverTrigger>
+      <PopoverPopup
+        {...floatingProps}
+        ref={popup}
+        padding="none"
+        align="end"
+        className="w-76 max-w-[calc(100vw-2rem)]"
+        data-model-parameters-menu
+      >
+        <DockedPickerContext value={{ modelLabel: props.modelLabel }}>
+          <div className="flex max-h-86.5 flex-col">
+            <ComposerEffortColumn traits={props.traits} />
+            <ComposerPickerFooter
+              traits={props.traits}
+              runtimeMode={props.runtimeMode}
+              runtimeModeOptions={props.runtimeModeOptions}
+              onRuntimeModeChange={props.onRuntimeModeChange}
+            />
+          </div>
+        </DockedPickerContext>
+      </PopoverPopup>
+    </Popover>
   );
 }

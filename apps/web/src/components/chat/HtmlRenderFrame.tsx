@@ -1,3 +1,5 @@
+import { useUiText } from "~/i18n/useUiText";
+
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
 import {
   HTML_RENDER_COLUMN_WIDTH,
@@ -26,6 +28,7 @@ export function HtmlRenderFrame(props: {
   readonly threadRef: ScopedThreadRef | undefined;
   readonly onFullscreenChange?: (fullscreen: boolean) => void;
 }) {
+  const uiText = useUiText();
   const { attachmentId, title } = props.htmlRender;
   const [width, setWidth] = useState(HTML_RENDER_COLUMN_WIDTH);
   const observeBox = (box: HTMLDivElement) => {
@@ -67,7 +70,11 @@ export function HtmlRenderFrame(props: {
   }, [expanded, onFullscreenChange]);
 
   return (
-    <div ref={observeBox} className="group/html-render relative" style={{ height }}>
+    <div
+      ref={observeBox}
+      className="group/html-render relative"
+      style={{ height: failed ? undefined : height }}
+    >
       {src !== null ? (
         <>
           <HtmlRenderDocument
@@ -83,7 +90,7 @@ export function HtmlRenderFrame(props: {
               <TooltipTrigger
                 render={
                   <Button
-                    aria-label="Open full screen"
+                    aria-label={uiText("Open full screen")}
                     size="icon-xs"
                     variant="glass"
                     onClick={async () => {
@@ -95,8 +102,8 @@ export function HtmlRenderFrame(props: {
                       else
                         toastManager.add({
                           type: "error",
-                          title: "Page unavailable",
-                          description: "Reconnect to the environment and try again.",
+                          title: uiText("Page unavailable"),
+                          description: uiText("Reconnect to the environment and try again."),
                         });
                     }}
                   />
@@ -104,7 +111,7 @@ export function HtmlRenderFrame(props: {
               >
                 <Maximize2Icon className="size-3.5" />
               </TooltipTrigger>
-              <TooltipPopup side="left">Open full screen</TooltipPopup>
+              <TooltipPopup side="left">{uiText("Open full screen")}</TooltipPopup>
             </Tooltip>
           </div>
           {expandedSrc !== null ? (
@@ -117,8 +124,11 @@ export function HtmlRenderFrame(props: {
           ) : null}
         </>
       ) : failed ? (
-        <p className="flex size-full items-center justify-center text-muted-foreground text-xs">
-          Unable to load {title}
+        <p
+          role="status"
+          className="rounded-lg border border-border px-3 py-2 text-muted-foreground text-xs"
+        >
+          {uiText("Unable to load {title}", { title })}
         </p>
       ) : null}
     </div>

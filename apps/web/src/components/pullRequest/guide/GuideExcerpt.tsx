@@ -1,3 +1,5 @@
+import { useUiText } from "~/i18n/useUiText";
+
 import type {
   DiffLineAnnotation,
   FileDiffContentsLoader,
@@ -114,6 +116,7 @@ export function GuideExcerpt({
   loadDiffFiles: FileDiffContentsLoader;
   onOpenFile: (path: string) => void;
 }) {
+  const uiText = useUiText();
   // Keep selections outside ExcerptDiff to survive head reloads.
   const [draft, setDraft] = useState<ExcerptDraft | null>(null);
   const slice = excerptSlice(file, excerpt);
@@ -138,17 +141,27 @@ export function GuideExcerpt({
           onOpenFile={onOpenFile}
         />
       ) : loading ? (
-        <p className="rounded-lg border border-border/60 px-3 py-2 text-xs text-muted-foreground">
-          Loading {excerpt.path}...
+        <p className={"rounded-lg border border-border/60 px-3 py-2 text-xs text-muted-foreground"}>
+          {uiText("Loading")}
+          {excerpt.path}
+          {"..."}
         </p>
       ) : (
-        <div className="flex items-center justify-between gap-3 rounded-lg border border-border/60 px-3 py-2 text-xs text-muted-foreground">
-          <span className="min-w-0 truncate">
-            <span className="font-mono text-foreground">{excerpt.path}</span> lines {excerpt.start}-
-            {excerpt.end} are not in the loaded diff.
+        <div
+          className={
+            "flex items-center justify-between gap-3 rounded-lg border border-border/60 px-3 py-2 text-xs text-muted-foreground"
+          }
+        >
+          <span className={"min-w-0 truncate"}>
+            <span className={"font-mono text-foreground"}>{excerpt.path}</span>
+            {uiText("lines")}
+            {excerpt.start}
+            {"-"}
+            {excerpt.end}
+            {uiText("are not in the loaded diff.")}
           </span>
-          <Button size="xs" variant="outline" onClick={() => onOpenFile(excerpt.path)}>
-            Open in Code
+          <Button size={"xs"} variant={"outline"} onClick={() => onOpenFile(excerpt.path)}>
+            {uiText("Open in Code")}
           </Button>
         </div>
       )}

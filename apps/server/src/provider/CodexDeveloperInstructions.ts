@@ -3,6 +3,7 @@ import { buildRuntimeInstructions } from "@t3tools/provider-core/server/runtimeI
 
 import {
   T3_CODE_BROWSER_TOOL_INSTRUCTIONS,
+  T3_CODE_COMPACT_INSTRUCTIONS,
   T3_CODE_DEVICE_TOOL_INSTRUCTIONS,
   T3_CODE_ORCHESTRATION_SECTIONS,
 } from "@t3tools/provider-core/server/orchestrationInstructions";
@@ -54,6 +55,10 @@ export function buildCodexAdditionalContext(
     t3_code_runtime: {
       kind: "application",
       value: buildRuntimeInstructions({ harness: "Codex", ...runtime }),
+    },
+    t3_code_compaction: {
+      kind: "application",
+      value: T3_CODE_COMPACT_INSTRUCTIONS,
     },
     ...(tools ? { t3_code_tools: { kind: "application", value: tools } } : {}),
   };

@@ -139,7 +139,8 @@ export default defineConfig({
         alwaysBundle: (id) =>
           id === "react-grab" ||
           id.startsWith("react-grab/") ||
-          id === "@t3tools/shared/keybindingMatching",
+          id === "@t3tools/shared/keybindingMatching" ||
+          id === "@t3tools/shared/previewPins",
       },
     },
     {

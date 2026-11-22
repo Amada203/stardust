@@ -1,3 +1,4 @@
+import { uiText } from "~/i18n";
 import { type SlowRpcAckRequest, subscribeSlowRpcAckRequests } from "../rpc/requestLatencyState";
 import { toastManager } from "./ui/toast";
 
@@ -49,17 +50,15 @@ export function startSlowRpcRequestToasts(): () => void {
       },
       description: describeSlowRequests(slowRequests),
       timeout: 0,
-      title: "Some requests are slow",
+      title: uiText("Some requests are slow"),
       type: "warning" as const,
     };
-
     if (toastId === null) {
       toastId = toastManager.add(nextToast);
     } else {
       toastManager.update(toastId, nextToast);
     }
   });
-
   return () => {
     unsubscribe();
     if (toastId !== null) toastManager.close(toastId);

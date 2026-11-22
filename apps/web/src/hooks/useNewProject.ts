@@ -1,3 +1,5 @@
+import { useUiText } from "~/i18n/useUiText";
+
 import { scopeProjectRef } from "@t3tools/client-runtime/environment";
 import {
   getNewProjectRepository,
@@ -24,6 +26,7 @@ function errorMessage(error: unknown): string {
 }
 
 export function useNewProject() {
+  const uiText = useUiText();
   const createNew = useAtomCommand(projectEnvironment.createNew, { reportFailure: false });
   const publishRepository = useAtomCommand(sourceControlEnvironment.publishRepository, {
     reportFailure: false,
@@ -81,7 +84,7 @@ export function useNewProject() {
         toastManager.add(
           stackedThreadToast({
             type: "error",
-            title: "Could not create the project",
+            title: uiText("Could not create the project"),
             description: errorMessage(squashAtomCommandFailure(result)),
           }),
         );
@@ -126,7 +129,7 @@ export function useNewProject() {
       toastManager.add(
         stackedThreadToast({
           type: "error",
-          title: "Failed to open project",
+          title: uiText("Failed to open project"),
           description: errorMessage(error),
         }),
       );

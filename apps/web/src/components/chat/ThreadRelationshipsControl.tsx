@@ -1,3 +1,5 @@
+import { useUiText } from "~/i18n/useUiText";
+import { uiText } from "~/i18n";
 import { useAtomValue } from "@effect/atom-react";
 import { threadKey } from "@t3tools/client-runtime/state/entities";
 import { ThreadDetailsControl } from "./ThreadDetailsControl";
@@ -199,15 +201,13 @@ function ThreadLineageGroup<Row extends LineageRow>(props: {
     </div>
   );
 }
-
 function relationshipLabel(edge: ThreadRelationshipEdge, currentThreadId: ThreadId) {
-  if (edge.kind === "transfer") return "Context transfer";
+  if (edge.kind === "transfer") return uiText("Context transfer");
   if (edge.kind === "subagent") {
     return edge.sourceThreadId === currentThreadId ? "Subagent" : "Parent agent";
   }
   return edge.sourceThreadId === currentThreadId ? "Fork" : "Parent thread";
 }
-
 function relationshipThreadTitle(input: {
   readonly title: string;
   readonly isSubagent: boolean;
@@ -435,6 +435,7 @@ export function ThreadRelationshipsPanel(props: {
   readonly showLineage: boolean;
   readonly showSideChats: boolean;
 }) {
+  const uiText = useUiText();
   const ref = scopeThreadRef(props.environmentId, props.threadId);
   const projection = useQuietThreadProjection(ref)?.projection ?? null;
   const providersByEnvironment = useEnvironmentProviders();
@@ -707,10 +708,9 @@ export function ThreadRelationshipsPanel(props: {
     });
     setStoppingId(null);
     if (result._tag === "Failure") {
-      toastManager.add({ type: "error", title: "Could not stop subagent" });
+      toastManager.add({ type: "error", title: uiText("Could not stop subagent") });
     }
   };
-
   const stopWorkflow = async (subagentId: string) => {
     if (stoppingId !== null) return;
     setStoppingId(subagentId);
@@ -720,10 +720,9 @@ export function ThreadRelationshipsPanel(props: {
     });
     setStoppingId(null);
     if (result._tag === "Failure") {
-      toastManager.add({ type: "error", title: "Could not stop workflow" });
+      toastManager.add({ type: "error", title: uiText("Could not stop workflow") });
     }
   };
-
   const parentTitle =
     mergeTargetThreadId === null
       ? null
@@ -971,7 +970,7 @@ export function ThreadRelationshipsPanel(props: {
                   <SquareIcon aria-hidden className="size-3 fill-current" />
                 )}
               </TooltipTrigger>
-              <TooltipPopup side="left">Stop subagent</TooltipPopup>
+              <TooltipPopup side="left">{uiText("Stop subagent")}</TooltipPopup>
             </Tooltip>
           </div>
         ) : null}
@@ -1004,7 +1003,7 @@ export function ThreadRelationshipsPanel(props: {
                       size="icon-xs"
                       variant="ghost"
                       part="icon"
-                      aria-label="More thread actions"
+                      aria-label={uiText("More thread actions")}
                       disabled={busyAction !== null}
                     />
                   }
@@ -1014,7 +1013,7 @@ export function ThreadRelationshipsPanel(props: {
                 <MenuPopup align="end" className="min-w-60 max-w-(--available-width)">
                   <MenuItem onClick={() => void detach()}>
                     <UnplugIcon className="size-3.5" />
-                    Disconnect agent session
+                    {uiText("Disconnect agent session")}
                   </MenuItem>
                 </MenuPopup>
               </Menu>

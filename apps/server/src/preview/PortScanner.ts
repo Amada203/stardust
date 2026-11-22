@@ -33,6 +33,9 @@ export class PortDiscovery extends Context.Service<
   {
     readonly scan: (
       configuredUrls?: ReadonlyArray<string>,
+      options?: {
+        readonly retryFailed?: boolean;
+      },
     ) => Effect.Effect<ReadonlyArray<DiscoveredLocalServer>>;
     readonly subscribe: (
       input: {
@@ -145,6 +148,7 @@ interface ProcessTableRow {
 interface WebProbeCacheEntry {
   readonly pid: number | null;
   readonly isWeb: boolean;
+  readonly failureStreak: number;
   readonly expiresAtMillis: number;
 }
 
@@ -336,8 +340,14 @@ const procLocalAddress = (hex: string): boolean => {
 
 const parseProcNetTcp = (
   raw: string,
-): ReadonlyArray<{ readonly port: number; readonly inode: string }> => {
-  const listeners: Array<{ port: number; inode: string }> = [];
+): ReadonlyArray<{
+  readonly port: number;
+  readonly inode: string;
+}> => {
+  const listeners: Array<{
+    port: number;
+    inode: string;
+  }> = [];
   for (const line of raw.split("\n").slice(1)) {
     const fields = line.trim().split(/\s+/);
     const [address, portHex] = fields[1]?.split(":") ?? [];
@@ -519,10 +529,22 @@ export const make = Effect.gen(function* PortDiscoveryMake() {
   const scanSemaphore = yield* Semaphore.make(1);
   const lsofMissingRef = yield* Ref.make(false);
   const windowsProcessNamesRef = yield* Ref.make<
-    ReadonlyMap<number, { readonly name: string | null; readonly expiresAtMillis: number }>
+    ReadonlyMap<
+      number,
+      {
+        readonly name: string | null;
+        readonly expiresAtMillis: number;
+      }
+    >
   >(new Map());
   const socketOwnersRef = yield* Ref.make<
-    ReadonlyMap<string, { readonly pid: number; readonly processName: string | null }>
+    ReadonlyMap<
+      string,
+      {
+        readonly pid: number;
+        readonly processName: string | null;
+      }
+    >
   >(new Map());
   const socketOwnerMissesRef = yield* Ref.make<ReadonlyMap<string, number>>(new Map());
   // Each current listener pid's agent thread, or null without one. A process keeps its launch
@@ -757,6 +779,7 @@ export const make = Effect.gen(function* PortDiscoveryMake() {
   const probeWebServers = Effect.fnUntraced(function* (
     servers: ReadonlyArray<DiscoveredLocalServer>,
     configuredUrls: ReadonlyArray<string>,
+    retryFailed = false,
   ) {
     const nowMillis = yield* Clock.currentTimeMillis;
     const cached = yield* Ref.get(webProbeCacheRef);
@@ -766,12 +789,22 @@ export const make = Effect.gen(function* PortDiscoveryMake() {
       (group) => {
         const { pid } = group.server;
         const cachedProbe = cached.get(group.configuredKey);
-        return cachedProbe?.pid === pid && cachedProbe.expiresAtMillis > nowMillis
+        return cachedProbe?.pid === pid &&
+          cachedProbe.expiresAtMillis > nowMillis &&
+          !(retryFailed && !cachedProbe.isWeb)
           ? Effect.succeed({ group, probe: cachedProbe, fresh: false })
           : probeWebUrl(group.url).pipe(
               Effect.map((result) => ({
                 group,
-                probe: { pid, isWeb: result !== null, expiresAtMillis: 0 },
+                probe: {
+                  pid,
+                  isWeb: result !== null,
+                  failureStreak:
+                    result !== null
+                      ? 0
+                      : (cachedProbe?.pid === pid ? cachedProbe.failureStreak : 0) + 1,
+                  expiresAtMillis: 0,
+                },
                 fresh: true,
               })),
             );
@@ -786,7 +819,16 @@ export const make = Effect.gen(function* PortDiscoveryMake() {
     for (const { group, probe, fresh } of probed) {
       nextCache.set(
         group.configuredKey,
-        fresh ? { ...probe, expiresAtMillis: completedAtMillis + WEB_PROBE_CACHE_TTL_MS } : probe,
+        fresh
+          ? {
+              ...probe,
+              expiresAtMillis:
+                completedAtMillis +
+                (probe.isWeb
+                  ? WEB_PROBE_CACHE_TTL_MS
+                  : Math.min(300000, 60000 * 2 ** Math.min(3, probe.failureStreak - 1))),
+            }
+          : probe,
       );
       if (probe.isWeb) configured.set(group.configuredKey, { ...group.server, url: group.url });
     }
@@ -852,8 +894,11 @@ export const make = Effect.gen(function* PortDiscoveryMake() {
       }).pipe(Effect.as(null));
 
   // Routine polling helpers share operation/probe spans instead of tracing every tick.
-  const scanUnlocked = Effect.fnUntraced(function* (configuredUrls: ReadonlyArray<string>) {
-    if (!listenerDiscovery) return yield* probeWebServers([], configuredUrls);
+  const scanUnlocked = Effect.fnUntraced(function* (
+    configuredUrls: ReadonlyArray<string>,
+    retryFailed = false,
+  ) {
+    if (!listenerDiscovery) return yield* probeWebServers([], configuredUrls, retryFailed);
     const state = yield* Ref.get(stateRef);
     const terminalOwners = new Map<number, ServerOwner>();
     for (const registration of state.terminalProcesses.values()) {
@@ -891,13 +936,14 @@ export const make = Effect.gen(function* PortDiscoveryMake() {
         }),
       );
       return yield* withWindowsProcessNames(
-        yield* probeWebServers(listeners ?? [], configuredUrls),
+        yield* probeWebServers(listeners ?? [], configuredUrls, retryFailed),
       );
     }
     const fromProc = yield* scanProcListeners(resolveOwners);
-    if (fromProc !== null) return yield* probeWebServers(fromProc, configuredUrls);
+    if (fromProc !== null) return yield* probeWebServers(fromProc, configuredUrls, retryFailed);
     const recoverLsofProbeFailure = recoverProcessProbeFailure("lsof");
-    if (yield* Ref.get(lsofMissingRef)) return yield* probeWebServers([], configuredUrls);
+    if (yield* Ref.get(lsofMissingRef))
+      return yield* probeWebServers([], configuredUrls, retryFailed);
     const lsofResult = yield* processRunner
       .run({
         command: "lsof",
@@ -923,20 +969,20 @@ export const make = Effect.gen(function* PortDiscoveryMake() {
           ProcessTimeoutError: recoverLsofProbeFailure,
         }),
       );
-    if (lsofResult !== null) return yield* probeWebServers(lsofResult, configuredUrls);
+    if (lsofResult !== null) return yield* probeWebServers(lsofResult, configuredUrls, retryFailed);
     // A missing lsof makes a bounded, partial /proc owner walk the only available discovery.
     const withoutLsof = (yield* Ref.get(lsofMissingRef))
       ? yield* scanProcListeners(resolveOwners)
       : null;
-    return yield* probeWebServers(withoutLsof ?? [], configuredUrls);
+    return yield* probeWebServers(withoutLsof ?? [], configuredUrls, retryFailed);
   });
 
-  const scanSnapshot = (configuredUrls: ReadonlyArray<string>) =>
-    scanSemaphore.withPermits(1)(scanUnlocked(configuredUrls));
+  const scanSnapshot = (configuredUrls: ReadonlyArray<string>, retryFailed = false) =>
+    scanSemaphore.withPermits(1)(scanUnlocked(configuredUrls, retryFailed));
 
-  const scanOnce: PortDiscovery["Service"]["scan"] = (configuredUrls = []) => {
+  const scanOnce: PortDiscovery["Service"]["scan"] = (configuredUrls = [], options) => {
     const normalized = normalizeConfiguredUrls(configuredUrls);
-    return scanSnapshot(normalized).pipe(
+    return scanSnapshot(normalized, options?.retryFailed === true).pipe(
       Effect.map((snapshot) => projectWebProbeSnapshot(snapshot, normalized)),
       Effect.withSpan("PortDiscovery.scan"),
     );
@@ -1103,12 +1149,32 @@ export const make = Effect.gen(function* PortDiscoveryMake() {
         maxOutputBytes: PS_MAX_OUTPUT_BYTES,
       })
       .pipe(Effect.option);
+    // ps includes argv before the environment. Shell arguments can themselves contain
+    // NAME=value, so remove the command text before deciding whether a name was inherited.
+    const commandRows = yield* processRunner
+      .run({
+        command: "ps",
+        args: ["-ww", "-o", "pid=,command=", "-p", pids.join(",")],
+        timeout: Duration.millis(PS_TIMEOUT_MS),
+        maxOutputBytes: PS_MAX_OUTPUT_BYTES,
+      })
+      .pipe(Effect.option);
+    const commands = new Map<number, string>();
+    for (const line of Option.isSome(commandRows) ? commandRows.value.stdout.split("\n") : []) {
+      const match = /^\s*(\d+)\s(.*)$/.exec(line);
+      if (match) commands.set(Number(match[1]), match[2]!.trimEnd());
+    }
     const variables = new Map<number, ReadonlyMap<string, string>>();
     for (const line of Option.isSome(result) ? result.value.stdout.split("\n") : []) {
       const match = /^\s*(\d+)\s(.*)$/.exec(line);
-      if (match) {
-        variables.set(Number(match[1]), parseEnvironmentVariables(match[2]!, /\s+/, names));
-      }
+      if (!match) continue;
+      const pid = Number(match[1]);
+      const command = commands.get(pid);
+      if (!command) continue;
+      const raw = match[2]!;
+      // A process may exec between reads; do not attribute an unreadable environment.
+      if (raw !== command && !raw.startsWith(`${command} `)) continue;
+      variables.set(pid, parseEnvironmentVariables(raw.slice(command.length), /\s+/, names));
     }
     return variables;
   });

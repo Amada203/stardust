@@ -1,3 +1,5 @@
+import { useUiText } from "~/i18n/useUiText";
+
 import { mergeProps } from "@base-ui/react/merge-props";
 import { useRender } from "@base-ui/react/use-render";
 import { cva, type VariantProps } from "class-variance-authority";
@@ -188,6 +190,8 @@ function createSidebarOpenStore(defaultOpen: boolean, storageKey: string | undef
 
 function SidebarProvider({
   defaultOpen = true,
+  suspended = false,
+  onResume,
   storageKey,
   className,
   style,
@@ -195,15 +199,15 @@ function SidebarProvider({
   ...props
 }: React.ComponentProps<"div"> & {
   defaultOpen?: boolean;
+  suspended?: boolean;
+  onResume?: () => void;
   storageKey?: string;
 }) {
   const isMobile = useMediaQuery(SIDEBAR_MOBILE_QUERY);
   const [store] = React.useState(() => createSidebarOpenStore(defaultOpen, storageKey));
-  const { open, openMobile } = React.useSyncExternalStore(
-    store.subscribe,
-    store.getSnapshot,
-    store.getSnapshot,
-  );
+  const stored = React.useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
+  const open = !suspended && stored.open;
+  const openMobile = !suspended && stored.openMobile;
   const [mobileSheetMounted, setMobileSheetMounted] = React.useState(false);
   if (openMobile && !mobileSheetMounted) {
     setMobileSheetMounted(true);
@@ -224,7 +228,7 @@ function SidebarProvider({
     setOpen: store.setOpen,
     setOpenMobile: store.setOpenMobile,
     state,
-    toggleSidebar: store.toggle,
+    toggleSidebar: suspended ? () => onResume?.() : store.toggle,
     onCollapse: store.onCollapse,
   };
 
@@ -292,6 +296,7 @@ function Sidebar({
   collapsible?: "offcanvas" | "icon" | "none";
   resizable?: boolean | SidebarResizableOptions;
 }) {
+  const uiText = useUiText();
   const { isMobile, state, openMobile, setOpenMobile, setMobileSheetMounted } = useSidebar();
   // Not usePanelAnimationSettings: its navigation suppression would snap the sheet shut mid-exit when an item navigates.
   const panelAnimationDurationMs = useClientSettings(
@@ -352,7 +357,7 @@ function Sidebar({
           >
             <SheetHeader className="sr-only">
               <SheetTitle>{props["aria-label"] ?? "Sidebar"}</SheetTitle>
-              <SheetDescription>Displays the mobile sidebar.</SheetDescription>
+              <SheetDescription>{uiText("Displays the mobile sidebar.")}</SheetDescription>
             </SheetHeader>
             <div
               className={cn(

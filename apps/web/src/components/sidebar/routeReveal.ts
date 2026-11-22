@@ -9,6 +9,7 @@ import { filterSidebarV2VisibleThreads } from "../Sidebar.logic";
 // Leaving Settings commits the router's location before its matches, briefly hiding thread params.
 // Ignore null keys so the same thread does not look new during that gap.
 export interface SidebarRouteReveal {
+  overviewKey?: string | null;
   observedKey: string | null;
   pendingKey: string | null;
 }
@@ -19,6 +20,7 @@ export function pendingSidebarRouteReveal(
 ): string | null {
   if (routeKey === null) return null;
   if (reveal.observedKey !== routeKey) {
+    if (reveal.overviewKey !== routeKey) reveal.overviewKey = null;
     reveal.observedKey = routeKey;
     reveal.pendingKey = routeKey;
   }
@@ -84,4 +86,23 @@ export function resolveSidebarRouteReveal<T extends RevealableThread>(input: {
     filterSidebarV2VisibleThreads([thread], scopedProjectKeys, delegatedUnderParent).length === 0 &&
     filterSidebarV2VisibleThreads([thread], null, delegatedUnderParent).length === 1;
   return { pendingKey, widensScope };
+}
+
+export function scrollSidebarRowNearest(row: Element | null) {
+  if (!row) return;
+  const rect = row.getBoundingClientRect();
+  let top = 0,
+    bottom = window.innerHeight;
+  for (let parent = row.parentElement; parent; parent = parent.parentElement) {
+    if (!/(auto|scroll|hidden|clip)/.test(getComputedStyle(parent).overflowY)) continue;
+    const bounds = parent.getBoundingClientRect();
+    top = Math.max(top, bounds.top);
+    bottom = Math.min(bottom, bounds.bottom);
+  }
+  if (rect.top < top || rect.bottom > bottom)
+    row.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "instant" });
+}
+
+export function markSidebarOverviewNavigation(reveal: SidebarRouteReveal, key: string) {
+  reveal.overviewKey = key;
 }

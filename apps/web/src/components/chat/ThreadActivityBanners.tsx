@@ -1,3 +1,4 @@
+import { uiText } from "~/i18n";
 import type {
   EnvironmentId,
   OrchestrationV2PendingBackgroundTask,
@@ -81,12 +82,11 @@ export function childInputNowItem(input: {
     )),
     actions: (
       <InlineButton onClick={() => onOpenThread(first.id, first.environmentId)}>
-        {first.hasPendingApprovals ? "Open approval" : "Open question"}
+        {first.hasPendingApprovals ? uiText("Open approval") : uiText("Open question")}
       </InlineButton>
     ),
   };
 }
-
 /** The thread's goal, for the end of the timeline. */
 export function goalNowItem(input: {
   readonly threadId: ThreadId;
@@ -152,9 +152,9 @@ export function runStopNowItem(input: {
     ) : (
       <CircleStopIcon />
     ),
-    title: unresponsive ? "Agent not responding to Stop" : "Stopping",
+    title: unresponsive ? uiText("Agent not responding to Stop") : uiText("Stopping"),
     description: unresponsive
-      ? "It may be short on memory. Force stop kills its processes."
+      ? uiText("It may be short on memory. Force stop kills its processes.")
       : undefined,
     actions: (
       <>
@@ -167,7 +167,7 @@ export function runStopNowItem(input: {
         />
         {unresponsive && input.canForceStop ? (
           <InlineButton disabled={input.forceStopping} onClick={input.onForceStop}>
-            {input.forceStopping ? "Force stopping..." : "Force stop"}
+            {input.forceStopping ? uiText("Force stopping...") : uiText("Force stop")}
           </InlineButton>
         ) : null}
       </>
@@ -297,15 +297,17 @@ export function branchMismatchBannerItem(input: {
             }
           />
           <TooltipPopup side="top">
-            This thread last ran on {mismatch.threadBranch}. Sending will continue on{" "}
-            {mismatch.currentBranch}.
+            {"This thread last ran on "}
+            {mismatch.threadBranch}
+            {". Sending will continue on"} {mismatch.currentBranch}
+            {"."}
           </TooltipPopup>
         </Tooltip>
       </span>
     ),
     actions: (
       <Button size="xs" variant="ghost" disabled={input.restoreDisabled} onClick={input.onRestore}>
-        {input.restoring ? "Restoring..." : "Restore branch"}
+        {input.restoring ? uiText("Restoring...") : uiText("Restore branch")}
       </Button>
     ),
     dismissLabel: "Dismiss branch change notice",

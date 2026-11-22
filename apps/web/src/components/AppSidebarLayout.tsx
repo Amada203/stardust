@@ -1,3 +1,7 @@
+import { useUiText } from "~/i18n/useUiText";
+import LegacyThreadSidebar from "./LegacySidebar";
+import { useLegacySidebarEnabled } from "../hooks/useSettings";
+import { useWorkbenchMode } from "../workbenchMode";
 import { useAtomValue } from "@effect/atom-react";
 import * as Schema from "effect/Schema";
 import {
@@ -418,7 +422,10 @@ export function AppSidebarLayout({
   children: ReactNode;
   showSidebar?: boolean;
 }) {
-  const sidebarArea = workspaceAreaProps("sidebar", 0, "Threads");
+  const text = useUiText();
+  const sidebarArea = workspaceAreaProps("sidebar", 0, text("Threads"));
+  const customSidebar = useLegacySidebarEnabled();
+  const workbenchMode = useWorkbenchMode((state) => state.mode);
   const [sidebarRouteReveal] = useState<SidebarRouteReveal>(() => ({
     observedKey: null,
     pendingKey: null,
@@ -461,6 +468,8 @@ export function AppSidebarLayout({
   return (
     <PanelAnimationSuppressionProvider value={panelAnimationsSuppressed}>
       <SidebarProvider
+        suspended={workbenchMode === "focus" && !pathname.startsWith("/settings")}
+        onResume={() => useWorkbenchMode.getState().setMode(useWorkbenchMode.getState().resumeMode)}
         className="h-dvh! min-h-0!"
         data-panel-animations={routePanelAnimationsActive ? "true" : "false"}
         storageKey="chat_thread_sidebar_open"
@@ -475,7 +484,7 @@ export function AppSidebarLayout({
               data-app-sidebar=""
               {...sidebarArea}
               role="navigation"
-              aria-label="Threads"
+              aria-label={text("Threads")}
               resizable={{
                 maxWidth: sidebarMaximumWidth,
                 minWidth: sidebarMinimumWidth,
@@ -487,7 +496,11 @@ export function AppSidebarLayout({
               }}
               style={windowControlsInsetStyle}
             >
-              <ThreadSidebar routeReveal={sidebarRouteReveal} />
+              {customSidebar && workbenchMode !== "full" ? (
+                <LegacyThreadSidebar routeReveal={sidebarRouteReveal} />
+              ) : (
+                <ThreadSidebar routeReveal={sidebarRouteReveal} />
+              )}
               <SidebarRail onDoubleClick={resetSidebarWidth} />
             </Sidebar>
           </>

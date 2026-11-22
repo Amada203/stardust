@@ -1,3 +1,5 @@
+import { useUiText } from "~/i18n/useUiText";
+
 import {
   DndContext,
   type DragEndEvent,
@@ -44,6 +46,7 @@ export function EnvironmentRoutesList({
   readonly environment: EnvironmentPresentation;
   readonly onAddRoute: () => void;
 }) {
+  const uiText = useUiText();
   const saved = connectionRoutes(environment.entry);
   const savedIds = saved.map((route) => connectionRouteId(route.target));
   const [pending, setPending] = useState<ReadonlyArray<string> | null>(null);
@@ -115,10 +118,10 @@ export function EnvironmentRoutesList({
           </ol>
         </SortableContext>
       </DndContext>
-      <div className="-ml-1.5 pt-1">
-        <Button size="xs" variant="ghost-muted" onClick={onAddRoute}>
-          <PlusIcon className="size-3" />
-          Add route
+      <div className={"-ml-1.5 pt-1"}>
+        <Button size={"xs"} variant={"ghost-muted"} onClick={onAddRoute}>
+          <PlusIcon className={"size-3"} />
+          {uiText("Add route")}
         </Button>
       </div>
     </div>

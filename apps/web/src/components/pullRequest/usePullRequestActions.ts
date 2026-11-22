@@ -1,3 +1,5 @@
+import { useUiText } from "~/i18n/useUiText";
+import { uiText } from "~/i18n";
 import { useAtomCommand } from "~/state/use-atom-command";
 import { scopeProjectRef } from "@t3tools/client-runtime/environment";
 import {
@@ -75,35 +77,32 @@ export function usePullRequestDefaultMergeMethodResolver(
     return legacyOverrides[key];
   };
 }
-
 const actionSuccessLabels = (term: string): Record<PullRequestAction, string> => ({
-  merge: "Merge requested",
-  ready: "Marked ready for review",
-  draft: "Converted to draft",
+  merge: uiText("Merge requested"),
+  ready: uiText("Marked ready for review"),
+  draft: uiText("Converted to draft"),
   close: `${capitalizeTerm(term)} closed`,
   reopen: `${capitalizeTerm(term)} reopened`,
-  "update-branch": "Branch updated with the base branch",
-  "enable-auto-merge": "Auto-merge enabled",
-  "disable-auto-merge": "Auto-merge disabled",
+  "update-branch": uiText("Branch updated with the base branch"),
+  "enable-auto-merge": uiText("Auto-merge enabled"),
+  "disable-auto-merge": uiText("Auto-merge disabled"),
   revert: `Revert ${term} opened`,
-  "delete-branch": "Branch deleted",
-  "approve-workflows": "Workflows approved",
+  "delete-branch": uiText("Branch deleted"),
+  "approve-workflows": uiText("Workflows approved"),
 });
-
 const actionFailureLabels = (term: string): Record<PullRequestAction, string> => ({
   merge: `Could not merge this ${term}`,
-  ready: "Could not mark this ready for review",
-  draft: "Could not convert this to a draft",
+  ready: uiText("Could not mark this ready for review"),
+  draft: uiText("Could not convert this to a draft"),
   close: `Could not close this ${term}`,
   reopen: `Could not reopen this ${term}`,
-  "update-branch": "Could not update this branch",
-  "enable-auto-merge": "Could not enable auto-merge",
-  "disable-auto-merge": "Could not disable auto-merge",
+  "update-branch": uiText("Could not update this branch"),
+  "enable-auto-merge": uiText("Could not enable auto-merge"),
+  "disable-auto-merge": uiText("Could not disable auto-merge"),
   revert: `Could not open a revert ${term}`,
-  "delete-branch": "Could not delete this branch",
-  "approve-workflows": "Could not approve workflows",
+  "delete-branch": uiText("Could not delete this branch"),
+  "approve-workflows": uiText("Could not approve workflows"),
 });
-
 const actionFailureHints = (term: string): Record<PullRequestAction, string> => ({
   merge:
     "The host refused the merge. Check that you have write access, that the checks it requires have passed, and that the branch is not conflicting.",
@@ -270,6 +269,7 @@ export function usePullRequestHandoffs({
   environmentId: EnvironmentId;
   detail: PullRequestHandoffDetail | null;
 }) {
+  const uiText = useUiText();
   const newThread = useNewThreadHandler();
   const prepareThread = usePreparePullRequestThreadAction({
     environmentId,
@@ -310,21 +310,20 @@ export function usePullRequestHandoffs({
     if (opened === null) {
       toastManager.add({
         type: "error",
-        title: "Could not open a thread",
-        description: "Try again from the project, or open a thread first.",
+        title: uiText("Could not open a thread"),
+        description: uiText("Try again from the project, or open a thread first."),
       });
       return;
     }
     toastManager.add({
       type: "success",
-      title: "Asked in a thread",
+      title: uiText("Asked in a thread"),
       description:
         task.prompt.length > 0
           ? "The question is in the composer. Read it over, then send."
           : `The ${terminology.singular} is in the composer. Type your question, then send.`,
     });
   };
-
   const startHandoff = async (
     kind: string,
     task: PullRequestThreadTask | null,
@@ -358,8 +357,8 @@ export function usePullRequestHandoffs({
       setHandoff(null);
       toastManager.update(toastId, {
         type: "error",
-        title: "Could not open a thread for the checkout",
-        description: "Try again from the project, or open a thread first.",
+        title: uiText("Could not open a thread for the checkout"),
+        description: uiText("Try again from the project, or open a thread first."),
       });
       return;
     }
@@ -436,12 +435,11 @@ export function usePullRequestHandoffs({
       prepared.value.isOnPullRequestHead
         ? {
             type: "success",
-            title: "Checkout ready",
+            title: uiText("Checkout ready"),
             description: "The task is in the composer. Read it over, then send.",
           }
         : offHeadPullRequestCheckoutToast(terminology),
     );
   };
-
   return { handoff, startAsk, startHandoff };
 }

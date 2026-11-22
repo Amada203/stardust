@@ -1,3 +1,4 @@
+import { uiText } from "~/i18n";
 import type { RefObject } from "react";
 import { anchoredToastManager } from "./toast";
 
@@ -10,7 +11,7 @@ export function showAnchoredCopyErrorToast(ref: RefObject<HTMLButtonElement | nu
     positionerProps: {
       anchor: ref.current,
     },
-    title: "Failed to copy",
+    title: uiText("Failed to copy"),
     description: error.message,
   });
 }

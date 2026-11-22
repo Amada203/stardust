@@ -1,3 +1,6 @@
+import { useState } from "react";
+import { useNavigate } from "@tanstack/react-router";
+import { useUiText } from "~/i18n/useUiText";
 import { workspaceAreaProps } from "../lib/workspaceFocus";
 import { MessageSquareDashedIcon, PlusIcon } from "lucide-react";
 
@@ -11,7 +14,10 @@ import { SidebarInset } from "./ui/sidebar";
 import { WorkspacePageHeader } from "./WorkspacePageHeader";
 
 export function NoProjectsHero() {
-  const contentArea = workspaceAreaProps("home", 1, "Home");
+  const text = useUiText();
+  const navigate = useNavigate();
+  const [starting, setStarting] = useState(false);
+  const contentArea = workspaceAreaProps("home", 1, text("Home"));
   const primaryEnvironmentId = usePrimaryEnvironmentId();
   const { scratchEnvironmentId, startScratchThread } = useScratchProject();
   const scratchTargetEnvironmentId = scratchEnvironmentId(primaryEnvironmentId);
@@ -26,31 +32,66 @@ export function NoProjectsHero() {
         {/* The desktop window only moves where CSS opts in, so keep a titlebar strip. */}
         {isElectron ? <WorkspacePageHeader electron /> : null}
         <Empty size="hero" className="flex-1">
-          <div className="w-full max-w-lg px-8 py-12">
+          <div className="w-full max-w-2xl px-8 py-12">
             <EmptyHeader className="max-w-none">
-              <EmptyTitle>What should we work on?</EmptyTitle>
+              <EmptyTitle>{text("Start here")}</EmptyTitle>
               <EmptyDescription>
                 {scratchTargetEnvironmentId === null
-                  ? "Add a project to start your first thread."
-                  : "Add a project, or start without one."}
+                  ? text("Add a project to start your first thread.")
+                  : text("Pick a folder as a project, or start a conversation without one.")}
               </EmptyDescription>
               <div className="mt-6 flex justify-center gap-2">
                 <Button size="sm" onClick={() => openCommandPalette({ open: "add-project" })}>
                   <PlusIcon className="size-4" />
-                  Add project
+                  {text("Add project")}
                 </Button>
                 {scratchTargetEnvironmentId === null ? null : (
                   <Button
                     size="sm"
                     variant="outline"
-                    onClick={() => void startScratchThread(scratchTargetEnvironmentId)}
+                    disabled={starting}
+                    onClick={async () => {
+                      setStarting(true);
+                      await startScratchThread(scratchTargetEnvironmentId).finally(() =>
+                        setStarting(false),
+                      );
+                    }}
                   >
                     <MessageSquareDashedIcon className="size-4" />
-                    Start without a project
+                    {text(starting ? "Preparing a conversation…" : "Start without a project")}
                   </Button>
                 )}
               </div>
             </EmptyHeader>
+            <div className="mt-8 grid gap-2 text-left sm:grid-cols-3">
+              {[
+                [
+                  "Explain a codebase",
+                  "Open a folder and get a tour",
+                  "Explain how this codebase is organized.",
+                ],
+                [
+                  "Fix a bug",
+                  "Paste the error and trace its cause",
+                  "Help me find the cause of this error:",
+                ],
+                [
+                  "Write an article",
+                  "Give a topic and start with an outline",
+                  "Help me outline an article for this audience:",
+                ],
+              ].map(([title, description, prompt]) => (
+                <button
+                  key={title}
+                  type="button"
+                  className="grid content-start gap-1 rounded-xl border bg-card p-3 text-left outline-primary hover:border-primary/50"
+                  onClick={() => void navigate({ to: "/new", search: { prompt: text(prompt!) } })}
+                >
+                  <b className="text-stardust-body">{text(title!)}</b>
+                  <span className="text-xs text-muted-foreground">{text(description!)}</span>
+                </button>
+              ))}
+            </div>
           </div>
         </Empty>
       </div>

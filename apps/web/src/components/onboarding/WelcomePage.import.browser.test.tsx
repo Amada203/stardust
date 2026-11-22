@@ -314,6 +314,9 @@ async function click(label: string) {
   const target = button(label);
   expect(target.disabled).toBe(false);
   await act(async () => target.click());
+  if (document.querySelector("[data-stardust-organize]")) {
+    await act(async () => button("Continue").click());
+  }
 }
 
 async function mountWelcome() {
@@ -452,7 +455,7 @@ it("waits for a ready agent to start, and Start without an agent still finishes 
   await using _screen = await mountWelcome();
   expect(button("Import 2 projects and start").disabled).toBe(true);
 
-  await click("Start without an agent");
+  await click("Just look around");
   await vi.waitFor(() => expect(state.onDone).toHaveBeenCalledOnce());
   expect(state.createProject).toHaveBeenCalledTimes(2);
 });
@@ -527,7 +530,7 @@ it("gives projects a later scan finds the default, unless the main box was unche
   const importProjects = document.querySelector<HTMLElement>('[role="checkbox"]');
   await act(async () => importProjects?.click());
   await findProject("/projects/fourth");
-  await vi.waitFor(() => expect(button("Start").disabled).toBe(false));
+  await vi.waitFor(() => expect(button("Get started").disabled).toBe(false));
 });
 
 it("keeps the project choice across a visit to Settings until setup finishes", async () => {
@@ -536,13 +539,13 @@ it("keeps the project choice across a visit to Settings until setup finishes", a
     await using _first = await mountWelcome();
     const importProjects = document.querySelector<HTMLElement>('[role="checkbox"]');
     await act(async () => importProjects?.click());
-    await vi.waitFor(() => expect(button("Start").disabled).toBe(false));
+    await vi.waitFor(() => expect(button("Get started").disabled).toBe(false));
   }
   // Coming back from Settings mounts the page again.
   {
     await using _second = await mountWelcome();
-    expect(button("Start").disabled).toBe(false);
-    await click("Start");
+    expect(button("Get started").disabled).toBe(false);
+    await click("Get started");
     await vi.waitFor(() => expect(state.onDone).toHaveBeenCalledOnce());
     expect(state.createProject).not.toHaveBeenCalled();
   }
@@ -585,7 +588,7 @@ it("leaves projects already in T3 Code out of the default import, unless the box
   ]);
   {
     await using _screen = await mountWelcome();
-    await vi.waitFor(() => expect(pageText()).toContain("Import 1 project and their threads"));
+    await vi.waitFor(() => expect(pageText()).toContain("Import one project and its threads"));
   }
 
   // With every project already in T3 Code, checking the box still picks them.
@@ -637,13 +640,13 @@ it("keeps saved picks when Start comes before the project list loads", async () 
   state.scanPending = true;
   await using _screen = await mountWelcome();
 
-  await click("Start");
+  await click("Get started");
   await vi.waitFor(() => expect(state.onDone).toHaveBeenCalledOnce());
   // An import a quit cut short is still checked on the next visit.
   expect(localStorage.getItem(welcomeImportSelectionKey(primaryId))).toBe(saved);
 });
 
-it("offers Update for a signed-in agent whose version is broken, and keeps Start off", async () => {
+it("offers a fix and keeps Start off for an incompatible agent", async () => {
   using _now = setup();
   appAtomRegistry.set(state.providers as Atom.Writable<ReadonlyArray<ServerProvider>>, [
     {
@@ -659,9 +662,10 @@ it("offers Update for a signed-in agent whose version is broken, and keeps Start
   await using _screen = await mountWelcome();
   await vi.waitFor(() => expect(pageText()).toContain("Update Claude Code to 2.0 or later."));
   const update = [...document.querySelectorAll("a")].find(
-    (element) => element.textContent?.trim() === "Update",
+    (element) => element.textContent?.trim() === "How to fix",
   );
   expect(update?.getAttribute("href")).toContain("/settings/providers");
+  expect(document.querySelector("[data-welcome-provider] details[open]")).toBeNull();
   expect(button("Import 2 projects and start").disabled).toBe(true);
 });
 
@@ -681,8 +685,8 @@ it("checks an agent again once its install command finishes in the setup termina
     { ...readyClaude, installed: false, status: "error", auth: { status: "unknown" } },
   ]);
   await using _screen = await mountWelcome();
-  await vi.waitFor(() => button("Install"));
-  await click("Install");
+  await vi.waitFor(() => button("How to install"));
+  await click("How to install");
   await vi.waitFor(() => expect(state.writeTerminal).toHaveBeenCalledOnce());
   const { terminalId } = state.openTerminal.mock.calls[0]![0].input;
   const runningTerminalIds = state.runningTerminalIds as Atom.Writable<ReadonlyArray<string>>;
@@ -705,7 +709,7 @@ it("keeps an import opt-out on the page when storage cannot save it", async () =
   const importProjects = document.querySelector<HTMLElement>('[role="checkbox"]');
   await act(async () => importProjects?.click());
 
-  await click("Start");
+  await click("Get started");
   await vi.waitFor(() => expect(state.onDone).toHaveBeenCalledOnce());
   expect(state.createProject).not.toHaveBeenCalled();
 });
@@ -729,7 +733,7 @@ it("opens the list of agents to add once the checks find none, even after a wron
   );
   const fold = () =>
     [...document.querySelectorAll("button")].find((element) =>
-      element.textContent?.startsWith("Set up an agent"),
+      element.textContent?.startsWith("More model tools"),
     );
   await vi.waitFor(() => expect(fold()?.getAttribute("aria-expanded")).toBe("true"));
 
@@ -748,7 +752,7 @@ it("starts without importing when this connection cannot import projects", async
   await using _screen = await mountWelcome();
   expect(pageText()).not.toContain("Review all");
 
-  await click("Start");
+  await click("Get started");
   await vi.waitFor(() => expect(state.onDone).toHaveBeenCalledOnce());
   expect(state.createProject).not.toHaveBeenCalled();
 });

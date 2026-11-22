@@ -1,3 +1,5 @@
+import { useUiText } from "~/i18n/useUiText";
+
 import type {
   EnvironmentId,
   ProviderInstanceId,
@@ -20,6 +22,7 @@ export function useUsageLimitsPanel(input: {
   readonly providers: readonly ServerProvider[];
   readonly sources: UsageLimitSourceSnapshots;
 }) {
+  const uiText = useUiText();
   const {
     environmentId,
     threadKey,
@@ -63,7 +66,10 @@ export function useUsageLimitsPanel(input: {
       return true;
     }
     setPanel(null);
-    toastManager.add({ type: "info", title: "Usage limits are unavailable for this provider" });
+    toastManager.add({
+      type: "info",
+      title: uiText("Usage limits are unavailable for this provider"),
+    });
     return false;
   });
   // Async responses may clear only their originating thread's panel.

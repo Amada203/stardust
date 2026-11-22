@@ -1,3 +1,5 @@
+import { useUiText } from "~/i18n/useUiText";
+
 import type { PullRequestReviewGuideStop } from "@t3tools/contracts";
 import { CheckIcon } from "lucide-react";
 
@@ -17,6 +19,7 @@ export function GuideRail({
   seen: ReadonlySet<number>;
   onSelect: (position: number) => void;
 }) {
+  const uiText = useUiText();
   const reviewed = seen.size;
   const renderStop = (stop: PullRequestReviewGuideStop, index: number) => (
     <li key={index}>
@@ -29,7 +32,7 @@ export function GuideRail({
           <>
             {stop.attention !== null ? (
               <Badge size="sm" variant="warning">
-                Look closely
+                {uiText("Look closely")}
               </Badge>
             ) : null}
             <span>{stopSubline(stop)}</span>

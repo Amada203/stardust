@@ -1,3 +1,5 @@
+import { SidebarCategorySettingsSection } from "./SidebarCategorySettings";
+import { CommunityUpdateSettings } from "./CommunityUpdates";
 import { useAtomValue } from "@effect/atom-react";
 import { NotificationSettings } from "./NotificationSettings";
 import { PRIVACY_POLICY_URL } from "../../legalLinks";
@@ -86,6 +88,8 @@ import { Input } from "../ui/input";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Switch } from "../ui/switch";
 import { ScopedSwitch } from "./ScopedSwitch";
+import { TelemetryConsentRow } from "./TelemetryConsentRow";
+import { useUiText } from "~/i18n/useUiText";
 import { stackedThreadToast, toastManager } from "../ui/toast";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import {
@@ -163,6 +167,14 @@ const QUIT_CONFIRMATION_MODE_LABELS: Record<QuitConfirmationMode, string> = {
 
 const DEFAULT_DRIVER_KIND = ProviderDriverKind.make("codex");
 function AboutVersionSection() {
+  return (
+    <>
+      {isElectron && <CommunityUpdateSettings />}
+      <UpstreamAboutVersionSection />
+    </>
+  );
+}
+function UpstreamAboutVersionSection() {
   const updateState = useDesktopUpdateState();
   const [switchChannel, setSwitchChannel] = useState<DesktopUpdateChannel | null>(null);
   const [isUpdateActionPending, setIsUpdateActionPending] = useState(false);
@@ -1780,6 +1792,7 @@ export function ThreadsSettingsPanel() {
 
   return (
     <SettingsPageContainer>
+      <SidebarCategorySettingsSection />
       <SettingsSection id="new-projects" title="New projects">
         <SettingsRow
           serverScoped
@@ -2288,6 +2301,7 @@ export function MaintenanceSettingsPanel() {
 }
 
 export function AboutSettingsPanel() {
+  const uiText = useUiText();
   const primaryPolicy = usePrimaryManagedPolicy();
   // The Welcome page sets up this computer, so it needs one.
   const primaryEnvironmentId = usePrimaryEnvironmentId();
@@ -2340,11 +2354,14 @@ export function AboutSettingsPanel() {
       </SettingsSection>
 
       <SettingsSection id="legal" title="Legal">
+        <TelemetryConsentRow />
         <SettingsRow
           {...searchableSetting("privacy-policy")}
           description={
             telemetryOff === undefined
-              ? "How we handle your data, including the anonymous usage data T3 Code collects."
+              ? uiText(
+                  "What this build sends and where. Usage statistics stay off unless you turn them on above.",
+                )
               : `How we handle your data. ${telemetryOff}`
           }
           control={

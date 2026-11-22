@@ -1,3 +1,5 @@
+import { useUiText } from "~/i18n/useUiText";
+
 import { pipe } from "effect/Function";
 import {
   ACP_REGISTRY_MAX_AGENTS,
@@ -145,6 +147,7 @@ export function AcpRegistrySearchStep({
   onManualConfiguration,
   onLocalConfiguration,
 }: AcpRegistrySearchStepProps) {
+  const uiText = useUiText();
   const canManageProviders = useEnvironmentScope(environmentId, AuthProvidersManageScope);
   const { query, search, preparingId, prepareError } = registry;
 
@@ -192,7 +195,7 @@ export function AcpRegistrySearchStep({
           type="button"
           variant="ghost-muted"
         >
-          Enter manually
+          {uiText("Enter manually")}
         </Button>
         {onLocalConfiguration ? (
           <Button
@@ -269,6 +272,7 @@ function AcpRegistryAgentRow({
   readonly isPreparing: boolean;
   readonly onAdd: (agent: AcpRegistrySearchAgent) => void;
 }) {
+  const uiText = useUiText();
   const progressLabel = agent.distribution === "binary" ? "Downloading" : "Preparing";
   const aboutUrl = agent.website || agent.repository;
   return (
@@ -316,7 +320,7 @@ function AcpRegistryAgentRow({
             size="xs"
             variant={isPreparing ? "secondary" : "outline"}
           >
-            {alreadyAdded ? "Added" : isPreparing ? progressLabel : "Add"}
+            {alreadyAdded ? uiText("Added") : isPreparing ? progressLabel : uiText("Add")}
           </Button>
         </div>
       </div>

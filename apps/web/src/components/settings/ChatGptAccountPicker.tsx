@@ -1,3 +1,5 @@
+import { useUiText } from "~/i18n/useUiText";
+
 import { useState } from "react";
 import type { ProviderAuthMethod } from "@t3tools/contracts";
 import { RadioGroup, Radio } from "../ui/radio-group";
@@ -31,6 +33,7 @@ export function ChatGptAccountPicker({
   canRemove: boolean;
   error: string | null;
 }) {
+  const uiText = useUiText();
   const profiles = methods.filter((method) => method.id.startsWith("chatgpt-profile:"));
   const [selection, setSelection] = useState<string | null>(null);
   const selectedMethodId =
@@ -71,7 +74,7 @@ export function ChatGptAccountPicker({
             ))}
             <label className="flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-3 text-sm">
               <Radio value="chatgpt-change-account" />
-              <span className="font-medium">Use a different account</span>
+              <span className="font-medium">{uiText("Use a different account")}</span>
             </label>
           </RadioGroup>
         </div>

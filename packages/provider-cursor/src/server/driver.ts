@@ -1,3 +1,4 @@
+import * as CursorKeychain from "./CursorKeychain.ts";
 import {
   ProviderDriverKind,
   ProviderSetupError,
@@ -74,11 +75,12 @@ export const CursorDriver: ProviderDriver<
     kind: "scan",
     provider: "cursor",
     rateModel: cursorRateModel,
-    scan: ({ instances, windowStartMs, retentionCutoffMs, awaitRefresh }) =>
+    scan: ({ instances, settings, windowStartMs, retentionCutoffMs, awaitRefresh }) =>
       CursorUsageAccounts.CursorUsageAccounts.pipe(
         Effect.flatMap((accounts) =>
           accounts.scan({
             instances,
+            keychainUsageEnabled: settings.cursorKeychainUsageEnabled,
             windowStartMs,
             retentionCutoffMs,
             awaitRefresh,
@@ -95,6 +97,7 @@ export const CursorDriver: ProviderDriver<
     config,
   }) {
     const host = yield* ProviderHost.ProviderHost;
+    const keychain = yield* CursorKeychain.make;
     const fileSystem = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
     const httpClient = yield* HttpClient.HttpClient;
@@ -232,10 +235,21 @@ export const CursorDriver: ProviderDriver<
                 snapshot.auth.status === "authenticated"
               ),
             (snapshot) =>
-              readCursorUsageLimits(effectiveConfig, {
-                ...processEnv,
-                CURSOR_API_KEY: apiKey,
-              }).pipe(Effect.map((usageLimits) => ({ ...snapshot, usageLimits }))),
+              host.settings.get.pipe(
+                Effect.orElseSucceed(() => ({ cursorKeychainUsageEnabled: false })),
+                Effect.flatMap((settings) =>
+                  readCursorUsageLimits(
+                    effectiveConfig,
+                    {
+                      ...processEnv,
+                      CURSOR_API_KEY: apiKey,
+                    },
+                    settings.cursorKeychainUsageEnabled,
+                    keychain.accessToken,
+                  ),
+                ),
+                Effect.map((usageLimits) => ({ ...snapshot, usageLimits })),
+              ),
           ),
         ),
       ),

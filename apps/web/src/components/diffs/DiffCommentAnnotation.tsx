@@ -1,3 +1,5 @@
+import { useUiText } from "~/i18n/useUiText";
+
 import type { EnvironmentId, ProjectId } from "@t3tools/contracts";
 import { MessageCircle, Trash2 } from "lucide-react";
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
@@ -62,6 +64,7 @@ export function DiffCommentAnnotation({
   focusOnMount = true,
   completionScope = null,
 }: DiffCommentAnnotationProps) {
+  const uiText = useUiText();
   const [localDraftText, setLocalDraftText] = useState("");
   const displayedText = kind === "draft" && !onTextChange ? localDraftText : text;
   const trimmedText = displayedText.trim();
@@ -96,7 +99,7 @@ export function DiffCommentAnnotation({
             <Button
               variant="ghost-muted"
               size="icon-xs"
-              aria-label="Delete comment"
+              aria-label={uiText("Delete comment")}
               onClick={onDelete}
             >
               <Trash2 className="size-3" />

@@ -1,3 +1,4 @@
+import { uiText } from "~/i18n";
 import type { PluggableList } from "unified";
 import type { Root, RootContent } from "mdast";
 import {
@@ -261,7 +262,7 @@ export function remarkThoughtPreview(fallback: string) {
     if (last?.type === "text") last.value = last.value.trimEnd();
     tree.children = children.some((child) => child.type !== "text" || child.value)
       ? children
-      : [{ type: "text", value: fallback }];
+      : [{ type: "text", value: uiText(fallback) }];
   };
 }
 

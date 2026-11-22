@@ -1,3 +1,5 @@
+import { useUiText } from "~/i18n/useUiText";
+
 import { parsePullRequestAnchor } from "@t3tools/shared/pullRequestAnchor";
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
@@ -241,6 +243,7 @@ export function useOpenChangeRequestLink(
 }
 
 export function useOpenPrLink(threadRef?: ScopedThreadRef) {
+  const uiText = useUiText();
   const openChangeRequest = useOpenChangeRequestLink(threadRef);
   const openLink = useOpenLink(threadRef);
   return (event: MouseEvent<HTMLElement>, prUrl: string, targetThreadRef?: ScopedThreadRef) => {
@@ -251,16 +254,14 @@ export function useOpenPrLink(threadRef?: ScopedThreadRef) {
       event.currentTarget instanceof HTMLAnchorElement && event.currentTarget.href.length > 0;
     // Native links handle modified clicks; buttons still need openExternal.
     if (openInBrowser && isAnchor) return false;
-
     event.preventDefault();
     if (!openInBrowser && openChangeRequest(event, prUrl, targetThreadRef)) return true;
-
     void openLink(prUrl, { event, threadRef: targetThreadRef }).catch((error: unknown) => {
       console.error(error);
       toastManager.add(
         stackedThreadToast({
           type: "error",
-          title: "Unable to open pull request link",
+          title: uiText("Unable to open pull request link"),
           description: error instanceof Error ? error.message : "An error occurred.",
         }),
       );

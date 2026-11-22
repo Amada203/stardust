@@ -18,6 +18,10 @@ import * as SynchronizedRef from "effect/SynchronizedRef";
 import * as ElectronApp from "../electron/ElectronApp.ts";
 import * as ElectronDialog from "../electron/ElectronDialog.ts";
 
+class ExternalActivationError extends Schema.TaggedError<ExternalActivationError>()(
+  "ExternalActivationError",
+  { cause: Schema.Defect() },
+) {}
 const PREVIEW_PARTITION_PREFIX = "persist:t3code-preview-";
 /** Ephemeral partitions omit persist: but retain a product prefix so the webview gate recognizes them. */
 const PREVIEW_EPHEMERAL_PARTITION_PREFIX = "t3code-preview-ephemeral-";
@@ -267,6 +271,7 @@ export const make = Effect.gen(function* BrowserSessionMake() {
   const runFork = Effect.runForkWith(yield* Effect.context<never>());
   // One prompt at a time, so a page cannot stack dialogs by looping a deep link.
   let permissionPromptOpen = false;
+  const declinedExternalProtocols = new WeakMap<WebContents, Set<string>>();
   /** Settles with `undefined` when the user gave no answer: another prompt was open or the dialog failed. */
   const promptPermission = (
     requester: WebContents | null,
@@ -282,8 +287,11 @@ export const make = Effect.gen(function* BrowserSessionMake() {
       return;
     }
     permissionPromptOpen = true;
+    let settled = false;
     const settle = (answer: boolean | undefined) =>
       Effect.sync(() => {
+        if (settled) return;
+        settled = true;
         permissionPromptOpen = false;
         callback(answer);
       });
@@ -316,18 +324,54 @@ export const make = Effect.gen(function* BrowserSessionMake() {
     callback: (granted: boolean) => void,
   ): void => {
     const url = externalProtocolPromptUrl(rawUrl);
-    if (url === null) {
+    if (url === null || requester === null || requester.isDestroyed() || !requester.isFocused()) {
       callback(false);
       return;
     }
-    promptPermission(
-      requester,
-      {
-        buttons: ["Open", "Cancel"],
-        message: `Open this ${new URL(url).protocol.slice(0, -1)} link?`,
-        detail: `A page in the browser wants to open another application:\n\n${truncateForPrompt(url)}`,
-      },
-      (answer) => callback(answer === true),
+    const origin = permissionOrigin(requester.getURL());
+    if (origin === null) {
+      callback(false);
+      return;
+    }
+    const target = `${origin}|${new URL(url).protocol}`;
+    if (declinedExternalProtocols.get(requester)?.has(target)) {
+      callback(false);
+      return;
+    }
+    runFork(
+      Effect.gen(function* () {
+        const activated = yield* Effect.tryPromise({
+          try: () =>
+            requester.executeJavaScript(
+              'document.visibilityState === "visible" && navigator.userActivation.isActive',
+              false,
+            ),
+          catch: (cause) => new ExternalActivationError({ cause }),
+        }).pipe(
+          Effect.timeout("1 second"),
+          Effect.orElseSucceed(() => false),
+        );
+        if (activated !== true || requester.isDestroyed() || !requester.isFocused()) {
+          callback(false);
+          return;
+        }
+        promptPermission(
+          requester,
+          {
+            buttons: ["Open", "Cancel"],
+            message: `Open this ${new URL(url).protocol.slice(0, -1)} link?`,
+            detail: `A page in the browser wants to open another application:\n\n${truncateForPrompt(url)}\n\nCancel blocks this site's app links in this tab. Open a new tab to try again.`,
+          },
+          (answer) => {
+            if (answer === false) {
+              const declined = declinedExternalProtocols.get(requester) ?? new Set<string>();
+              declined.add(target);
+              declinedExternalProtocols.set(requester, declined);
+            }
+            callback(answer === true);
+          },
+        );
+      }),
     );
   };
 

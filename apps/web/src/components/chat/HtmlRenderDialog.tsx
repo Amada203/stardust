@@ -1,3 +1,5 @@
+import { useUiText } from "~/i18n/useUiText";
+
 import type { ScopedThreadRef } from "@t3tools/contracts";
 import {
   HTML_RENDER_COLUMN_WIDTH,
@@ -19,6 +21,7 @@ export function HtmlRenderDialog(props: {
   readonly threadRef?: ScopedThreadRef | undefined;
   readonly onClose: () => void;
 }) {
+  const uiText = useUiText();
   const { title } = props.htmlRender;
   const [zoom, setZoom] = useState(1);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
@@ -83,7 +86,7 @@ export function HtmlRenderDialog(props: {
                 <MinusIcon />
               </Button>
               <Button
-                aria-label="Reset zoom"
+                aria-label={uiText("Reset zoom")}
                 size="sm"
                 variant="overlay"
                 onClick={() => setZoom(1)}
@@ -91,7 +94,7 @@ export function HtmlRenderDialog(props: {
                 {Math.round(zoom * 100)}%
               </Button>
               <Button
-                aria-label="Zoom in"
+                aria-label={uiText("Zoom in")}
                 size="icon-sm"
                 variant="overlay"
                 disabled={zoom === 2}

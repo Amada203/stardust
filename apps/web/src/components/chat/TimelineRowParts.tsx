@@ -1,3 +1,4 @@
+import { useLocale } from "gt-react";
 import { type ReactNode } from "react";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { cn } from "~/lib/utils";
@@ -21,6 +22,7 @@ export function TimelineRowTimestamp({
   className?: string;
   alwaysVisible?: boolean;
 }) {
+  useLocale();
   return (
     <Tooltip>
       <TooltipTrigger

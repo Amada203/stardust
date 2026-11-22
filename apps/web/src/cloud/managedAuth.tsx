@@ -1,3 +1,4 @@
+import { uiText } from "~/i18n";
 import { useClerk } from "@clerk/react";
 import {
   createCloudAccountService,
@@ -54,13 +55,12 @@ const managedRelayAccountService = createCloudAccountService<ClerkInstance>({
       ),
     ]);
     for (const result of results) {
-      reportAtomCommandResult(result, { label: "cloud account cleanup" });
+      reportAtomCommandResult(result, { label: uiText("cloud account cleanup") });
     }
   },
   activate: ({ source, accountId }) =>
     activateManagedRelayAuthentication(accountId, clerkTokenReader(source)),
 });
-
 export function ManagedRelayAuthProvider({ children }: { readonly children: ReactNode }) {
   // ClerkProvider creates the Clerk instance and owns its lifetime, so the
   // account service observes it for as long as this provider is mounted.

@@ -1,3 +1,5 @@
+import { useUiText } from "~/i18n/useUiText";
+
 import {
   isModifierPairShortcut,
   type DesktopCaptureConfigApplied,
@@ -35,6 +37,7 @@ export function CaptureShortcutConfig({
   onSaved?: () => Promise<unknown>;
   onComplete?: () => Promise<void>;
 }) {
+  const uiText = useUiText();
   const bridge = getDesktopSnapShotBridge();
   const resolvedTheme = useRenderedAppearance();
   const { copyToClipboard, isCopied } = useCopyToClipboard();
@@ -188,7 +191,7 @@ export function CaptureShortcutConfig({
           ) : null}
           {changed ? (
             <p className="text-xs text-muted-foreground">
-              Only these changes will be saved. We'll keep a backup.
+              {uiText("Only these changes will be saved. We'll keep a backup.")}
             </p>
           ) : null}
           <div className="flex gap-2">
@@ -202,31 +205,32 @@ export function CaptureShortcutConfig({
                 onClick={() => void apply()}
               >
                 {working === "writing"
-                  ? "Saving…"
+                  ? uiText("Saving…")
                   : changed
                     ? preview.operation === "install"
-                      ? "Save shortcut"
-                      : "Remove shortcut"
-                    : "Done"}
+                      ? uiText("Save shortcut")
+                      : uiText("Remove shortcut")
+                    : uiText("Done")}
               </Button>
             ) : null}
             <Button variant="ghost" disabled={actionBusy} onClick={() => setPreview(null)}>
-              Cancel
+              {uiText("Cancel")}
             </Button>
           </div>
         </>
       ) : (
         <>
           <p className="text-muted-foreground">
-            Allow T3 Code to read your desktop settings. You'll review any changes here before
-            saving.
+            {uiText(
+              "Allow T3 Code to read your desktop settings. You'll review any changes here before saving.",
+            )}
           </p>
           <Button
             disabled={actionBusy || !bridge}
             aria-busy={working === "reading"}
             onClick={() => void read()}
           >
-            {working === "reading" ? "Preparing changes…" : "Review changes"}
+            {working === "reading" ? uiText("Preparing changes…") : uiText("Review changes")}
           </Button>
         </>
       )}
@@ -270,7 +274,7 @@ export function CaptureShortcutConfig({
               disabled={actionBusy || !bridge}
               onClick={() => void read(true)}
             >
-              Choose a different file…
+              {uiText("Choose a different file…")}
             </Button>
             <Button
               size="sm"
@@ -278,7 +282,7 @@ export function CaptureShortcutConfig({
               disabled={actionBusy || !bridge}
               onClick={() => void read(customFile, "remove")}
             >
-              Remove shortcut…
+              {uiText("Remove shortcut…")}
             </Button>
             {result ? (
               <Button
@@ -332,7 +336,7 @@ export function CaptureShortcutConfig({
               disabled={actionBusy || state.shortcutActionRegistered === false}
               onClick={() => void onComplete()}
             >
-              I've added the shortcut
+              {uiText("I've added the shortcut")}
             </Button>
           ) : null}
         </div>

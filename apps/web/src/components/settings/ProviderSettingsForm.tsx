@@ -1,3 +1,5 @@
+import { useUiText } from "~/i18n/useUiText";
+import { uiText } from "~/i18n";
 import { useState, type ReactNode } from "react";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
@@ -136,12 +138,12 @@ export function deriveProviderSettingsFields(
               ? "Executable"
               : (annotatedTitle ?? titleizeFieldKey(key)),
           ...(isLocalAcp && key === "commandPath"
-            ? { description: "Executable name or path on this environment." }
+            ? { description: uiText("Executable name or path on this environment.") }
             : annotatedDescription !== undefined
               ? { description: annotatedDescription }
               : {}),
           ...(isLocalAcp && key === "commandPath"
-            ? { placeholder: "e.g. dsh" }
+            ? { placeholder: uiText("e.g. dsh") }
             : formAnnotation.placeholder !== undefined
               ? { placeholder: formAnnotation.placeholder }
               : {}),
@@ -220,6 +222,7 @@ function ProviderCommandArguments({
 }: Pick<ProviderSettingsFormProps, "value" | "onChange"> & {
   readonly managedReason: string | undefined;
 }) {
+  const uiText = useUiText();
   const args = configuredCommandArgs(value);
   const [storedDraft, setDraft] = useState(() => seedRowsDraft(args, toCommandArgumentRows));
   const draft = reconcileRowsDraft(storedDraft, args, commandArgumentsEqual, toCommandArgumentRows);
@@ -233,11 +236,10 @@ function ProviderCommandArguments({
       value !== null && typeof value === "object" ? { ...(value as Record<string, unknown>) } : {};
     onChange({ ...config, commandArgs: next });
   };
-
   return (
     <SettingsRow
-      title="Arguments"
-      description="One literal argument per row, in launch order."
+      title={uiText("Arguments")}
+      description={uiText("One literal argument per row, in launch order.")}
       managed={managedReason}
       control={
         <Button
@@ -247,7 +249,7 @@ function ProviderCommandArguments({
           onClick={() => updateArguments([...rows, makeCommandArgumentDraftRow("")])}
         >
           <PlusIcon />
-          Add argument
+          {uiText("Add argument")}
         </Button>
       }
     >

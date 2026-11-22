@@ -1,3 +1,4 @@
+import { uiText } from "~/i18n";
 import type {
   ServerProvider,
   ServerProviderVersionAdvisory,
@@ -47,58 +48,62 @@ export function getProviderStatusKey(provider: ServerProvider | undefined): Prov
 export function getProviderSummary(provider: ServerProvider | undefined) {
   if (!provider) {
     return {
-      headline: "Checking provider status",
-      detail: "Waiting for the server to report installation and authentication details.",
+      headline: uiText("Checking provider status"),
+      detail: uiText("Waiting for the server to report installation and authentication details."),
     };
   }
   if (!provider.enabled || provider.status === "disabled") {
     return {
-      headline: "Disabled",
+      headline: uiText("Disabled"),
       detail:
-        provider.message ?? "This provider is installed but disabled for new sessions in T3 Code.",
+        provider.message ??
+        uiText("This provider is installed but disabled for new sessions in T3 Code."),
     };
   }
   if (!provider.installed) {
     return {
-      headline: "Not found",
-      detail: provider.message ?? "CLI not detected on PATH.",
+      headline: uiText("Not found"),
+      detail: provider.message ?? uiText("CLI not detected on PATH."),
     };
   }
   if (provider.auth.status === "unauthenticated") {
     const authLabel = provider.auth.label ?? provider.auth.type;
     return {
-      headline: authLabel ? `Not authenticated · ${authLabel}` : "Not authenticated",
+      headline: authLabel
+        ? `${uiText("Not authenticated")} · ${authLabel}`
+        : uiText("Not authenticated"),
       detail: provider.message ?? null,
     };
   }
   if (isAntigravitySignInUnchecked(provider)) {
     return {
-      headline: "Installed · Sign-in not checked",
+      headline: uiText("Installed · Sign-in not checked"),
       detail: provider.message ?? null,
     };
   }
   if (provider.status === "warning") {
     return {
-      headline: "Needs attention",
+      headline: uiText("Needs attention"),
       detail:
-        provider.message ?? "The provider is installed, but the server could not fully verify it.",
+        provider.message ??
+        uiText("The provider is installed, but the server could not fully verify it."),
     };
   }
   if (provider.status === "error") {
     return {
-      headline: "Unavailable",
-      detail: provider.message ?? "The provider failed its startup checks.",
+      headline: uiText("Unavailable"),
+      detail: provider.message ?? uiText("The provider failed its startup checks."),
     };
   }
   if (provider.auth.status === "authenticated") {
     const authLabel = provider.auth.label ?? provider.auth.type;
     return {
-      headline: authLabel ? `Authenticated · ${authLabel}` : "Authenticated",
+      headline: authLabel ? `${uiText("Authenticated")} · ${authLabel}` : uiText("Authenticated"),
       detail: provider.message ?? null,
     };
   }
   return {
-    headline: "Available",
+    headline: uiText("Available"),
     detail: provider.message ?? null,
   };
 }
@@ -114,9 +119,15 @@ export function getProviderVersionLabel(version: string | null | undefined) {
 }
 
 const COMPATIBILITY_TITLES = {
-  graceful: "Limited support",
-  unsupported: "Unsupported version",
-  broken: "Known broken version",
+  get graceful() {
+    return uiText("Limited support");
+  },
+  get unsupported() {
+    return uiText("Unsupported version");
+  },
+  get broken() {
+    return uiText("Known broken version");
+  },
 } as const;
 
 export function getProviderVersionAdvisoryPresentation(
@@ -166,17 +177,17 @@ export function getProviderVersionAdvisoryPresentation(
     return null;
   }
 
-  const label = "Update available";
+  const label = uiText("Update available");
   const version = advisory.latestVersion;
   const versionLabel = getProviderVersionLabel(version);
 
   return {
     title: label,
-    detail:
-      advisory.message ??
-      (versionLabel
-        ? `${label}: install ${versionLabel}.`
-        : `${label}: install the latest provider version.`),
+    detail: versionLabel
+      ? uiText("Version {version} available. Select to update.", { version: versionLabel })
+      : advisory.message
+        ? uiText(advisory.message)
+        : uiText("Update available. Select to update."),
     updateCommand: advisory.updateCommand,
     emphasis: "normal" as const,
     targetVersion: null,

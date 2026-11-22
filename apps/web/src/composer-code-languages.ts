@@ -1,5 +1,11 @@
+import { uiText } from "~/i18n";
 export const CODE_BLOCK_LANGUAGES = [
-  { id: "", label: "Plain text" },
+  {
+    id: "",
+    get label() {
+      return uiText("Plain text");
+    },
+  },
   { id: "asm", label: "Assembly" },
   { id: "bash", label: "Bash" },
   { id: "c", label: "C" },
@@ -7,7 +13,12 @@ export const CODE_BLOCK_LANGUAGES = [
   { id: "csharp", label: "C#" },
   { id: "css", label: "CSS" },
   { id: "dart", label: "Dart" },
-  { id: "diff", label: "Diff" },
+  {
+    id: "diff",
+    get label() {
+      return uiText("Diff");
+    },
+  },
   { id: "dockerfile", label: "Dockerfile" },
   { id: "elixir", label: "Elixir" },
   { id: "go", label: "Go" },

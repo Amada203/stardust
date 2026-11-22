@@ -1,3 +1,6 @@
+import { uiText as translateUi } from "~/i18n";
+import { useUiText } from "~/i18n/useUiText";
+import { useLocale } from "gt-react";
 import { useAtomMount } from "@effect/atom-react";
 import { asLaunchingThread } from "@t3tools/client-runtime/state/thread-inbox";
 import { ThreadHoverCard, ThreadHoverCardPopup } from "../ThreadHoverCard";
@@ -38,6 +41,9 @@ import type { TimestampFormat } from "@t3tools/contracts/settings";
 import {
   AlarmClockIcon,
   AlarmClockOffIcon,
+  ArchiveIcon,
+  EllipsisIcon,
+  SquareIcon,
   ArrowRightLeftIcon,
   CheckIcon,
   CircleAlertIcon,
@@ -139,12 +145,17 @@ export type SidebarProviderEntry = Pick<
 >;
 function compactSidebarTimeLabel(label: string): string {
   if (label === "just now") return "now";
-  return label.endsWith(" ago") ? label.slice(0, -4) : label;
+  const compact = label
+    .replace(/(\d+) 分钟前$/, translateUi("$1m"))
+    .replace(/(\d+) 小时前$/, translateUi("$1h"))
+    .replace(/(\d+) 天前$/, translateUi("$1d"));
+  return compact.endsWith(" ago") ? compact.slice(0, -4) : compact;
 }
 
 // Subscribes to the minute tick itself, so only the label re-renders each
 // minute. The minute is passed as the clock so it is the formatter's input.
 function RelativeTimeLabel(props: { timestamp: string | null }) {
+  useLocale();
   const nowMinute = useNowMinute();
   return props.timestamp === null
     ? null
@@ -435,6 +446,135 @@ function SnoozeMenuButton(props: {
   );
 }
 
+export type SidebarQuickMode = "pending" | "running" | "needs-you" | "settled";
+
+/**
+ * V12: the hover action strip. The first button is the one most rows need right now
+ * (finish, stop, or open the waiting request); "More" opens the same menu as a right click.
+ */
+function SidebarRowQuickActions(props: {
+  mode: SidebarQuickMode;
+  canOperate: boolean;
+  settlementSupported: boolean;
+  pinningSupported: boolean;
+  isPinned: boolean;
+  snooze: ReactNode;
+  onSettle: (event: ReactMouseEvent) => void;
+  onSettlePointerDown: (event: ReactPointerEvent) => void;
+  onUnsettle: (event: ReactMouseEvent) => void;
+  onPin: (event: ReactMouseEvent) => void;
+  onUnpin: (event: ReactMouseEvent) => void;
+  onArchive: (event: ReactMouseEvent) => void;
+  onStop: (event: ReactMouseEvent) => void;
+  onOpen: (event: ReactMouseEvent) => void;
+  onMore: (event: ReactMouseEvent<HTMLButtonElement>) => void;
+}) {
+  const text = useUiText();
+  const { mode, canOperate } = props;
+  const action = (
+    key: string,
+    label: string,
+    icon: ReactNode,
+    onClick: (event: ReactMouseEvent<HTMLButtonElement>) => void,
+    tone?: "done" | "stop",
+    onPointerDown?: (event: ReactPointerEvent) => void,
+  ) => (
+    <Tooltip key={key}>
+      <TooltipTrigger
+        render={
+          <button
+            type="button"
+            aria-label={label}
+            data-sidebar-quick-action={key}
+            onClick={onClick}
+            onPointerDown={onPointerDown}
+            onDoubleClick={(event) => event.stopPropagation()}
+            className={cn(
+              "inline-flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md bg-transparent text-muted-foreground outline-none transition-colors hover:bg-foreground/8 hover:text-foreground focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+              tone === "done" && "hover:bg-success/12 hover:text-success-foreground",
+              tone === "stop" &&
+                "text-destructive-foreground/80 hover:bg-destructive/10 hover:text-destructive-foreground",
+            )}
+          />
+        }
+      >
+        {icon}
+      </TooltipTrigger>
+      <TooltipPopup side="top">{label}</TooltipPopup>
+    </Tooltip>
+  );
+  const pin =
+    canOperate && props.pinningSupported
+      ? props.isPinned
+        ? action("unpin", text("Unpin"), <PinOffIcon className="size-3.5" />, props.onUnpin)
+        : action("pin", text("Pin"), <PinIcon className="size-3.5" />, props.onPin)
+      : null;
+  const archive = canOperate
+    ? action("archive", text("Archive"), <ArchiveIcon className="size-3.5" />, props.onArchive)
+    : null;
+  const more = action("more", text("More"), <EllipsisIcon className="size-3.5" />, props.onMore);
+  return (
+    <span data-sidebar-quick-actions={mode} className="flex items-center gap-px">
+      {mode === "running" ? (
+        <>
+          {canOperate
+            ? action(
+                "stop",
+                text("Stop"),
+                <SquareIcon className="size-3 fill-current" />,
+                props.onStop,
+                "stop",
+              )
+            : null}
+          {props.snooze}
+          {pin}
+        </>
+      ) : mode === "needs-you" ? (
+        <>
+          <button
+            type="button"
+            data-sidebar-quick-action="open"
+            onClick={props.onOpen}
+            onDoubleClick={(event) => event.stopPropagation()}
+            className="inline-flex h-6 shrink-0 cursor-pointer items-center rounded-md px-1.5 text-xs font-medium text-warning-foreground outline-none hover:bg-warning/12 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+          >
+            {text("Handle")}
+          </button>
+          {props.snooze}
+        </>
+      ) : mode === "settled" ? (
+        <>
+          {canOperate && props.settlementSupported
+            ? action(
+                "unsettle",
+                text("Restore"),
+                <Undo2Icon className="size-3.5" />,
+                props.onUnsettle,
+              )
+            : null}
+          {archive}
+        </>
+      ) : (
+        <>
+          {canOperate && props.settlementSupported
+            ? action(
+                "settle",
+                text("Mark done"),
+                <CheckIcon className="size-3.5" />,
+                props.onSettle,
+                "done",
+                props.onSettlePointerDown,
+              )
+            : null}
+          {pin}
+          {archive}
+        </>
+      )}
+      {more}
+    </span>
+  );
+}
+
 type SortableThreadRowBag = Pick<
   ReturnType<typeof useSortable>,
   "listeners" | "setNodeRef" | "transform" | "transition" | "isDragging"
@@ -598,6 +738,9 @@ type SidebarThreadRowProps = {
   onSnooze: (threadRef: ScopedThreadRef, preset: Pick<SnoozePreset, "snoozedUntil">) => void;
   onUnsnooze: (threadRef: ScopedThreadRef) => void;
   onUnpin: (threadRef: ScopedThreadRef) => void;
+  onPin: (threadRef: ScopedThreadRef) => void;
+  onArchive: (threadRef: ScopedThreadRef) => void;
+  onStop: (threadRef: ScopedThreadRef) => void;
   onAcknowledgeWoke: (threadRef: ScopedThreadRef, visitedAt: string) => void;
   onFileDropThreads?: ((threadRef: ScopedThreadRef, files: File[]) => void) | undefined;
 };
@@ -644,6 +787,7 @@ function ThreadRenameInput(props: {
 }
 
 const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowProps) {
+  const locale = useLocale();
   const {
     isRenaming,
     onCancelRename,
@@ -661,6 +805,9 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
     onUnsettle,
     onUnsnooze,
     onUnpin,
+    onPin,
+    onArchive,
+    onStop,
     readOpensPullRequestsInRightPanel,
     renamingTitle,
     thread,
@@ -928,6 +1075,31 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
     event.stopPropagation();
     onUnpin(threadRef);
   };
+  const quietly = (event: ReactMouseEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+  };
+  const handlePinClick = (event: ReactMouseEvent) => {
+    quietly(event);
+    onPin(threadRef);
+  };
+  const handleArchiveClick = (event: ReactMouseEvent) => {
+    quietly(event);
+    onArchive(threadRef);
+  };
+  const handleStopClick = (event: ReactMouseEvent) => {
+    quietly(event);
+    onStop(threadRef);
+  };
+  const handleOpenClick = (event: ReactMouseEvent) => {
+    quietly(event);
+    onThreadActivate(threadRef);
+  };
+  const handleMoreClick = (event: ReactMouseEvent<HTMLButtonElement>) => {
+    quietly(event);
+    const rect = event.currentTarget.getBoundingClientRect();
+    onContextMenu(threadRef, { x: Math.round(rect.left), y: Math.round(rect.bottom + 4) });
+  };
   const handleSnoozePreset = (preset: Pick<SnoozePreset, "snoozedUntil">) => {
     onSnooze(threadRef, preset);
   };
@@ -963,6 +1135,33 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
   if (snoozeMenuOpenRaw && !showSnoozeButton) setSnoozeMenuOpen(false);
   const snoozeMenuOpen = snoozeMenuOpenRaw && showSnoozeButton;
   const jumpHintLabel = snoozeMenuOpen ? null : props.jumpLabel;
+  const quickMode: SidebarQuickMode =
+    variantAction === "unsettle"
+      ? "settled"
+      : status === "working" || status === "preparing"
+        ? "running"
+        : status === "approval" || status === "input" || status === "request"
+          ? "needs-you"
+          : "pending";
+  const renderQuickActions = (snooze: ReactNode) => (
+    <SidebarRowQuickActions
+      mode={quickMode}
+      canOperate={canOperateThread}
+      settlementSupported={props.settlementSupported}
+      pinningSupported={props.pinningSupported}
+      isPinned={props.isPinned}
+      snooze={snooze}
+      onSettle={handleSettleClick}
+      onSettlePointerDown={handleActionPointerDown}
+      onUnsettle={handleUnsettleClick}
+      onPin={handlePinClick}
+      onUnpin={handleUnpinClick}
+      onArchive={handleArchiveClick}
+      onStop={handleStopClick}
+      onOpen={handleOpenClick}
+      onMore={handleMoreClick}
+    />
+  );
   const handlePrClick = (event: ReactMouseEvent<HTMLElement>, targetUrl?: string) => {
     const url = targetUrl ?? pr?.url ?? currentLinkedPr?.url;
     if (!url) return;
@@ -1297,7 +1496,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                   <span
                     className={cn(
                       "inline-flex justify-end tabular-nums text-secondary-label transition-opacity",
-                      !isWoke && "group-any-hover/sidebar-row:opacity-0",
+                      !isWoke && "group-any-hover/sidebar-row:hidden",
                     )}
                   >
                     {variantAction === "unsnooze" && props.snoozeWakeLabelText !== null ? (
@@ -1332,7 +1531,11 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                         )}
                       >
                         <TopStatusIcon icon={topStatus.icon} className="size-3" />
-                        {topStatus.label}
+                        {translateUi(
+                          topStatus.label,
+                          undefined,
+                          locale.startsWith("zh") ? "zh-CN" : "en",
+                        )}
                       </span>
                     ) : (
                       <span className="text-xs">
@@ -1361,46 +1564,30 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                         <AlarmClockOffIcon className="mb-px size-3" />
                       </button>
                     )
-                  ) : !props.settlementSupported ? null : variantAction === "unsettle" ? (
-                    <Tooltip>
-                      <TooltipTrigger
-                        render={
-                          <button
-                            type="button"
-                            aria-label="Un-settle thread"
-                            onClick={handleUnsettleClick}
-                            onPointerDown={handleActionPointerDown}
-                            className={cn(
-                              "pointer-events-none absolute inset-y-0 right-0 -mr-1 inline-flex cursor-pointer items-center gap-1 rounded-md bg-transparent px-1.5 text-xs text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:pointer-events-auto focus-visible:opacity-100 group-any-hover/sidebar-row:pointer-events-auto group-any-hover/sidebar-row:opacity-100",
-                              isWoke && "group-any-hover/sidebar-row:static",
-                            )}
-                          />
-                        }
-                      >
-                        <Undo2Icon className="mb-px size-3.5" />
-                      </TooltipTrigger>
-                      <TooltipPopup side="top">Un-settle thread</TooltipPopup>
-                    </Tooltip>
                   ) : (
-                    <Tooltip>
-                      <TooltipTrigger
-                        render={
-                          <button
-                            type="button"
-                            aria-label="Settle thread"
-                            onClick={handleSettleClick}
-                            onPointerDown={handleActionPointerDown}
-                            className={cn(
-                              "pointer-events-none absolute inset-y-0 right-0 -mr-2 inline-flex cursor-pointer items-center gap-1 rounded-md bg-transparent px-2 text-xs text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:pointer-events-auto focus-visible:opacity-100 group-any-hover/sidebar-row:pointer-events-auto group-any-hover/sidebar-row:opacity-100",
-                              isWoke && "group-any-hover/sidebar-row:static",
-                            )}
+                    <span
+                      className={cn(
+                        // Sits over the time label (hidden on hover) and the title's tail; the row's
+                        // hover fill keeps the title from showing through.
+                        // V14: on hover the strip joins the row's flow (the time label steps out), so the
+                        // title gives up its tail instead of being covered.
+                        "pointer-events-none absolute inset-y-0 right-0 -mr-1 flex items-center opacity-0 transition-opacity has-[:focus-visible]:pointer-events-auto has-[:focus-visible]:static has-[:focus-visible]:opacity-100 group-any-hover/sidebar-row:pointer-events-auto group-any-hover/sidebar-row:static group-any-hover/sidebar-row:opacity-100 motion-reduce:transition-none",
+                        isWoke && "group-any-hover/sidebar-row:static",
+                        snoozeMenuOpen && "pointer-events-auto opacity-100",
+                      )}
+                    >
+                      {renderQuickActions(
+                        showSnoozeButton && quickMode !== "pending" ? (
+                          <SnoozeMenuButton
+                            open={snoozeMenuOpen}
+                            onOpenChange={setSnoozeMenuOpen}
+                            onSnooze={handleSnoozePreset}
+                            timestampFormat={props.timestampFormat}
+                            environmentId={thread.environmentId}
                           />
-                        }
-                      >
-                        <CheckIcon className="size-3" />
-                      </TooltipTrigger>
-                      <TooltipPopup side="top">Settle thread</TooltipPopup>
-                    </Tooltip>
+                        ) : null,
+                      )}
+                    </span>
                   )}
                   {jumpHintLabel ? <JumpHintBadge label={jumpHintLabel} /> : null}
                 </span>
@@ -1506,7 +1693,13 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                                 )}
                               >
                                 <AlarmClockIcon aria-hidden className="size-4 shrink-0" />
-                                <span role="status">{topStatus.label}</span>
+                                <span role="status">
+                                  {translateUi(
+                                    topStatus.label,
+                                    undefined,
+                                    locale.startsWith("zh") ? "zh-CN" : "en",
+                                  )}
+                                </span>
                               </button>
                             }
                           />
@@ -1523,7 +1716,11 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                           {/* Not a live region: a collapsed sidebar is inert, so
                             BackgroundThreadAnnouncer and the open thread's
                             timeline speak status changes instead. */}
-                          {topStatus.label}
+                          {translateUi(
+                            topStatus.label,
+                            undefined,
+                            locale.startsWith("zh") ? "zh-CN" : "en",
+                          )}
                           {status === "preparing" || status === "working" ? (
                             <span aria-hidden>
                               <WorkingDuration
@@ -1545,33 +1742,33 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                       <RelativeTimeLabel timestamp={resolveThreadActivityTimestamp(thread)} />
                     )}
                   </span>
-                  {props.settlementSupported || showSnoozeButton || hasUnsentDraft ? (
-                    <span
-                      className={cn(
-                        // Mouse clicks leave Settle focused; focus-within would pin controls over
-                        // the status label after the pointer leaves. Use focus-visible instead.
-                        "pointer-events-none absolute inset-y-0 right-0 flex items-stretch opacity-0 has-[:focus-visible]:pointer-events-auto has-[:focus-visible]:static has-[:focus-visible]:opacity-100 group-any-hover/sidebar-row:pointer-events-auto group-any-hover/sidebar-row:static group-any-hover/sidebar-row:opacity-100",
-                        snoozeMenuOpen && "pointer-events-auto static opacity-100",
-                      )}
-                    >
-                      {hasUnsentDraft ? (
-                        <Tooltip>
-                          <TooltipTrigger
-                            render={
-                              <button
-                                type="button"
-                                aria-label="Discard draft"
-                                onClick={handleDiscardDraftClick}
-                                className="inline-flex cursor-pointer items-center rounded-md bg-transparent px-1.5 text-xs text-muted-foreground hover:text-foreground"
-                              />
-                            }
-                          >
-                            <XIcon className="size-3.5" />
-                          </TooltipTrigger>
-                          <TooltipPopup side="top">Discard draft</TooltipPopup>
-                        </Tooltip>
-                      ) : null}
-                      {showSnoozeButton ? (
+                  <span
+                    className={cn(
+                      // Mouse clicks leave Settle focused; focus-within would pin controls over
+                      // the status label after the pointer leaves. Use focus-visible instead.
+                      "pointer-events-none absolute inset-y-0 right-0 flex items-center opacity-0 has-[:focus-visible]:pointer-events-auto has-[:focus-visible]:static has-[:focus-visible]:opacity-100 group-any-hover/sidebar-row:pointer-events-auto group-any-hover/sidebar-row:static group-any-hover/sidebar-row:opacity-100",
+                      snoozeMenuOpen && "pointer-events-auto static opacity-100",
+                    )}
+                  >
+                    {hasUnsentDraft ? (
+                      <Tooltip>
+                        <TooltipTrigger
+                          render={
+                            <button
+                              type="button"
+                              aria-label="Discard draft"
+                              onClick={handleDiscardDraftClick}
+                              className="inline-flex cursor-pointer items-center rounded-md bg-transparent px-1.5 text-xs text-muted-foreground hover:text-foreground"
+                            />
+                          }
+                        >
+                          <XIcon className="size-3.5" />
+                        </TooltipTrigger>
+                        <TooltipPopup side="top">Discard draft</TooltipPopup>
+                      </Tooltip>
+                    ) : null}
+                    {renderQuickActions(
+                      showSnoozeButton && quickMode !== "pending" ? (
                         <SnoozeMenuButton
                           open={snoozeMenuOpen}
                           onOpenChange={setSnoozeMenuOpen}
@@ -1579,28 +1776,9 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                           timestampFormat={props.timestampFormat}
                           environmentId={thread.environmentId}
                         />
-                      ) : null}
-                      {props.settlementSupported ? (
-                        <Tooltip>
-                          <TooltipTrigger
-                            render={
-                              <button
-                                type="button"
-                                aria-label="Settle thread"
-                                onClick={handleSettleClick}
-                                onPointerDown={handleActionPointerDown}
-                                className="-mr-1 inline-flex cursor-pointer items-center gap-1 rounded-md bg-transparent px-1.5 text-xs text-muted-foreground hover:text-foreground"
-                              />
-                            }
-                          >
-                            <CheckIcon className="size-3.5" />
-                            Settle
-                          </TooltipTrigger>
-                          <TooltipPopup>Settle thread</TooltipPopup>
-                        </Tooltip>
-                      ) : null}
-                    </span>
-                  ) : null}
+                      ) : null,
+                    )}
+                  </span>
                   {jumpHintLabel ? <JumpHintBadge label={jumpHintLabel} /> : null}
                 </span>
               )}

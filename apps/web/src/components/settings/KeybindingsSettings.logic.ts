@@ -1,3 +1,4 @@
+import { uiText } from "~/i18n";
 import {
   STATIC_KEYBINDING_COMMANDS,
   type KeybindingCommand,
@@ -104,11 +105,11 @@ export function whenAstToExpression(node: KeybindingWhenNode | undefined): strin
 }
 
 export function whenNodeRemoveLabel(node: KeybindingWhenNode, depth: number): string {
-  if (depth === 0) return "Clear all conditions";
+  if (depth === 0) return uiText("Clear all conditions");
   if (node.type === "identifier" || (node.type === "not" && node.node.type === "identifier")) {
-    return "Remove condition";
+    return uiText("Remove condition");
   }
-  return "Remove group and its conditions";
+  return uiText("Remove group and its conditions");
 }
 
 function wrapWhenExpression(node: KeybindingWhenNode): string {
@@ -211,17 +212,60 @@ export interface KeybindingGroup {
 const KEYBINDING_GROUPS = [
   {
     id: "navigation",
-    title: "Navigation",
+    get title() {
+      return uiText("Navigation");
+    },
     prefixes: ["sidebar", "rightPanel", "commandPalette", "filePicker", "projectSearch", "editor"],
   },
-  { id: "threads", title: "Threads", prefixes: ["thread", "chat", "pullRequest"] },
-  { id: "composer", title: "Composer", prefixes: ["composer", "modelPicker"] },
-  { id: "terminal", title: "Terminal", prefixes: ["terminal"] },
-  { id: "preview", title: "Preview & diff", prefixes: ["preview", "diff"] },
-  { id: "appearance", title: "Appearance", prefixes: ["theme", "appearance", "themeEditor"] },
-  { id: "scripts", title: "Project scripts", prefixes: ["script"] },
+  {
+    id: "threads",
+    get title() {
+      return uiText("Threads");
+    },
+    prefixes: ["thread", "chat", "pullRequest"],
+  },
+  {
+    id: "composer",
+    get title() {
+      return uiText("Composer");
+    },
+    prefixes: ["composer", "modelPicker"],
+  },
+  {
+    id: "terminal",
+    get title() {
+      return uiText("Terminal");
+    },
+    prefixes: ["terminal"],
+  },
+  {
+    id: "preview",
+    get title() {
+      return uiText("Preview & diff");
+    },
+    prefixes: ["preview", "diff"],
+  },
+  {
+    id: "appearance",
+    get title() {
+      return uiText("Appearance");
+    },
+    prefixes: ["theme", "appearance", "themeEditor"],
+  },
+  {
+    id: "scripts",
+    get title() {
+      return uiText("Project scripts");
+    },
+    prefixes: ["script"],
+  },
 ] as const;
-const OTHER_KEYBINDING_GROUP = { id: "other", title: "Other" } as const;
+const OTHER_KEYBINDING_GROUP = {
+  id: "other",
+  get title() {
+    return uiText("Other");
+  },
+} as const;
 
 function keybindingGroupFor(command: KeybindingCommand): { id: string; title: string } {
   const prefix = String(command).split(".")[0] ?? "";

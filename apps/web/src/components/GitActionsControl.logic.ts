@@ -1,3 +1,4 @@
+import { uiText } from "~/i18n";
 import type {
   GitRunStackedActionResult,
   GitStackedAction,
@@ -137,7 +138,7 @@ export function buildMenuItems(
 
   const commitItem: GitActionMenuItem = {
     id: "commit",
-    label: "Commit",
+    label: uiText("Commit"),
     disabled: !canCommit,
     icon: "commit",
     kind: "open_dialog",
@@ -150,7 +151,7 @@ export function buildMenuItems(
 
   const pushItem: GitActionMenuItem = {
     id: "push",
-    label: "Push",
+    label: uiText("Push"),
     disabled: !canPush,
     icon: "push",
     kind: "open_dialog",
@@ -277,7 +278,7 @@ export function resolveQuickAction(
 
   if (!hasBranch) {
     return {
-      label: "Commit",
+      label: uiText("Commit"),
       disabled: true,
       kind: "show_hint",
       hint: `Create and checkout a ref before pushing or opening a ${terminology.singular}.`,
@@ -302,7 +303,7 @@ export function resolveQuickAction(
   if (!gitStatus.hasUpstream) {
     if (!hasPrimaryRemote) {
       return {
-        label: "Publish repository",
+        label: uiText("Publish repository"),
         disabled: false,
         kind: "open_publish",
       };
@@ -310,14 +311,14 @@ export function resolveQuickAction(
     if (!isAhead) {
       if (hasOpenPr) {
         return {
-          label: "Commit",
+          label: uiText("Commit"),
           disabled: true,
           kind: "show_hint",
           hint: "Branch is up to date. No action needed.",
         };
       }
       return {
-        label: "Push",
+        label: uiText("Push"),
         disabled: true,
         kind: "show_hint",
         hint: "No local commits to push.",
@@ -341,7 +342,7 @@ export function resolveQuickAction(
 
   if (isDiverged) {
     return {
-      label: "Sync ref",
+      label: uiText("Sync ref"),
       disabled: true,
       kind: "show_hint",
       hint: "Branch has diverged from upstream. Rebase/merge first.",
@@ -350,7 +351,7 @@ export function resolveQuickAction(
 
   if (isBehind) {
     return {
-      label: "Pull",
+      label: uiText("Pull"),
       disabled: false,
       kind: "run_pull",
     };
@@ -375,7 +376,7 @@ export function resolveQuickAction(
 
   if (hasOpenPr && gitStatus.hasUpstream) {
     return {
-      label: "Commit",
+      label: uiText("Commit"),
       disabled: true,
       kind: "show_hint",
       hint: "Branch is up to date. No action needed.",
@@ -392,7 +393,7 @@ export function resolveQuickAction(
   }
 
   return {
-    label: "Commit",
+    label: uiText("Commit"),
     disabled: true,
     kind: "show_hint",
     hint: "Branch is up to date. No action needed.",

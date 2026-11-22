@@ -285,6 +285,20 @@ export function describeUpdateErrorCause(cause: unknown): string {
   }
 }
 
+/**
+ * True when the update feed baked into the app (app-update.yml) names the upstream T3 Code
+ * project. This fork must never move a user onto an upstream build, so such a feed is ignored.
+ */
+export function updateFeedPointsUpstream(feed: Readonly<Record<string, string>>): boolean {
+  const owner = feed.owner?.trim().toLowerCase();
+  const url = feed.url?.trim().toLowerCase() ?? "";
+  return (
+    owner === "pingdotgg" ||
+    /github\.com\/pingdotgg\//.test(url) ||
+    /^https?:\/\/([^/]*\.)?t3\.codes(\/|$)/.test(url)
+  );
+}
+
 function parseAppUpdateYml(raw: string): Effect.Effect<Option.Option<AppUpdateYmlConfig>> {
   const entries: Record<string, string> = {};
   for (const line of raw.split("\n")) {
@@ -472,6 +486,21 @@ export const make = Effect.gen(function* () {
   );
 
   const resolveDisabledReason = Effect.gen(function* () {
+    const customBuild = yield* fileSystem
+      .exists(environment.path.join(environment.resourcesPath, "stardust-build.json"))
+      .pipe(Effect.orElseSucceed(() => false));
+    if (customBuild)
+      return Option.some("T3 星尘版通过迁移感知安装器手动更新；官方自动更新已禁用。");
+    const bakedFeed = Option.getOrUndefined(yield* Ref.get(appUpdateYmlConfigRef));
+    if (
+      bakedFeed !== undefined &&
+      !mockUpdates &&
+      policy.feedUrl === undefined &&
+      updateFeedPointsUpstream(bakedFeed)
+    )
+      return Option.some(
+        "This build's update feed points at the upstream T3 Code project, so automatic updates are off. Download new versions from the release page of this fork.",
+      );
     const hasFeedConfig = yield* hasUpdateFeedConfig;
     return Option.fromNullishOr(
       getAutoUpdateDisabledReason({

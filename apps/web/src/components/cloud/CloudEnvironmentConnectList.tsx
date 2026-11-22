@@ -1,3 +1,5 @@
+import { useUiText } from "~/i18n/useUiText";
+
 import { findErrorTraceId } from "@t3tools/client-runtime/errors";
 import {
   type ConnectionTarget,
@@ -92,6 +94,7 @@ export function CloudEnvironmentConnectRows({
     readonly onChange: (environmentId: EnvironmentId, selected: boolean) => void;
   };
 }) {
+  const uiText = useUiText();
   const environmentsState = useRelayEnvironmentDiscovery();
   const registerEnvironment = useAtomCommand(environmentCatalog.register, {
     reportFailure: false,
@@ -297,17 +300,17 @@ export function CloudEnvironmentConnectRows({
     if (discoveryProblem !== null && !environmentsState.refreshing) {
       return (
         <div className={ITEM_ROW_CLASSNAME}>
-          <p className="text-sm font-medium text-destructive">
-            Could not load T3 Connect environments
+          <p className={"text-sm font-medium text-destructive"}>
+            {uiText("Could not load T3 Connect environments")}
           </p>
-          <p className="mt-1 text-xs text-muted-foreground">{discoveryProblem}</p>
+          <p className={"mt-1 text-xs text-muted-foreground"}>{discoveryProblem}</p>
           <Button
-            size="sm"
-            variant="outline"
-            className="mt-3"
+            size={"sm"}
+            variant={"outline"}
+            className={"mt-3"}
             onClick={() => void refreshRelayEnvironments()}
           >
-            Try again
+            {uiText("Try again")}
           </Button>
         </div>
       );
@@ -414,15 +417,15 @@ export function CloudEnvironmentConnectRows({
               )}
             >
               {connectingEnvironmentIds.has(environment.environmentId)
-                ? "Connecting…"
+                ? uiText("Connecting…")
                 : (savedConnection?.buttonLabel ??
                   (availability === "online"
-                    ? "Available"
+                    ? uiText("Available")
                     : availability === "offline"
-                      ? "Offline"
+                      ? uiText("Offline")
                       : availability === "error"
-                        ? "Unavailable"
-                        : "Checking…"))}
+                        ? uiText("Unavailable")
+                        : uiText("Checking…")))}
             </TooltipTrigger>
             <TooltipPopup>{unsupportedDetail ?? statusText}</TooltipPopup>
           </Tooltip>
@@ -482,28 +485,28 @@ export function CloudEnvironmentConnectRows({
           </div>
           {unsupported && !savedEnvironment ? (
             <Tooltip>
-              <TooltipTrigger render={<span className="inline-flex" tabIndex={0} />}>
-                <Button size="sm" disabled>
-                  Add
+              <TooltipTrigger render={<span className={"inline-flex"} tabIndex={0} />}>
+                <Button size={"sm"} disabled>
+                  {uiText("Add")}
                 </Button>
               </TooltipTrigger>
-              <TooltipPopup>{unsupportedDetail ?? "Client not supported"}</TooltipPopup>
+              <TooltipPopup>{unsupportedDetail ?? uiText("Client not supported")}</TooltipPopup>
             </Tooltip>
           ) : savedConnection ? (
-            <Button size="sm" variant="outline" disabled>
+            <Button size={"sm"} variant={"outline"} disabled>
               {savedConnection.buttonLabel}
             </Button>
           ) : (
             <Button
-              size="sm"
+              size={"sm"}
               disabled={connectingEnvironmentIds.size > 0}
               onClick={() => void connectEnvironment(environment)}
             >
               {connectingEnvironmentIds.has(environment.environmentId)
-                ? "Adding…"
+                ? uiText("Adding…")
                 : savedWithoutRelay.has(environment.environmentId)
-                  ? "Add route"
-                  : "Add"}
+                  ? uiText("Add route")
+                  : uiText("Add")}
             </Button>
           )}
         </div>

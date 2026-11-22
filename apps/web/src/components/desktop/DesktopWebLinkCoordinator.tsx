@@ -1,3 +1,5 @@
+import { useUiText } from "~/i18n/useUiText";
+
 import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import {
   isAtomCommandInterrupted,
@@ -79,6 +81,7 @@ function threadShowingBrowser(
 }
 
 export function DesktopWebLinkCoordinator() {
+  const uiText = useUiText();
   const router = useRouter();
   const primaryEnvironment = usePrimaryEnvironment();
   const openPullRequestsInApp = useClientSettings((settings) => settings.pullRequestLinksOpenInApp);
@@ -107,7 +110,7 @@ export function DesktopWebLinkCoordinator() {
 
   const reportFailure = (url: string, description = url) =>
     toastManager.add(
-      stackedThreadToast({ type: "error", title: "Could not open the link", description }),
+      stackedThreadToast({ type: "error", title: uiText("Could not open the link"), description }),
     );
 
   const reportPairingFailure = (error: unknown) =>

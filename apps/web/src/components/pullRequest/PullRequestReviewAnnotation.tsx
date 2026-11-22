@@ -1,3 +1,5 @@
+import { useUiText } from "~/i18n/useUiText";
+
 import type {
   EnvironmentId,
   PullRequestActor,
@@ -92,6 +94,7 @@ export function PendingReviewCommentCard({
   comment: PendingReviewComment;
   onRemove: () => void;
 }) {
+  const uiText = useUiText();
   return (
     <div
       className={cn(CARD_CLASS, "border-dashed")}
@@ -100,12 +103,12 @@ export function PendingReviewCommentCard({
     >
       <div className="flex items-center gap-2 text-xs text-muted-foreground">
         <MessageSquareIcon className="size-3.5" />
-        <span>Pending. Sent when you submit the review</span>
+        <span>{"Pending. Sent when you submit the review"}</span>
         <Button
           size="icon-xs"
           variant="ghost"
           className="ml-auto"
-          aria-label="Discard this comment"
+          aria-label={uiText("Discard this comment")}
           onClick={onRemove}
         >
           <Trash2Icon className="size-3.5" />
@@ -224,6 +227,7 @@ export function ReviewThreadCard({
   /** Set on a diff line. Hidden draws nothing but stays mounted, so an unsent reply survives. */
   hidden?: boolean;
 }) {
+  const uiText = useUiText();
   const [expanded, setExpanded] = useState(hidden !== undefined || !thread.isResolved);
   const [replying, setReplying] = useState(false);
   const [reply, setReply] = useState("");
@@ -352,11 +356,10 @@ export function ReviewThreadCard({
             disabled={pending}
             onClick={onToggleResolved}
           >
-            {thread.isResolved ? "Unresolve" : "Resolve"}
+            {thread.isResolved ? uiText("Unresolve") : uiText("Resolve")}
           </Button>
         ) : null}
       </div>
-
       {expanded ? (
         <>
           <div className="mt-2 space-y-3">
@@ -399,7 +402,7 @@ export function ReviewThreadCard({
                     />
                     {canEditComment(comment) ? (
                       <PullRequestEditButton
-                        aria-label="Edit comment"
+                        aria-label={uiText("Edit comment")}
                         onClick={() => setEditingId(comment.id)}
                       />
                     ) : null}

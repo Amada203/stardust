@@ -1,3 +1,5 @@
+import { useUiText } from "~/i18n/useUiText";
+
 import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
@@ -41,6 +43,7 @@ export function ProviderAuthenticationSection({
   readonly provider: ServerProvider;
   readonly readOnly: boolean;
 }) {
+  const uiText = useUiText();
   const target = { environmentId, input: { instanceId } };
   const query = useEnvironmentQuery(serverEnvironment.providerAuthState(target));
   const commands = { reportFailure: false, reportDefect: false };
@@ -170,47 +173,47 @@ export function ProviderAuthenticationSection({
 
   return (
     <SettingsRow
-      title="Account"
+      title={uiText("Account")}
       description={
         signedIn && !active && provider.auth.email?.trim() ? (
           <span>
-            Signed in as{" "}
+            {uiText("Signed in as")}
             <RedactedSensitiveText
               key={provider.auth.email}
               value={provider.auth.email}
-              ariaLabel="Toggle account email visibility"
-              revealTooltip="Click to reveal email"
-              hideTooltip="Click to hide email"
-              className="max-w-full truncate"
+              ariaLabel={"Toggle account email visibility"}
+              revealTooltip={"Click to reveal email"}
+              hideTooltip={"Click to hide email"}
+              className={"max-w-full truncate"}
             />
           </span>
         ) : (
-          <span role="status">{accountDescription}</span>
+          <span role={"status"}>{accountDescription}</span>
         )
       }
       status={
         statusMessage ? (
-          <p role="status" className="[overflow-wrap:anywhere]">
+          <p role={"status"} className={"[overflow-wrap:anywhere]"}>
             {statusMessage}
           </p>
         ) : undefined
       }
       control={
-        <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+        <div className={"flex min-w-0 flex-wrap items-center gap-1.5"}>
           {!active && (auth?.methods?.length ?? 0) > 1 ? (
             <Select
               value={auth?.methods?.some((method) => method.id === methodId) ? methodId : ""}
               disabled={disabled}
               onValueChange={(value) => setMethodId(value ?? "")}
             >
-              <SelectTrigger size="sm" aria-label="Sign-in method" className="w-44">
+              <SelectTrigger size={"sm"} aria-label={uiText("Sign-in method")} className={"w-44"}>
                 <SelectValue>
                   {auth?.methods?.find((method) => method.id === methodId)?.name ??
-                    "Provider default"}
+                    uiText("Provider default")}
                 </SelectValue>
               </SelectTrigger>
               <SelectPopup>
-                <SelectItem value="">Provider default</SelectItem>
+                <SelectItem value={""}>{uiText("Provider default")}</SelectItem>
                 {auth?.methods?.map((method) => (
                   <SelectItem key={method.id} value={method.id}>
                     {method.name}
@@ -222,20 +225,20 @@ export function ProviderAuthenticationSection({
           {url ? (
             <>
               <Button
-                size="sm"
-                variant="outline"
+                size={"sm"}
+                variant={"outline"}
                 disabled={disabled}
                 onClick={() => void openBrowser()}
               >
-                Open browser
+                {uiText("Open browser")}
               </Button>
               <Tooltip>
                 <TooltipTrigger
                   render={
                     <Button
-                      aria-label="Copy sign-in link"
-                      size="icon-sm"
-                      variant="ghost-muted"
+                      aria-label={uiText("Copy sign-in link")}
+                      size={"icon-sm"}
+                      variant={"ghost-muted"}
                       disabled={disabled}
                       onClick={() => {
                         // Copy during the click to retain clipboard activation; consent must still be
@@ -252,26 +255,26 @@ export function ProviderAuthenticationSection({
                     </Button>
                   }
                 />
-                <TooltipPopup>Copy sign-in link</TooltipPopup>
+                <TooltipPopup>{uiText("Copy sign-in link")}</TooltipPopup>
               </Tooltip>
             </>
           ) : null}
           <>
             {needsExternalSetup && provider.setup?.documentationUrl ? (
               <Button
-                size="sm"
-                variant="outline"
+                size={"sm"}
+                variant={"outline"}
                 render={
-                  <a href={provider.setup.documentationUrl} target="_blank" rel="noreferrer" />
+                  <a href={provider.setup.documentationUrl} target={"_blank"} rel={"noreferrer"} />
                 }
               >
-                Open docs
+                {uiText("Open docs")}
               </Button>
             ) : active && auth?.flowId ? (
               <Button
-                size="sm"
-                variant="ghost-muted"
-                aria-label="Cancel sign-in"
+                size={"sm"}
+                variant={"ghost-muted"}
+                aria-label={uiText("Cancel sign-in")}
                 disabled={disabled}
                 onClick={() =>
                   void run(() =>
@@ -279,12 +282,12 @@ export function ProviderAuthenticationSection({
                   )
                 }
               >
-                Cancel
+                {uiText("Cancel")}
               </Button>
             ) : !active && !needsExternalSetup && provider.setup?.canAuthenticate !== false ? (
               <Button
-                size="sm"
-                variant="outline"
+                size={"sm"}
+                variant={"outline"}
                 disabled={disabled || !provider.enabled || !provider.installed || !auth}
                 onClick={() =>
                   void run(() =>
@@ -301,20 +304,20 @@ export function ProviderAuthenticationSection({
                 }
               >
                 {signedIn
-                  ? "Change account"
+                  ? uiText("Change account")
                   : auth?.phase === "failed" || auth?.phase === "cancelled"
                     ? usesCredentials
                       ? "Retry connection"
-                      : "Retry sign-in"
+                      : uiText("Retry sign-in")
                     : usesCredentials
                       ? "Connect"
-                      : "Sign in"}
+                      : uiText("Sign in")}
               </Button>
             ) : null}
             {!active && signedIn && (provider.auth.canLogout ?? provider.setup?.canAuthenticate) ? (
               <Button
-                size="sm"
-                variant="ghost"
+                size={"sm"}
+                variant={"ghost"}
                 disabled={disabled || !auth}
                 onClick={() => {
                   void ensureLocalApi()
@@ -326,7 +329,7 @@ export function ProviderAuthenticationSection({
                     });
                 }}
               >
-                Sign out
+                {uiText("Sign out")}
               </Button>
             ) : null}
           </>
@@ -341,17 +344,19 @@ export function ProviderAuthenticationSection({
       query.error ? (
         <>
           {interaction?.type === "deviceCode" ? (
-            <p className="py-2 text-sm text-muted-foreground">
-              Enter code{" "}
-              <code className="select-all font-mono text-foreground">{interaction.userCode}</code>{" "}
-              in your browser.
+            <p className={"py-2 text-sm text-muted-foreground"}>
+              {uiText("Enter code")}
+              <code className={"select-all font-mono text-foreground"}>{interaction.userCode}</code>
+              {uiText("in your browser.")}
             </p>
           ) : null}
           {interaction?.type === "terminal" ? (
-            <div className="py-2">
+            <div className={"py-2"}>
               <Suspense
                 fallback={
-                  <p className="text-xs text-muted-foreground">Loading sign-in terminal…</p>
+                  <p className={"text-xs text-muted-foreground"}>
+                    {uiText("Loading sign-in terminal…")}
+                  </p>
                 }
               >
                 <ProviderAuthTerminal

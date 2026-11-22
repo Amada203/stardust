@@ -8,9 +8,9 @@ import type { ComponentType } from "react";
 import { createElement, lazy, Suspense, useState } from "react";
 import { useAtomValue } from "@effect/atom-react";
 import { projectFaviconUrlAtom } from "../state/assets";
-import { deriveProjectIdentity } from "../projectIdentity";
 import { projectIconColorClassName } from "../projectIconColors";
 import { ProjectMonogram } from "./ProjectMonogram";
+import { projectSemanticIcon } from "./projectSemanticIcon";
 import { cn } from "~/lib/utils";
 
 // All lucide icons load as one chunk, only once a project uses a lucide override.
@@ -127,9 +127,18 @@ function ProjectFaviconFallback({
   readonly projectName?: string | undefined;
 }) {
   if (projectName && projectName.trim().length > 0) {
-    const identity = deriveProjectIdentity(projectName);
+    // V10 plan A: a semantic line icon replaces the first-letter tile.
     return (
-      <ProjectMonogram text={identity.monogram} color={identity.color} className={className} />
+      <span
+        aria-hidden="true"
+        data-slot="project-semantic-icon"
+        className={cn("inline-flex size-4 shrink-0 text-muted-foreground", className)}
+      >
+        {createElement(projectSemanticIcon(projectName), {
+          strokeWidth: 1.7,
+          className: "size-full",
+        })}
+      </span>
     );
   }
 

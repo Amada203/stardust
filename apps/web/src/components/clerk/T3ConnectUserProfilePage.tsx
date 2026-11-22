@@ -1,3 +1,5 @@
+import { useUiText } from "~/i18n/useUiText";
+
 import { findErrorTraceId } from "@t3tools/client-runtime/errors";
 import {
   isAtomCommandInterrupted,
@@ -164,6 +166,7 @@ function T3ConnectTunnelUsage() {
 }
 
 export function T3ConnectUserProfilePage() {
+  const uiText = useUiText();
   const environmentsState = useManagedRelayEnvironments();
   const deregisterEnvironment = useAtomCommand(deregisterManagedRelayEnvironmentCommand, {
     reportFailure: false,
@@ -206,8 +209,8 @@ export function T3ConnectUserProfilePage() {
       void refreshRelayEnvironments();
       toastManager.add({
         type: "success",
-        title: "Server deregistered",
-        description: "T3 Connect access was revoked and a host space is now available.",
+        title: uiText("Server deregistered"),
+        description: uiText("T3 Connect access was revoked and a host space is now available."),
       });
       return;
     }
@@ -258,8 +261,10 @@ export function T3ConnectUserProfilePage() {
 
   return (
     <ClerkUserProfilePage
-      title="T3 Connect"
-      description="Environments registered to your account. Connections on this device are managed in Settings."
+      title={"T3 Connect"}
+      description={uiText(
+        "Environments registered to your account. Connections on this device are managed in Settings.",
+      )}
       action={
         <ClerkUserProfileRefreshButton
           disabled={deregisteringEnvironmentId !== null}
@@ -271,20 +276,20 @@ export function T3ConnectUserProfilePage() {
       <div>
         <T3ConnectTunnelUsage />
         {environmentsState.error ? (
-          <div className="mb-4 border-t border-destructive/35 py-3 text-xs" role="alert">
-            <p className="font-medium text-destructive-foreground">
-              Could not load T3 Connect environments
+          <div className={"mb-4 border-t border-destructive/35 py-3 text-xs"} role={"alert"}>
+            <p className={"font-medium text-destructive-foreground"}>
+              {uiText("Could not load T3 Connect environments")}
             </p>
-            <p className="mt-1 text-xs text-muted-foreground">{environmentsState.error}</p>
+            <p className={"mt-1 text-xs text-muted-foreground"}>{environmentsState.error}</p>
           </div>
         ) : null}
 
         {isInitialLoad ? (
-          <p className="border-t py-4 text-xs text-muted-foreground" role="status">
-            Loading environments…
+          <p className={"border-t py-4 text-xs text-muted-foreground"} role={"status"}>
+            {uiText("Loading environments…")}
           </p>
         ) : environments.length > 0 ? (
-          <ul className="border-t">
+          <ul className={"border-t"}>
             {environments.map((environment) => (
               <T3ConnectEnvironmentRow
                 key={environment.environmentId}
@@ -299,16 +304,17 @@ export function T3ConnectUserProfilePage() {
             ))}
           </ul>
         ) : environmentsState.error ? null : (
-          <div className="border-t">
-            <Empty size="compact">
-              <EmptyMedia variant="icon">
+          <div className={"border-t"}>
+            <Empty size={"compact"}>
+              <EmptyMedia variant={"icon"}>
                 <ServerIcon />
               </EmptyMedia>
               <EmptyHeader>
-                <EmptyTitle>No T3 Connect environments</EmptyTitle>
+                <EmptyTitle>{uiText("No T3 Connect environments")}</EmptyTitle>
                 <EmptyDescription>
-                  Link an environment from its local Settings to make it available through T3
-                  Connect.
+                  {uiText(
+                    "Link an environment from its local Settings to make it available through T3 Connect.",
+                  )}
                 </EmptyDescription>
               </EmptyHeader>
             </Empty>

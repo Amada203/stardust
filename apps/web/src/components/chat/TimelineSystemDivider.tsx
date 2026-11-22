@@ -1,3 +1,4 @@
+import { useUiText } from "~/i18n/useUiText";
 import type { ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 
@@ -14,6 +15,7 @@ export function TimelineSystemDivider(props: {
   readonly actionLabel?: string;
   readonly onAction?: () => void;
 }) {
+  const uiText = useUiText();
   const Icon = props.icon;
   const content = (
     <>
@@ -24,7 +26,7 @@ export function TimelineSystemDivider(props: {
         )}
       >
         {Icon ? <Icon className="size-3 shrink-0 self-center" /> : null}
-        {props.label}
+        {uiText(props.label)}
       </span>
       {props.detail ? (
         <span
@@ -36,7 +38,7 @@ export function TimelineSystemDivider(props: {
           )}
         >
           {props.showDetailSeparator === false ? null : "·\u00a0"}
-          {props.detail}
+          {typeof props.detail === "string" ? uiText(props.detail) : props.detail}
         </span>
       ) : null}
     </>
@@ -56,7 +58,7 @@ export function TimelineSystemDivider(props: {
             render={
               <button
                 type="button"
-                aria-label={props.actionLabel}
+                aria-label={props.actionLabel ? uiText(props.actionLabel) : undefined}
                 onClick={props.onAction}
                 className={cn(
                   "min-w-0 cursor-pointer rounded-full border border-border/70 bg-background px-2.5 py-1 transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70",
@@ -67,7 +69,9 @@ export function TimelineSystemDivider(props: {
           >
             {content}
           </TooltipTrigger>
-          <TooltipPopup side="top">{props.actionLabel}</TooltipPopup>
+          <TooltipPopup side="top">
+            {props.actionLabel ? uiText(props.actionLabel) : undefined}
+          </TooltipPopup>
         </Tooltip>
       ) : (
         <span

@@ -1,3 +1,6 @@
+import * as FileSystem from "effect/FileSystem";
+import * as CursorKeychain from "./CursorKeychain.ts";
+import { readCursorAccountUsage as readLegacy } from "./legacyAccountUsage.ts";
 import type { UsageRecord } from "@t3tools/provider-core/server/usage";
 import * as Digest from "effect/crypto/Digest";
 import * as Cache from "effect/Cache";
@@ -104,6 +107,8 @@ const NO_REDIRECT: RequestInit = { redirect: "error" };
 
 export const makeCursorAccountUsageReader = Effect.gen(function* () {
   const httpClient = yield* HttpClient.HttpClient;
+  const fileSystem = yield* FileSystem.FileSystem;
+  const keychain = yield* CursorKeychain.make;
   const digest = yield* Digest.Digest;
   // Per-event hashes share the scan span and use the native hex encoder.
   const accountHash = (value: string) => digest.digestHex(Digest.sha256, textEncoder.encode(value));
@@ -171,6 +176,13 @@ export const makeCursorAccountUsageReader = Effect.gen(function* () {
     sinceMs: number,
     endDate: number,
   ) {
+    if (typeof credentialSource === "string" || credentialSource.kind === "keychain") {
+      return yield* readLegacy(credentialSource, sinceMs, endDate, keychain.accessToken).pipe(
+        Effect.provideService(FileSystem.FileSystem, fileSystem),
+        Effect.provideService(HttpClient.HttpClient, httpClient),
+        Effect.provideService(Digest.Digest, digest),
+      );
+    }
     let accountKey: string | null = null;
     const read = Effect.gen(function* () {
       if (

@@ -1,3 +1,8 @@
+import type { SidebarCategoryPreset } from "@t3tools/contracts/settings";
+import { useUiText } from "~/i18n/useUiText";
+import { setTheme } from "../../hooks/useTheme";
+import { setSidebarGrouping } from "../../sidebarProjectFirst";
+import { CategoryPresetCards } from "./CategoryPresetCards";
 import { useAuth } from "@clerk/react";
 import { useAtomValue } from "@effect/atom-react";
 import type {
@@ -96,7 +101,6 @@ import {
 import { terminalEnvironment } from "../../state/terminal";
 import { useThreadRunningTerminalIds } from "../../state/terminalSessions";
 import { useAtomCommand } from "../../state/use-atom-command";
-import { getProviderSummary } from "../settings/providerStatus";
 import { AddProviderInstanceDialog } from "../settings/AddProviderInstanceDialog";
 import { useDesktopCliCommand } from "../settings/CliCommandSettingsRow";
 import { CodexSetupSection } from "../settings/CodexSetupSection";
@@ -130,11 +134,21 @@ export function WelcomePage({
   readonly environmentId: EnvironmentId;
   readonly onDone: (projectRef?: ScopedProjectRef) => void | Promise<void>;
 }) {
+  const text = useUiText();
+  const [organizing, setOrganizing] = useState(false);
+  const [preset, setPreset] = useState<SidebarCategoryPreset>("general");
+  const [finishing, setFinishing] = useState(false);
+  const [takingLonger, setTakingLonger] = useState(false);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Apply the Stardust theme once on a new installation.
+  useEffect(() => {
+    if (localStorage.getItem("t3code:theme") === null) setTheme("apple");
+  }, []);
   const { environments } = useEnvironments();
   const label =
     environments.find((environment) => environment.environmentId === environmentId)?.label ??
     "this computer";
-  const agentReady = useWelcomeAgents(environmentId).readyCount > 0;
+  const { readyCount } = useWelcomeAgents(environmentId);
+  const agentReady = readyCount > 0;
   // The phone and `t3` on PATH belong to the primary computer, so only it offers them.
   const isPrimary = usePrimaryEnvironmentId() === environmentId;
   // The same access Settings → Sharing & access checks.
@@ -159,6 +173,13 @@ export function WelcomePage({
     storeSelection(next);
   };
   const [isImporting, setIsImporting] = useState(false);
+  const starting = finishing || isImporting;
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- One escalation when onboarding takes longer than ten seconds.
+  useEffect(() => {
+    if (!starting) return;
+    const timer = window.setTimeout(() => setTakingLonger(true), 10_000);
+    return () => window.clearTimeout(timer);
+  }, [starting]);
   // True from Start until the landing; leaving earlier would drop the import or the landing.
   const holdPageRef = useRef(false);
   useBlocker({
@@ -167,8 +188,8 @@ export function WelcomePage({
       toastManager.add({
         id: "welcome-finishing",
         type: "info",
-        title: "Finishing setup",
-        description: "One moment.",
+        title: text("Finishing setup"),
+        description: text("One moment."),
       });
       return true;
     },
@@ -191,7 +212,8 @@ export function WelcomePage({
     }
 
     holdPageRef.current = true;
-    const completion = completeOnboarding()
+    setFinishing(true);
+    const completion = completeOnboarding(preset)
       .then(async () => {
         if (completionErrorToastIdRef.current !== null) {
           toastManager.close(completionErrorToastIdRef.current);
@@ -199,6 +221,7 @@ export function WelcomePage({
         }
         // Release before onDone so its own navigation is not blocked.
         holdPageRef.current = false;
+        setSidebarGrouping(preset === "project" ? "project" : "category");
         await onDone(projectRef);
         if (!keepChoicesRef.current) setImportSelection(null);
         if (importWarning) {
@@ -220,8 +243,8 @@ export function WelcomePage({
         holdPageRef.current = false;
         const errorToast = {
           type: "error",
-          title: "Could not finish setup",
-          description: "Your settings could not be saved. Try again.",
+          title: text("Could not finish setup"),
+          description: text("Your settings could not be saved. Try again."),
         } as const;
         if (completionErrorToastIdRef.current === null) {
           completionErrorToastIdRef.current = toastManager.add(errorToast);
@@ -231,6 +254,8 @@ export function WelcomePage({
         return false;
       })
       .finally(() => {
+        setFinishing(false);
+        setTakingLonger(false);
         if (finishingPromiseRef.current === completion) {
           finishingPromiseRef.current = null;
         }
@@ -251,6 +276,7 @@ export function WelcomePage({
   const selected = projectImport.canWrite ? projectImport.selected : [];
   const newCount = selected.filter(projectImport.isNew).length;
   const start = () => {
+    setOrganizing(false);
     keepChoicesRef.current = scans.some((scan) => scan.data === null);
     if (selected.length === 0) {
       projectImport.finishAfterImport();
@@ -271,52 +297,87 @@ export function WelcomePage({
         {/* The desktop window only moves where CSS opts in, so keep a titlebar strip. */}
         {isElectron ? <WorkspacePageHeader electron /> : null}
         <div className="min-h-0 flex-1 overflow-y-auto scrollbar-gutter-both">
-          <div className="mx-auto flex min-h-full w-full max-w-3xl flex-col px-6 pt-12 pb-8 sm:pt-20">
-            <h1 className="text-2xl font-semibold tracking-tight text-foreground">
-              Welcome to T3 Code
-            </h1>
-            <p className="mt-1.5 text-sm text-muted-foreground">
-              Setting up <span className="text-foreground">{label}</span>.
-            </p>
-            <div className="mt-10 border-t border-border/60">
-              <AgentsSection
-                environmentId={environmentId}
-                label={label}
-                isPrimary={isPrimary}
-                onImportSourceEnabled={() => scans[0]?.refresh()}
-              />
-              <ProjectsSection
-                scan={scans[0]}
-                projectImport={projectImport}
-                isImporting={isImporting}
-              />
-              {showPhone ? <PhoneSection environmentId={environmentId} /> : null}
-            </div>
-            <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
-              {agentReady ? (
-                <span />
-              ) : (
-                <Button variant="ghost-muted" disabled={isImporting} onClick={start}>
-                  Start without an agent
-                </Button>
-              )}
-              <div className="flex items-center gap-3">
-                {agentReady ? null : (
-                  <span className="text-xs text-muted-foreground">Set up one agent to start.</span>
-                )}
-                <Button disabled={!agentReady || isImporting} onClick={start}>
-                  {isImporting
-                    ? selected.length > 0
-                      ? "Importing…"
-                      : "Starting…"
-                    : newCount > 0
-                      ? `Import ${newCount} ${newCount === 1 ? "project" : "projects"} and start`
-                      : selected.length > 0
-                        ? "Import threads and start"
-                        : "Start"}
-                </Button>
+          <div className="mx-auto flex min-h-full w-full max-w-[664px] flex-col px-8 pt-12 pb-8 sm:pt-16">
+            {organizing ? (
+              <div data-stardust-organize>
+                <h1 className="text-stardust-title font-bold tracking-tight">
+                  {text("How should the sidebar be organized?")}
+                </h1>
+                <p className="mt-2 text-stardust-body text-muted-foreground">
+                  {text("Pick a starting point. You can change it anytime in Settings.")}
+                </p>
+                <CategoryPresetCards preset={preset} onChange={setPreset} />
+                <div className="mt-6 flex justify-between gap-4">
+                  <Button variant="ghost-muted" onClick={() => setOrganizing(false)}>
+                    {text("Back")}
+                  </Button>
+                  <Button onClick={start}>{text("Continue")}</Button>
+                </div>
               </div>
-            </div>
+            ) : (
+              <div data-stardust-welcome>
+                <img
+                  src="/c82-app-icon.png"
+                  alt=""
+                  width={80}
+                  height={80}
+                  className="mb-6 size-20 object-contain"
+                />
+                <h1 className="text-stardust-title font-bold tracking-tight text-foreground">
+                  {text("Welcome to T3 Stardust")}
+                </h1>
+                <p className="mt-2 text-stardust-body text-muted-foreground">
+                  {text(
+                    "Your AI coding and writing tools in one workbench. See what is available on this computer.",
+                  )}
+                </p>
+                <div className="mt-6">
+                  <AgentsSection
+                    environmentId={environmentId}
+                    label={label}
+                    isPrimary={isPrimary}
+                    onImportSourceEnabled={() => scans[0]?.refresh()}
+                  />
+                  <ProjectsSection
+                    scan={scans[0]}
+                    projectImport={projectImport}
+                    isImporting={isImporting}
+                  />
+                  {showPhone ? <PhoneSection environmentId={environmentId} /> : null}
+                </div>
+                <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
+                  <Button
+                    variant="ghost-muted"
+                    disabled={starting}
+                    onClick={() => setOrganizing(true)}
+                  >
+                    {text("Just look around")}
+                  </Button>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <span className="text-xs text-muted-foreground" role="status">
+                      {takingLonger && starting
+                        ? text("Still waiting for setup to finish…")
+                        : agentReady
+                          ? text("{count} ready to use", { count: readyCount })
+                          : text("Set up one agent to start.")}
+                    </span>
+                    <Button disabled={!agentReady || starting} onClick={() => setOrganizing(true)}>
+                      {starting
+                        ? isImporting
+                          ? text("Importing…")
+                          : text("Starting…")
+                        : newCount === 1
+                          ? text("Import 1 project and start")
+                          : newCount > 1
+                            ? text("Import {count} projects and start", { count: newCount })
+                            : selected.length > 0
+                              ? text("Import threads and start")
+                              : text("Get started")}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
             <TelemetryNotice environmentId={environmentId} />
           </div>
         </div>
@@ -326,18 +387,20 @@ export function WelcomePage({
 }
 
 function TelemetryNotice({ environmentId }: { readonly environmentId: EnvironmentId }) {
+  const text = useUiText();
   const telemetryOff = managedTelemetryOffMessage(useManagedPolicy(environmentId));
   return (
     <p className="mt-auto pt-12 text-2xs leading-relaxed text-muted-foreground/70">
-      {telemetryOff ?? "T3 Code collects anonymous usage data to improve the app."}{" "}
-      {telemetryOff === undefined ? "To opt out, see the" : "See the"}{" "}
+      {telemetryOff === undefined
+        ? text("Usage statistics are off by default. You can turn them on in Settings › About.")
+        : text("Usage statistics are disabled for this workspace.")}{" "}
       <a
         className="underline decoration-current/40 underline-offset-2 hover:text-muted-foreground"
         href={PRIVACY_POLICY_URL}
         target="_blank"
         rel="noreferrer noopener"
       >
-        privacy policy
+        {text("Privacy policy")}
       </a>
       .
     </p>
@@ -369,6 +432,7 @@ function RowIcon({ children }: { readonly children: ReactNode }) {
   );
 }
 
+const STARTER_DRIVERS = ["codex", "claudeAgent", "antigravity", "cursor"];
 const INSTALLABLE_DRIVERS = ["codex", "claudeAgent"] as const;
 type OnboardingAgentDriver = (typeof INSTALLABLE_DRIVERS)[number];
 const isInstallableDriver = (driver: string): driver is OnboardingAgentDriver =>
@@ -425,6 +489,8 @@ function AgentsSection({
   const canManageProviders = useEnvironmentScope(environmentId, AuthProvidersManageScope);
   const [terminalSession, setTerminalSession] = useState<AgentTerminalSession | null>(null);
   const [moreOpen, setMoreOpen] = useState<boolean | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const text = useUiText();
   const [addingProvider, setAddingProvider] = useState(false);
   const [codexSetupId, setCodexSetupId] = useState<ProviderInstanceId | null>(null);
   const [cliTerminalFor, setCliTerminalFor] = useState<ProviderInstanceId | null>(null);
@@ -434,8 +500,7 @@ function AgentsSection({
     void refreshProviders({ environmentId, input: {} });
   }, [environmentId, refreshProviders]);
 
-  // Opened once the finished checks find nothing, since adding an agent is then the task. A first
-  // status can be wrong, so this waits for the checks, and a later check never closes it.
+  // Once checks settle with no tools found, show available choices. A later probe cannot close it.
   if (moreOpen === null && !checking && found.length === 0) setMoreOpen(true);
   const showMore = moreOpen ?? false;
   const acpAllowed = isManagedDriverAllowed(serverConfig?.managedPolicy, ACP_REGISTRY_DRIVER_KIND);
@@ -553,27 +618,38 @@ function AgentsSection({
         <Button
           size="xs"
           variant="outline"
-          aria-label={`Turn on: ${name}`}
+          aria-label={text("{action}: {provider}", { action: text("Turn on"), provider: name })}
           disabled={!canManageProviders || serverConfig === null}
           onClick={() => void turnOn(provider)}
         >
-          Turn on
+          {text("Turn on")}
         </Button>
       );
     }
     // Settings updates a broken CLI the way it was installed, including a custom binary path.
-    if (isBrokenVersion(provider)) return settingsAction("Update");
+    if (isBrokenVersion(provider)) return settingsAction(text("How to fix"));
     if (serverConfig !== null && codexNeedsSetup(provider, serverConfig.settings)) {
       const open = codexSetupId === provider.instanceId;
       return (
         <Button
           size="xs"
           variant="outline"
-          aria-label={`Set up: ${name}`}
+          aria-label={text("{action}: {provider}", {
+            action: text(
+              state === "signIn"
+                ? "Sign in"
+                : state === "install"
+                  ? "How to install"
+                  : "How to fix",
+            ),
+            provider: name,
+          })}
           aria-expanded={open}
           onClick={() => setCodexSetupId(open ? null : provider.instanceId)}
         >
-          Set up
+          {text(
+            state === "signIn" ? "Sign in" : state === "install" ? "How to install" : "How to fix",
+          )}
         </Button>
       );
     }
@@ -592,7 +668,9 @@ function AgentsSection({
       );
     }
     return settingsAction(
-      state === "signIn" ? "Sign in" : state === "attention" ? "Details" : "Set up",
+      text(
+        state === "signIn" ? "Sign in" : state === "attention" ? "How to fix" : "How to install",
+      ),
     );
   };
 
@@ -602,7 +680,7 @@ function AgentsSection({
       (provider) =>
         needsInstallOrSignIn(provider) || codexNeedsSetup(provider, serverConfig?.settings),
     )
-      ? "This connection cannot control terminals."
+      ? text("This connection cannot control terminals.")
       : null,
     !canManageProviders &&
     (acpAllowed ||
@@ -610,76 +688,102 @@ function AgentsSection({
         (provider) =>
           stateOf(provider) === "disabled" || codexNeedsSetup(provider, serverConfig?.settings),
       ))
-      ? "This connection cannot manage agents."
+      ? text("This connection cannot manage agents.")
       : null,
   ].filter((note) => note !== null);
 
   return (
-    <WelcomeSection title="Agents">
-      {found.map((provider) => (
-        <AgentRow
-          key={provider.instanceId}
-          provider={provider}
-          state={stateOf(provider)}
-          action={actionFor(provider)}
-        />
-      ))}
-      {checking && found.length === 0 ? (
-        <p className="text-sm leading-10 text-muted-foreground">Checking {label}…</p>
-      ) : null}
-      {notes.map((note) => (
-        <p key={note} className="pl-8 text-xs text-muted-foreground">
-          {note}
-        </p>
-      ))}
-      <Collapsible open={showMore} onOpenChange={setMoreOpen}>
-        <CollapsibleTrigger className="group flex min-h-10 w-full items-center gap-3 rounded-md text-left outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset">
-          <RowIcon>
-            <PlusIcon className="size-4" />
-          </RowIcon>
-          <span
-            className={cn(
-              "text-sm group-hover:text-foreground",
-              found.length > 0 ? "text-muted-foreground" : "text-foreground",
-            )}
-          >
-            {found.length > 0 ? "Add more agents" : "Set up an agent"}
-          </span>
-          {showMore ? null : <AgentLogoStack providers={available} acp={acpAllowed} />}
-          <ChevronDownIcon className="ml-auto size-4 text-muted-foreground group-data-panel-open:rotate-180" />
-        </CollapsibleTrigger>
-        <CollapsiblePanel>
-          <div className="grid grid-cols-1 gap-x-8 sm:grid-cols-2">
-            {available.map((provider) => (
-              <AgentRow
-                key={provider.instanceId}
-                provider={provider}
-                state={stateOf(provider)}
-                compact
-                action={actionFor(provider)}
-              />
-            ))}
-          </div>
-          {acpAllowed ? (
-            <div className="flex min-h-9 items-center gap-3">
-              <RowIcon>
-                <ACPRegistryIcon className="size-4" />
-              </RowIcon>
-              <span className="min-w-0 flex-1 text-sm text-muted-foreground">
-                More agents in the ACP Registry
-              </span>
-              <Button
-                size="xs"
-                variant="outline"
-                disabled={!canManageProviders}
-                onClick={() => setAddingProvider(true)}
-              >
-                Browse
-              </Button>
+    <section aria-label={text("Model tools")}>
+      <div className="mb-2 flex items-center justify-between gap-4">
+        <h2 className="text-stardust-section font-semibold">{text("Model tools")}</h2>
+        <Button
+          size="xs"
+          variant="ghost"
+          disabled={refreshing}
+          onClick={async () => {
+            setRefreshing(true);
+            await Promise.resolve(refreshProviders({ environmentId, input: {} })).finally(() =>
+              setRefreshing(false),
+            );
+          }}
+        >
+          {text(refreshing ? "Checking…" : "Check again")}
+        </Button>
+      </div>
+      <div className="divide-y overflow-hidden rounded-xl border bg-card">
+        {[
+          ...STARTER_DRIVERS.flatMap((driver) =>
+            [...found, ...available].filter((provider) => provider.driver === driver),
+          ),
+          ...found.filter((provider) => !STARTER_DRIVERS.includes(provider.driver)),
+        ].map((provider) => (
+          <AgentRow
+            key={provider.instanceId}
+            provider={provider}
+            state={stateOf(provider)}
+            action={actionFor(provider)}
+          />
+        ))}
+        {checking && found.length === 0 ? (
+          <p className="text-sm leading-10 text-muted-foreground" role="status">
+            {text("Checking model tools…")}
+          </p>
+        ) : null}
+        {notes.map((note) => (
+          <p key={note} className="pl-8 text-xs text-muted-foreground">
+            {note}
+          </p>
+        ))}
+        <Collapsible open={showMore} onOpenChange={setMoreOpen}>
+          <CollapsibleTrigger className="group flex min-h-12 w-full items-center gap-3 px-4 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset">
+            <RowIcon>
+              <PlusIcon className="size-4" />
+            </RowIcon>
+            <span
+              className={cn(
+                "text-sm group-hover:text-foreground",
+                found.length > 0 ? "text-muted-foreground" : "text-foreground",
+              )}
+            >
+              {text("More model tools")}
+            </span>
+            {showMore ? null : <AgentLogoStack providers={available} acp={acpAllowed} />}
+            <ChevronDownIcon className="ml-auto size-4 text-muted-foreground group-data-panel-open:rotate-180" />
+          </CollapsibleTrigger>
+          <CollapsiblePanel>
+            <div className="divide-y">
+              {available
+                .filter((provider) => !STARTER_DRIVERS.includes(provider.driver))
+                .map((provider) => (
+                  <AgentRow
+                    key={provider.instanceId}
+                    provider={provider}
+                    state={stateOf(provider)}
+                    action={actionFor(provider)}
+                  />
+                ))}
             </div>
-          ) : null}
-        </CollapsiblePanel>
-      </Collapsible>
+            {acpAllowed ? (
+              <div className="flex min-h-9 items-center gap-3">
+                <RowIcon>
+                  <ACPRegistryIcon className="size-4" />
+                </RowIcon>
+                <span className="min-w-0 flex-1 text-sm text-muted-foreground">
+                  {text("More agents in the ACP Registry")}
+                </span>
+                <Button
+                  size="xs"
+                  variant="outline"
+                  disabled={!canManageProviders}
+                  onClick={() => setAddingProvider(true)}
+                >
+                  {text("Browse")}
+                </Button>
+              </div>
+            ) : null}
+          </CollapsiblePanel>
+        </Collapsible>
+      </div>
       {codexSetupProvider !== null && serverConfig !== null ? (
         <div key={codexSetupProvider.instanceId} ref={revealOnMount} className="mt-2">
           <OnboardingCodexSetup
@@ -723,7 +827,7 @@ function AgentsSection({
           }}
         />
       ) : null}
-    </WelcomeSection>
+    </section>
   );
 }
 
@@ -761,6 +865,7 @@ function ProjectsSection({
   readonly isImporting: boolean;
 }) {
   const [reviewing, setReviewing] = useState(false);
+  const text = useUiText();
   const {
     canWrite,
     candidates,
@@ -774,26 +879,28 @@ function ProjectsSection({
   if (scan === undefined) return null;
   if (scan.isPending && candidates.length === 0) {
     return (
-      <WelcomeSection title="Projects">
+      <WelcomeSection title={text("Projects")}>
         <p className="text-sm leading-10 text-muted-foreground">
-          Looking for projects in your {IMPORT_SOURCES_LABEL} history…
+          {text("Looking for projects in your {providers} history…", {
+            providers: IMPORT_SOURCES_LABEL,
+          })}
         </p>
       </WelcomeSection>
     );
   }
   const retry = (
     <Button variant="ghost" size="sm" onClick={scan.refresh}>
-      Retry
+      {text("Retry")}
     </Button>
   );
   if (scan.error !== null && candidates.length === 0) {
     return (
-      <WelcomeSection title="Projects">
+      <WelcomeSection title={text("Projects")}>
         <div
           role="alert"
           className="flex min-h-10 items-center justify-between gap-3 text-sm text-muted-foreground"
         >
-          <span>Could not check projects. {scan.error}</span>
+          <span>{text("Could not check projects.")}</span>
           {retry}
         </div>
       </WelcomeSection>
@@ -801,9 +908,9 @@ function ProjectsSection({
   }
   if (candidates.length === 0) {
     return scan.data?.truncated ? (
-      <WelcomeSection title="Projects">
+      <WelcomeSection title={text("Projects")}>
         <p className="text-xs leading-10 text-muted-foreground" role="status">
-          {SCAN_LIMIT_MESSAGE}
+          {text(SCAN_LIMIT_MESSAGE)}
         </p>
       </WelcomeSection>
     ) : null;
@@ -820,7 +927,7 @@ function ProjectsSection({
     selected.length < candidates.length &&
     !(selected.length === defaultKeys.length && defaultKeys.every((key) => selectedKeys.has(key)));
   return (
-    <WelcomeSection title="Projects">
+    <WelcomeSection title={text("Projects")}>
       <div className="flex min-h-10 items-center gap-3 py-1">
         <label className="flex min-w-0 flex-1 items-center gap-3">
           <RowIcon>
@@ -836,11 +943,16 @@ function ProjectsSection({
           <span className="min-w-0 flex-1">
             <span className="block text-sm font-medium text-foreground">
               {canWrite && selected.length > 0
-                ? `Import ${selected.length} ${selected.length === 1 ? "project" : "projects"} and their threads`
-                : "Import projects and their threads"}
+                ? text(
+                    selected.length === 1
+                      ? "Import one project and its threads"
+                      : "Import {count} projects and their threads",
+                    { count: selected.length },
+                  )
+                : text("Import projects and their threads")}
             </span>
             <span className="block text-xs text-muted-foreground">
-              From your {IMPORT_SOURCES_LABEL} history
+              {text("From your {providers} history", { providers: IMPORT_SOURCES_LABEL })}
             </span>
           </span>
         </label>
@@ -851,7 +963,7 @@ function ProjectsSection({
             aria-expanded={reviewing}
             onClick={() => setReviewing((open) => !open)}
           >
-            {reviewing ? "Hide" : `Review all ${candidates.length}`}
+            {reviewing ? text("Hide") : text("Review all {count}", { count: candidates.length })}
             <ChevronDownIcon className={cn("size-3.5", reviewing && "rotate-180")} />
           </Button>
         ) : null}
@@ -861,7 +973,10 @@ function ProjectsSection({
         <fieldset className="-mx-1.5 mt-1 min-w-0" disabled={isImporting}>
           <div className="flex items-center justify-between gap-3 px-2 text-xs text-muted-foreground">
             <span role="status">
-              {selected.length} of {candidates.length} selected
+              {text("{count} of {total} selected", {
+                count: selected.length,
+                total: candidates.length,
+              })}
             </span>
             <div className="flex items-center gap-1">
               <Button
@@ -870,7 +985,7 @@ function ProjectsSection({
                 disabled={selected.length === candidates.length}
                 onClick={() => setSelectedKeys(new Set(allKeys))}
               >
-                Select all
+                {text("Select all")}
               </Button>
               <Button
                 variant="ghost"
@@ -878,7 +993,7 @@ function ProjectsSection({
                 disabled={selected.length === 0}
                 onClick={() => setSelectedKeys(new Set())}
               >
-                Select none
+                {text("Select none")}
               </Button>
             </div>
           </div>
@@ -895,7 +1010,7 @@ function ProjectsSection({
       ) : null}
       {scan.data?.truncated ? (
         <p className="pl-8 text-xs text-muted-foreground" role="status">
-          {SCAN_LIMIT_MESSAGE}
+          {text(SCAN_LIMIT_MESSAGE)}
         </p>
       ) : null}
       {scan.error !== null ? (
@@ -915,19 +1030,20 @@ function ProjectsSection({
 }
 
 function PhoneSection({ environmentId }: { readonly environmentId: EnvironmentId }) {
+  const text = useUiText();
   const [open, setOpen] = useState(false);
   return (
-    <WelcomeSection title="Phone">
+    <WelcomeSection title={text("Phone")}>
       <Collapsible open={open} onOpenChange={setOpen}>
         <div className="flex min-h-10 items-center gap-3 py-1">
           <RowIcon>
             <SmartphoneIcon className="size-4" />
           </RowIcon>
           <span className="min-w-0 flex-1 text-sm font-medium text-foreground">
-            Use T3 Code on your phone
+            {text("Use T3 Code on your phone")}
           </span>
           <CollapsibleTrigger render={<Button variant="ghost-muted" size="xs" />}>
-            {open ? "Hide" : "Set up"}
+            {text(open ? "Hide" : "Set up")}
             <ChevronDownIcon className={cn("size-3.5", open && "rotate-180")} />
           </CollapsibleTrigger>
         </div>
@@ -935,7 +1051,9 @@ function PhoneSection({ environmentId }: { readonly environmentId: EnvironmentId
           <div className="flex items-center gap-8 pt-2 pb-3 pl-8">
             <ol className="min-w-0 flex-1 space-y-5">
               <PhoneStep step={1}>
-                <p className="text-sm text-foreground">Scan with your phone to get the app.</p>
+                <p className="text-sm text-foreground">
+                  {text("Scan with your phone to get the app.")}
+                </p>
               </PhoneStep>
               <PhoneStep step={2}>
                 <PhoneConnectLink environmentId={environmentId} />
@@ -948,7 +1066,7 @@ function PhoneSection({ environmentId }: { readonly environmentId: EnvironmentId
                 size={124}
                 level="M"
                 marginSize={2}
-                title="T3 Code app for iPhone and Android"
+                title={text("T3 Code app for iPhone and Android")}
               />
             </div>
           </div>
@@ -968,6 +1086,7 @@ function PhoneStep({ step, children }: { readonly step: number; readonly childre
 }
 
 function PhoneConnectLink({ environmentId }: { readonly environmentId: EnvironmentId }) {
+  const text = useUiText();
   const { isLoaded, isSignedIn, userId } = useAuth({ treatPendingAsSignedOut: false });
   const loadFailed = useClerkLoadFailed();
   const { openAuthPrompt } = useT3ConnectAuthPrompt();
@@ -995,13 +1114,13 @@ function PhoneConnectLink({ environmentId }: { readonly environmentId: Environme
     </Button>
   );
   if (isSignedIn && link === null && linkState.isPending) {
-    return <p className="text-sm text-muted-foreground">Checking T3 Connect…</p>;
+    return <p className="text-sm text-muted-foreground">{text("Checking T3 Connect…")}</p>;
   }
   if (isSignedIn && linkState.error !== null) {
     return (
       <>
-        <p className="text-sm text-foreground">Could not check T3 Connect.</p>
-        {settingsLink("Check T3 Connect")}
+        <p className="text-sm text-foreground">{text("Could not check T3 Connect.")}</p>
+        {settingsLink(text("Check T3 Connect"))}
       </>
     );
   }
@@ -1009,14 +1128,14 @@ function PhoneConnectLink({ environmentId }: { readonly environmentId: Environme
     return (
       <p className="flex gap-1.5 text-sm text-foreground">
         <CheckIcon className="mt-0.5 size-4 shrink-0 text-success-foreground" />
-        Your phone can reach this computer. Sign in to the app with the same account.
+        {text("Your phone can reach this computer. Sign in to the app with the same account.")}
       </p>
     );
   }
   if (isSignedIn && shared && reachability === undefined) {
     return (
       <p className="text-sm text-foreground">
-        T3 Connect is on for this computer. Sign in to the app with the same account.
+        {text("T3 Connect is on for this computer. Sign in to the app with the same account.")}
       </p>
     );
   }
@@ -1026,25 +1145,25 @@ function PhoneConnectLink({ environmentId }: { readonly environmentId: Environme
       <>
         <p className="text-sm text-foreground">
           {shared
-            ? "T3 Connect is on, but the app cannot reach this computer."
-            : "Signed in. Share this computer so the app can reach it."}
+            ? text("T3 Connect is on, but the app cannot reach this computer.")
+            : text("Signed in. Share this computer so the app can reach it.")}
         </p>
-        {settingsLink(shared ? "Check T3 Connect" : "Set up T3 Connect")}
+        {settingsLink(text(shared ? "Check T3 Connect" : "Set up T3 Connect"))}
       </>
     );
   }
   return (
     <>
       <p className="text-sm text-foreground">
-        Sign in to T3 Connect here, then in the app with the same account.
+        {text("Sign in to T3 Connect here, then in the app with the same account.")}
       </p>
       {loadFailed ? (
         <Button variant="outline" size="xs" onClick={retryClerkLoad}>
-          Retry sign-in
+          {text("Retry sign-in")}
         </Button>
       ) : (
         <Button variant="outline" size="xs" disabled={!isLoaded} onClick={openAuthPrompt}>
-          Sign in to T3 Connect
+          {text("Sign in to T3 Connect")}
         </Button>
       )}
     </>
@@ -1126,7 +1245,8 @@ function TerminalAction({
   readonly disabled: boolean;
   readonly onClick: () => void;
 }) {
-  const label = signIn ? "Sign in" : "Install";
+  const text = useUiText();
+  const label = text(signIn ? "Sign in" : "How to install");
   return (
     <Button
       size="xs"
@@ -1141,67 +1261,85 @@ function TerminalAction({
   );
 }
 
+const PROVIDER_MAKERS: Readonly<Record<string, string>> = {
+  codex: "OpenAI",
+  claudeAgent: "Anthropic",
+  antigravity: "Google · Gemini",
+  cursor: "Anysphere",
+  grok: "xAI",
+  opencode: "Anomaly",
+  kiro: "Amazon",
+};
+
 function AgentRow({
   provider,
   state,
   action,
-  compact = false,
 }: {
   readonly provider: ServerProvider;
   readonly state: ReturnType<typeof welcomeAgentState>;
   readonly action?: ReactNode;
-  // A row in the "Add more agents" grid: the button carries the state, so no detail line.
-  readonly compact?: boolean;
 }) {
+  const text = useUiText();
   const name = agentName(provider);
-  // Claude Code and Codex tiles show Install or Set up; other agents that are on say why not.
-  const brokenMessage = isBrokenVersion(provider)
-    ? (provider.compatibilityAdvisory?.message ?? null)
-    : null;
-  const detail =
-    state === "install"
-      ? isInstallableDriver(provider.driver)
-        ? null
-        : "Not installed"
-      : compact || state === "ready" || state === "checking"
-        ? null
-        : state === "attention"
-          ? (provider.unavailableReason ??
-            brokenMessage ??
-            provider.message ??
-            getProviderSummary(provider).headline)
-          : (brokenMessage ?? getProviderSummary(provider).headline);
+  const status = {
+    ready: ["Ready", "You can start a conversation.", "bg-success/10 text-success-foreground"],
+    checking: ["Checking…", "Checking availability.", "bg-muted text-muted-foreground"],
+    install: [
+      "Not installed",
+      "This tool was not found on this computer.",
+      "bg-muted text-muted-foreground",
+    ],
+    signIn: [
+      "Sign-in needed",
+      "Installed. Sign in to use this tool.",
+      "bg-warning/10 text-warning-foreground",
+    ],
+    attention: [
+      "Can’t start",
+      "This tool could not start. Check its setup or update it.",
+      "bg-destructive/10 text-destructive",
+    ],
+    disabled: ["Disabled", "Turn on this tool to use it.", "bg-muted text-muted-foreground"],
+  }[state];
+  const raw =
+    state !== "ready" && state !== "checking"
+      ? (provider.unavailableReason ?? provider.compatibilityAdvisory?.message ?? provider.message)
+      : undefined;
   return (
-    <div className={cn("flex items-center gap-3", compact ? "min-h-9" : "min-h-10 py-1")}>
-      <RowIcon>
+    <div
+      className="grid min-h-16 grid-cols-[2rem_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 px-4 py-3"
+      data-welcome-provider={provider.driver}
+      data-provider-state={state}
+    >
+      <span className="flex size-8 items-center justify-center rounded-lg border bg-background">
         <ProviderInstanceIcon
           driverKind={provider.driver}
           displayName={name}
-          iconClassName={compact ? "size-4" : "size-[18px]"}
+          iconClassName="size-5"
         />
-      </RowIcon>
-      <div className="min-w-0 flex-1">
-        <span className={cn("block truncate text-sm text-foreground", !compact && "font-medium")}>
-          {name}
-        </span>
-        {detail ? (
-          <p className="line-clamp-2 text-xs leading-relaxed break-words text-muted-foreground">
-            {detail}
-          </p>
-        ) : null}
+      </span>
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-baseline gap-x-1 text-stardust-body font-semibold">
+          <span className="break-words">{name}</span>
+          {PROVIDER_MAKERS[provider.driver] ? (
+            <small className="text-xs font-normal text-muted-foreground">
+              {PROVIDER_MAKERS[provider.driver]}
+            </small>
+          ) : null}
+        </div>
+        <div className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-1 text-xs text-muted-foreground">
+          <span className={cn("rounded-full px-2 font-medium", status[2])}>{text(status[0]!)}</span>
+          <span>{text(status[1]!)}</span>
+        </div>
       </div>
-      <div className="shrink-0">
-        {state === "ready" ? (
-          <span className="inline-flex items-center gap-1.5 text-xs font-medium text-success-foreground">
-            <CheckIcon className="size-3.5" />
-            Ready
-          </span>
-        ) : state === "checking" ? (
-          <span className="text-xs text-muted-foreground">Checking…</span>
-        ) : (
-          action
-        )}
-      </div>
+      <div>{state === "ready" || state === "checking" ? null : action}</div>
+      {raw ? (
+        <details className="col-start-2 col-end-4 min-w-0 text-xs text-muted-foreground">
+          <summary className="cursor-pointer">{text("Technical details")}</summary>
+          <pre className="mt-2 whitespace-pre-wrap break-all rounded-lg bg-muted p-3">{raw}</pre>
+        </details>
+      ) : null}
     </div>
   );
 }
@@ -1215,6 +1353,7 @@ function AgentInstallTerminal({
   readonly onCommandFinished: () => void;
   readonly onClose: () => void;
 }) {
+  const text = useUiText();
   const { command, cwd, driver, environmentId, keybindings, providerInstanceId } = session;
   const canOperateTerminal = useEnvironmentScope(environmentId, AuthTerminalOperateScope);
   const [advancedTypography] = useLocalStorage(
@@ -1329,20 +1468,15 @@ function AgentInstallTerminal({
     >
       <div className="flex items-center justify-between border-b border-border/60 bg-background/60 px-3 py-1.5">
         <span className="text-2xs font-medium text-muted-foreground">
-          {!canOperateTerminal ? (
-            "This connection cannot control terminals."
-          ) : setupState === "writeFailed" ? (
-            <>
-              Run <code className="rounded bg-muted px-1 font-mono">{command}</code> in this
-              terminal.
-            </>
-          ) : setupState === "ready" ? (
-            "Review the command, then press Enter to run it."
-          ) : setupState === "openFailed" ? (
-            "Could not open the setup terminal."
-          ) : (
-            "Preparing command..."
-          )}
+          {!canOperateTerminal
+            ? text("This connection cannot control terminals.")
+            : setupState === "writeFailed"
+              ? text("Run {command} in this terminal.", { command })
+              : setupState === "ready"
+                ? text("Review the command, then press Enter to run it.")
+                : setupState === "openFailed"
+                  ? text("Could not open the setup terminal.")
+                  : text("Preparing command...")}
         </span>
         <div className="flex items-center gap-1">
           {setupState === "openFailed" ? (
@@ -1356,11 +1490,11 @@ function AgentInstallTerminal({
                 }
               }}
             >
-              Retry
+              {text("Retry")}
             </Button>
           ) : null}
           <Button size="xs" variant="ghost-muted" onClick={onClose}>
-            Close
+            {text("Close")}
           </Button>
         </div>
       </div>
@@ -1888,6 +2022,7 @@ function ImportRowMeta({
 
 /** The desktop app links `t3` on a fresh install; this puts its folder on PATH when it is not. */
 function CliPathSetup() {
+  const text = useUiText();
   const { state, busy, run } = useDesktopCliCommand();
   const setup = state?.pathSetup;
   if (!setup) return null;
@@ -1897,20 +2032,13 @@ function CliPathSetup() {
         <TerminalIcon className="size-4" />
       </RowIcon>
       <p className="min-w-0 flex-1 text-sm text-muted-foreground">
-        {setup.added ? (
-          <>
-            Added to {setup.file}. Open a new terminal to use <code className="font-mono">t3</code>.
-          </>
-        ) : (
-          <>
-            Use <code className="font-mono">t3</code> from any terminal. Adds one line to{" "}
-            {setup.file}.
-          </>
-        )}
+        {setup.added
+          ? text("Added to {file}. Open a new terminal to use t3.", { file: setup.file })
+          : text("Use t3 from any terminal. Adds one line to {file}.", { file: setup.file })}
       </p>
       {setup.added ? null : (
         <Button size="xs" variant="outline" disabled={busy} onClick={() => run("addToPath")}>
-          Add to PATH
+          {text("Add to PATH")}
         </Button>
       )}
     </div>

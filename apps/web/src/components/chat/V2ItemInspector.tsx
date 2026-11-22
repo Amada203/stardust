@@ -1,3 +1,7 @@
+import { serverCopy } from "~/i18n/serverCopy";
+import { commandHadNoMatches } from "@t3tools/shared/toolOutput";
+import { useUiText } from "~/i18n/useUiText";
+
 import type { ToolCallDiffTarget } from "../../diffPanelStore";
 import type { EnvironmentId, OrchestrationV2ProjectedTurnItem } from "@t3tools/contracts";
 import {
@@ -143,12 +147,13 @@ interface ToolOutputState {
 }
 
 function ToolOutputImages(props: ToolOutputState) {
+  const uiText = useUiText();
   return props.images.map((resource) => (
     <ChatMarkdownAssetImage
       key={resource.index}
       environmentId={props.environmentId}
       resource={resource}
-      alt="Tool output image"
+      alt={uiText("Tool output image")}
       maxHeightRem={16}
       onImageExpand={props.onImageExpand}
     />
@@ -190,6 +195,7 @@ function ToolCallBody(
     readonly args?: unknown;
     readonly toolName?: string | null;
     readonly exitCode?: number | undefined;
+    readonly noMatches?: boolean | undefined;
     /** Replaces fetched output. */
     readonly outputSlot?: ReactNode;
   },
@@ -220,13 +226,16 @@ function ToolCallBody(
       {call.argsText ? <StructuredValue value={call.argsText} highlightJson /> : null}
       {props.outputSlot ?? <ToolOutput {...props} />}
       {props.exitCode !== undefined && props.exitCode !== 0 ? (
-        <div className="text-destructive">exit {props.exitCode}</div>
+        <div className={props.noMatches ? "text-muted-foreground" : "text-destructive"}>
+          exit {props.exitCode}
+        </div>
       ) : null}
     </div>
   );
 }
 
 export const V2ItemInspector = memo(function V2ItemInspector(props: V2ItemInspectorProps) {
+  const uiText = useUiText();
   // Command rows stream their output, including the final output, from the server.
   const environmentStreamsOutput = useCommandOutputStreaming(props.environmentId);
   const streamsOutput =
@@ -261,6 +270,7 @@ export const V2ItemInspector = memo(function V2ItemInspector(props: V2ItemInspec
         <ToolCallBody
           command={item.input}
           exitCode={item.exitCode}
+          noMatches={commandHadNoMatches(item)}
           {...outputState}
           onImageExpand={props.onImageExpand}
           outputSlot={
@@ -301,7 +311,7 @@ export const V2ItemInspector = memo(function V2ItemInspector(props: V2ItemInspec
                   })
                 }
               >
-                Open diff
+                {uiText("Open diff")}
               </Button>
             ) : null}
           </div>
@@ -367,7 +377,7 @@ export const V2ItemInspector = memo(function V2ItemInspector(props: V2ItemInspec
                   </a>
                 ) : (
                   <p className="font-medium text-foreground">
-                    {result.title ?? result.url ?? "Search result"}
+                    {result.title ?? result.url ?? uiText("Search result")}
                   </p>
                 )}
                 {result.snippet ? <p className="text-muted-foreground">{result.snippet}</p> : null}
@@ -399,7 +409,7 @@ export const V2ItemInspector = memo(function V2ItemInspector(props: V2ItemInspec
         />
       ) : null}
       {item.type === "notification" ? <StructuredValue value={item.detail} /> : null}
-      {item.type === "system_notice" ? <StructuredValue value={item.message} /> : null}
+      {item.type === "system_notice" ? <StructuredValue value={serverCopy(item.message)} /> : null}
       {item.type === "error" ? <StructuredValue value={item.failure.message} /> : null}
       {item.type === "todo_list" ? (
         <StructuredValue

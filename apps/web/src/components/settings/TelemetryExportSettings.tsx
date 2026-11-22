@@ -1,3 +1,5 @@
+import { useUiText } from "~/i18n/useUiText";
+import { uiText } from "~/i18n";
 import { useAtomValue } from "@effect/atom-react";
 import type { OtlpEndpointCheckResult, OtlpSignal, ServerObservability } from "@t3tools/contracts";
 import { useEffect, useEffectEvent, useState } from "react";
@@ -12,36 +14,38 @@ import { useSettingsScope } from "./SettingsScopeContext";
 import { useScopedSettings } from "./useScopedSettings";
 import { SettingsSection } from "./settingsLayout";
 import { SettingsScopeNotice } from "./SettingsScopeNotice";
-
 const SIGNALS = [
   {
     key: "otlpTracesUrl",
     sourceKey: "otlpTracesSource",
     variableKey: "otlpTracesVariable",
-    label: "Traces",
+    get label() {
+      return uiText("Traces");
+    },
     signal: "traces",
   },
   {
     key: "otlpMetricsUrl",
     sourceKey: "otlpMetricsSource",
     variableKey: "otlpMetricsVariable",
-    label: "Metrics",
+    get label() {
+      return uiText("Metrics");
+    },
     signal: "metrics",
   },
   {
     key: "otlpLogsUrl",
     sourceKey: "otlpLogsSource",
     variableKey: "otlpLogsVariable",
-    label: "Logs",
+    get label() {
+      return uiText("Logs");
+    },
     signal: "logs",
   },
 ] as const;
-
 type SignalDescriptor = (typeof SIGNALS)[number];
 type SignalKey = SignalDescriptor["key"];
-
 const OVERRIDE_LABELS = { environment: "Set by environment", bootstrap: "Set by desktop" } as const;
-
 function runningOverride(
   running: ServerObservability | undefined,
   { key, sourceKey, variableKey }: SignalDescriptor,
@@ -86,6 +90,7 @@ export function TelemetryExportSettings() {
 }
 
 function TelemetryExportForm() {
+  const uiText = useUiText();
   const { environment } = useSettingsScope();
   const saved = useScopedSettings((settings) => settings.observability);
   const [draft, setDraft] = useState<Partial<typeof saved>>({});
@@ -141,9 +146,8 @@ function TelemetryExportForm() {
     // oxlint-disable-next-line react/set-state-in-effect -- State changes only after the response arrives.
     if (canCheck) sendPendingChecks();
   }, [canCheck]);
-
   return (
-    <SettingsSection title="OpenTelemetry export" id="telemetry-export">
+    <SettingsSection title={uiText("OpenTelemetry export")} id="telemetry-export">
       <form
         className="grid gap-4 px-4 py-4 sm:px-5"
         onSubmit={async (event) => {
@@ -169,13 +173,15 @@ function TelemetryExportForm() {
         }}
       >
         <p className="text-xs text-muted-foreground">
-          Send traces, metrics, and logs to an OTLP HTTP receiver. Restart the server to apply.
-          Environment variables override these settings.
+          {uiText(
+            "Send traces, metrics, and logs to an OTLP HTTP receiver. Restart the server to apply. Environment variables override these settings.",
+          )}
         </p>
         {!canEdit && (
           <p className="text-xs text-muted-foreground">
-            This connection lacks permission to change settings on{" "}
-            {environment?.label ?? "the selected environment"}.
+            {uiText("This connection lacks permission to change settings on")}{" "}
+            {environment?.label ?? uiText("the selected environment")}
+            {"."}
           </p>
         )}
         {SIGNALS.map((descriptor) => {
@@ -204,7 +210,9 @@ function TelemetryExportForm() {
                   size="sm"
                   type="url"
                   pattern="[Hh][Tt][Tt][Pp][Ss]?://.*"
-                  title="Enter an HTTP or HTTPS endpoint, or leave empty to disable export."
+                  title={uiText(
+                    "Enter an HTTP or HTTPS endpoint, or leave empty to disable export.",
+                  )}
                   placeholder={`http://localhost:4318/v1/${signal}`}
                   value={values[key]}
                   disabled={saving || !canEdit}
@@ -266,10 +274,10 @@ function TelemetryExportForm() {
                 }
               }}
             >
-              Discard
+              {uiText("Discard")}
             </Button>
             <Button type="submit" size="xs" disabled={!changed || saving || !canEdit}>
-              {saving ? "Saving…" : "Save"}
+              {saving ? uiText("Saving…") : uiText("Save")}
             </Button>
           </div>
         </div>

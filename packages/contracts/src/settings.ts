@@ -1,3 +1,4 @@
+import { MemoryState } from "./memory.ts";
 import { EasDeviceHostConfigs, SimlockDeviceHostConfigs, SshDeviceHostConfigs } from "./device.ts";
 import {
   AuthOrchestrationOperateScope,
@@ -165,12 +166,27 @@ export const PanelAnimationDurationMs = Schema.Int.check(
 export type PanelAnimationDurationMs = typeof PanelAnimationDurationMs.Type;
 const DEFAULT_PANEL_ANIMATION_DURATION_MS: PanelAnimationDurationMs = 0;
 
+export const MIN_SIDEBAR_THREAD_PREVIEW_COUNT = 1;
+export const MAX_SIDEBAR_THREAD_PREVIEW_COUNT = 15;
+export const SidebarThreadPreviewCount = Schema.Int.check(
+  Schema.isBetween({
+    minimum: MIN_SIDEBAR_THREAD_PREVIEW_COUNT,
+    maximum: MAX_SIDEBAR_THREAD_PREVIEW_COUNT,
+  }),
+);
+export type SidebarThreadPreviewCount = typeof SidebarThreadPreviewCount.Type;
+const DEFAULT_SIDEBAR_THREAD_PREVIEW_COUNT: SidebarThreadPreviewCount = 6;
+
 export const MIN_INTERFACE_FONT_SIZE = 12;
 export const MAX_INTERFACE_FONT_SIZE = 20;
 export const InterfaceFontSize = Schema.Int.check(
   Schema.isBetween({ minimum: MIN_INTERFACE_FONT_SIZE, maximum: MAX_INTERFACE_FONT_SIZE }),
 );
 export type InterfaceFontSize = typeof InterfaceFontSize.Type;
+export const SidebarFontSize = Schema.Union([Schema.Literal(0), InterfaceFontSize]);
+export type SidebarFontSize = typeof SidebarFontSize.Type;
+export const SidebarTextColorPreset = Schema.Literals(["default", "high-contrast"]);
+export type SidebarTextColorPreset = typeof SidebarTextColorPreset.Type;
 export const DEFAULT_INTERFACE_FONT_SIZE: InterfaceFontSize = 16;
 
 export const MIN_PROMPT_FONT_SIZE = 12;
@@ -402,7 +418,61 @@ export const VoiceTranscriptionDestination = Schema.Union([
 ]);
 export type VoiceTranscriptionDestination = typeof VoiceTranscriptionDestination.Type;
 
+export const SidebarCategoryPreset = Schema.Literals([
+  "general",
+  "developer",
+  "creator",
+  "project",
+]);
+export type SidebarCategoryPreset = typeof SidebarCategoryPreset.Type;
+
+const EditableSidebarCategories = Schema.Array(
+  Schema.Struct({
+    id: Schema.String,
+    label: Schema.String,
+    group: Schema.optionalKey(Schema.String),
+    keywords: Schema.Array(Schema.String),
+  }),
+);
+
+const SidebarCategoryRule = Schema.Struct({
+  categoryId: Schema.String,
+  source: Schema.String,
+  flags: Schema.String,
+});
+export const SidebarCategorySettings = Schema.Struct({
+  preset: SidebarCategoryPreset,
+  automatic: Schema.Boolean,
+  suggestions: Schema.Boolean,
+  suggestionModel: Schema.NullOr(ModelSelection),
+  editedCategories: Schema.Struct({
+    general: Schema.optionalKey(EditableSidebarCategories),
+    developer: Schema.optionalKey(EditableSidebarCategories),
+    creator: Schema.optionalKey(EditableSidebarCategories),
+  }),
+  legacyRules: Schema.optionalKey(
+    Schema.Struct({
+      title: Schema.Array(SidebarCategoryRule),
+      project: Schema.Array(SidebarCategoryRule),
+      automation: Schema.optionalKey(SidebarCategoryRule),
+      contentWorkspace: Schema.optionalKey(SidebarCategoryRule),
+    }),
+  ),
+});
+export type SidebarCategorySettings = typeof SidebarCategorySettings.Type;
+
+export const DEFAULT_SIDEBAR_CATEGORY_SETTINGS: SidebarCategorySettings = {
+  preset: "general",
+  automatic: true,
+  suggestions: true,
+  suggestionModel: null,
+  editedCategories: {},
+};
+
 export const ClientSettingsSchema = Schema.Struct({
+  sidebarCategories: SidebarCategorySettings.pipe(
+    Schema.withDecodingDefault(Effect.succeed(DEFAULT_SIDEBAR_CATEGORY_SETTINGS)),
+  ),
   notificationMode: NotificationMode.pipe(
     Schema.withDecodingDefault(Effect.succeed("off" as const)),
   ),
@@ -492,6 +562,15 @@ export const ClientSettingsSchema = Schema.Struct({
   fontSizeTerminal: TerminalFontSize.pipe(
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_TERMINAL_FONT_SIZE)),
   ),
+  fontFamilySidebar: FontFamilyPreference.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
+  fontSizeSidebar: SidebarFontSize.pipe(Schema.withDecodingDefault(Effect.succeed(0))),
+  sidebarTextColorLight: SidebarTextColorPreset.pipe(
+    Schema.withDecodingDefault(Effect.succeed("default")),
+  ),
+  sidebarTextColorDark: SidebarTextColorPreset.pipe(
+    Schema.withDecodingDefault(Effect.succeed("default")),
+  ),
+
   fontFamilyCode: FontFamilyPreference.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
   fontFamilyComposer: FontFamilyPreference.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
   fontFamilySans: FontFamilyPreference.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
@@ -526,6 +605,17 @@ export const ClientSettingsSchema = Schema.Struct({
   ),
   proactivePanelsEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   showSkillsInSlashMenu: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  sidebarThreadPreviewCount: SidebarThreadPreviewCount.pipe(
+    Schema.withDecodingDefault(Effect.succeed(DEFAULT_SIDEBAR_THREAD_PREVIEW_COUNT)),
+  ),
+
+  artifactRevisionEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  legacySidebarEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  longConversationReminderEnabled: Schema.Boolean.pipe(
+    Schema.withDecodingDefault(Effect.succeed(true)),
+  ),
+
+  turnThroughputEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   boringSidebarEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   boringSidebarMultilineRows: Schema.Boolean.pipe(
     Schema.withDecodingDefault(Effect.succeed(false)),
@@ -580,7 +670,7 @@ export const ClientSettingsSchema = Schema.Struct({
   ),
   speechCorrectionWord: SpeechCorrectionCue.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
   // A locale code or "system". Open string so new locales and downgrades need no migration.
-  language: Schema.String.pipe(Schema.withDecodingDefault(Effect.succeed("en"))),
+  language: Schema.String.pipe(Schema.withDecodingDefault(Effect.succeed("system"))),
   snapShotEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   snapShotIncludeAccessibility: Schema.Boolean.pipe(
     Schema.withDecodingDefault(Effect.succeed(true)),
@@ -783,6 +873,15 @@ const InstanceIdleCompaction = Schema.Literals(
 
 export const ClaudeSettings = makeProviderSettingsSchema(
   {
+    interactiveCli: Schema.Boolean.pipe(
+      Schema.withDecodingDefault(Effect.succeed(false)),
+      Schema.annotateKey({
+        title: "Interactive Claude Code (TUI)",
+        description:
+          "Experimental: off uses SDK / -p; on uses the terminal UI with a separate account directory. Default accounts, fork/rollback, plugins and SDK hooks are unsupported. Failures do not fall back. Switch while tasks are idle.",
+        providerSettingsForm: { control: "switch" },
+      }),
+    ),
     enabled: Schema.Boolean.pipe(
       Schema.withDecodingDefault(Effect.succeed(true)),
       Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
@@ -818,6 +917,13 @@ export const ClaudeSettings = makeProviderSettingsSchema(
         },
       }),
     ),
+    usageProtection: Schema.optionalKey(Schema.Boolean).pipe(
+      Schema.annotateKey({
+        title: "\u81EA\u52A8\u4FDD\u62A4\u8BA2\u9605\u989D\u5EA6",
+        description:
+          "\u72EC\u7ACB\u4EFB\u52A1\u6309\u8D26\u53F7\u6392\u961F\uFF1B80% \u63D0\u9192\u4FDD\u5B58\u8FDB\u5EA6\uFF0C90% \u8BF7\u6C42\u6536\u5C3E\u5E76\u6682\u505C\u65B0\u4EFB\u52A1\u3002\u989D\u5EA6\u672A\u77E5\u65F6\u7B49\u5F85\u6838\u5BF9\u3002",
+      }),
+    ),
     autoCompactWindow: TrimmedString.check(
       Schema.isPattern(CLAUDE_AUTO_COMPACT_WINDOW_PATTERN),
     ).pipe(
@@ -847,7 +953,15 @@ export const ClaudeSettings = makeProviderSettingsSchema(
     ),
   },
   {
-    order: ["binaryPath", "homePath", "autoCompactWindow", "idleCompaction", "launchArgs"],
+    order: [
+      "binaryPath",
+      "homePath",
+      "interactiveCli",
+      "usageProtection",
+      "autoCompactWindow",
+      "idleCompaction",
+      "launchArgs",
+    ],
   },
 );
 export type ClaudeSettings = typeof ClaudeSettings.Type;
@@ -1330,6 +1444,14 @@ export const StorageCleanupReport = Schema.Struct({
 export type StorageCleanupReport = typeof StorageCleanupReport.Type;
 
 export const StorageCleanupSettings = Schema.Struct({
+  volumeReserveGiB: Schema.optionalKey(
+    Schema.Record(
+      Schema.String,
+      Schema.Number.pipe(Schema.check(Schema.isBetween({ minimum: 40, maximum: 1024 }))),
+    ),
+  ),
+  scanOnOpenDaily: Schema.optionalKey(Schema.Boolean),
+
   worktreeKeepWhen: WorktreeKeepWhen.pipe(
     Schema.withDecodingDefault(Effect.succeed("uncommitted-changes")),
   ),
@@ -1357,6 +1479,7 @@ export const CloudSpeechCredentials = Schema.Struct({
 });
 
 export const ServerSettings = Schema.Struct({
+  memory: Schema.optionalKey(MemoryState),
   // Null means unmigrated; empty is authoritative and must not resurrect cleared preferences.
   favorites: Schema.NullOr(ModelFavorites).pipe(Schema.withDecodingDefault(Effect.succeed(null))),
   providerModelPreferences: Schema.NullOr(ProviderModelPreferences).pipe(
@@ -1453,6 +1576,10 @@ export const ServerSettings = Schema.Struct({
   idleCompaction: Schema.optionalKey(IdleCompactionMode),
   snoozeLimitedThreads: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   autoResumeLimitedThreads: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  providerFallbackEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  providerFallbackChains: Schema.Record(ProviderInstanceId, Schema.Array(ProviderInstanceId)).pipe(
+    Schema.withDecodingDefault(Effect.succeed({})),
+  ),
   snoozePresets: SnoozePresetSettings.pipe(
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_SNOOZE_PRESETS)),
   ),
@@ -1477,6 +1604,8 @@ export const ServerSettings = Schema.Struct({
   linkedEnvironmentsEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   /** Beta: Claude and Codex predict the next prompt after completed turns. Codex follows a change at once; open Claude threads after they restart. */
   promptSuggestionsEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  /** Opt-in: send anonymous usage events to the telemetry endpoint. Off until the user turns it on; settings saved before this existed read as off. */
+  telemetryEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   sidebarAutoSettleKeepPullRequests: Schema.Boolean.pipe(
     Schema.withDecodingDefault(Effect.succeed(false)),
   ),
@@ -1563,6 +1692,10 @@ export const ServerSettings = Schema.Struct({
   providerInstances: Schema.Record(ProviderInstanceId, ProviderInstanceConfig).pipe(
     Schema.withDecodingDefault(Effect.succeed({})),
   ),
+  /** User-defined display order for provider instances across settings, model picker, and quota bars. */
+  providerOrder: Schema.Array(ProviderInstanceId).pipe(
+    Schema.withDecodingDefault(Effect.succeed([])),
+  ),
   observability: ObservabilitySettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
   sourceControlHosts: Schema.Record(Schema.String, SourceControlHostSettings).pipe(
     Schema.withDecodingDefault(Effect.succeed({})),
@@ -1582,6 +1715,9 @@ export const ServerSettings = Schema.Struct({
     Schema.withDecodingDefault(Effect.succeed({})),
   ),
 
+  cursorKeychainUsageEnabled: Schema.Boolean.pipe(
+    Schema.withDecodingDefault(Effect.succeed(false)),
+  ),
   usagePriceOverrides: Schema.Record(TrimmedNonEmptyString, UsageModelPriceOverride).pipe(
     Schema.withDecodingDefault(Effect.succeed({})),
   ),
@@ -1829,6 +1965,14 @@ export const ServerSettingsPatch = Schema.Struct({
   ),
   storageCleanup: Schema.optionalKey(
     Schema.Struct({
+      volumeReserveGiB: Schema.optionalKey(
+        Schema.Record(
+          Schema.String,
+          Schema.Number.pipe(Schema.check(Schema.isBetween({ minimum: 40, maximum: 1024 }))),
+        ),
+      ),
+      scanOnOpenDaily: Schema.optionalKey(Schema.Boolean),
+
       worktreeKeepWhen: Schema.optionalKey(WorktreeKeepWhen),
       worktreeAfterDays: Schema.optionalKey(StorageRetentionDays),
       worktreeSettledAfterDays: Schema.optionalKey(SettledWorktreeRetentionDays),
@@ -1900,6 +2044,10 @@ export const ServerSettingsPatch = Schema.Struct({
   sidebarAutoSettleKeepPullRequests: Schema.optionalKey(Schema.Boolean),
   sidebarAutoSettleOnMerge: Schema.optionalKey(Schema.Boolean),
   autoResumeLimitedThreads: Schema.optionalKey(Schema.Boolean),
+  providerFallbackEnabled: Schema.optionalKey(Schema.Boolean),
+  providerFallbackChains: Schema.optionalKey(
+    Schema.Record(ProviderInstanceId, Schema.Array(ProviderInstanceId)),
+  ),
   snoozeLimitedThreads: Schema.optionalKey(Schema.Boolean),
   snoozePresets: Schema.optionalKey(SnoozePresetSettings),
   hiddenThreadTags: Schema.optionalKey(Schema.Array(Schema.String)),
@@ -1907,6 +2055,7 @@ export const ServerSettingsPatch = Schema.Struct({
   guestSharingEnabled: Schema.optionalKey(Schema.Boolean),
   linkedEnvironmentsEnabled: Schema.optionalKey(Schema.Boolean),
   promptSuggestionsEnabled: Schema.optionalKey(Schema.Boolean),
+  telemetryEnabled: Schema.optionalKey(Schema.Boolean),
   backgroundActivity: Schema.optionalKey(
     Schema.Struct({
       schemaVersion: Schema.optionalKey(Schema.Literal(1)),
@@ -1958,6 +2107,7 @@ export const ServerSettingsPatch = Schema.Struct({
   offeredSourceControlProviders: Schema.optionalKey(Schema.Record(Schema.String, Schema.Boolean)),
   // Replace whole maps to avoid half-merged driver configs.
   providerInstances: Schema.optionalKey(Schema.Record(ProviderInstanceId, ProviderInstanceConfig)),
+  providerOrder: Schema.optionalKey(Schema.Array(ProviderInstanceId)),
   // Merge per source to avoid racing other edits; null removes an entry.
   usageLimitSources: Schema.optionalKey(
     Schema.Record(UsageLimitSourceId, Schema.NullOr(UsageLimitSourceConfig)),
@@ -1970,6 +2120,7 @@ export const ServerSettingsPatch = Schema.Struct({
     Schema.Record(SecretProviderId, Schema.NullOr(SecretProviderConfigWrite)),
   ),
 
+  cursorKeychainUsageEnabled: Schema.optionalKey(Schema.Boolean),
   usagePriceOverrides: Schema.optionalKey(
     Schema.Record(TrimmedNonEmptyString, Schema.NullOr(UsageModelPriceOverride)),
   ),
@@ -2032,6 +2183,7 @@ export function requiredScopesForProjectMutation(
 }
 
 export const ClientSettingsPatch = Schema.Struct({
+  sidebarCategories: Schema.optionalKey(SidebarCategorySettings),
   notificationMode: Schema.optionalKey(NotificationMode),
   inAppNotificationsEnabled: Schema.optionalKey(Schema.Boolean),
   diffColorScheme: Schema.optionalKey(DiffColorScheme),
@@ -2067,6 +2219,10 @@ export const ClientSettingsPatch = Schema.Struct({
   fontSizePrompt: Schema.optionalKey(PromptFontSize),
   fontSizeCode: Schema.optionalKey(CodeFontSize),
   fontSizeTerminal: Schema.optionalKey(TerminalFontSize),
+  fontFamilySidebar: Schema.optionalKey(FontFamilyPreference),
+  fontSizeSidebar: Schema.optionalKey(SidebarFontSize),
+  sidebarTextColorLight: Schema.optionalKey(SidebarTextColorPreset),
+  sidebarTextColorDark: Schema.optionalKey(SidebarTextColorPreset),
   fontFamilyCode: Schema.optionalKey(FontFamilyPreference),
   fontFamilyComposer: Schema.optionalKey(FontFamilyPreference),
   fontFamilySans: Schema.optionalKey(FontFamilyPreference),
@@ -2084,6 +2240,11 @@ export const ClientSettingsPatch = Schema.Struct({
   followUpBehavior: Schema.optionalKey(Schema.Literals(["queue", "steer"])),
   proactivePanelsEnabled: Schema.optionalKey(Schema.Boolean),
   showSkillsInSlashMenu: Schema.optionalKey(Schema.Boolean),
+  sidebarThreadPreviewCount: Schema.optionalKey(SidebarThreadPreviewCount),
+  artifactRevisionEnabled: Schema.optionalKey(Schema.Boolean),
+  legacySidebarEnabled: Schema.optionalKey(Schema.Boolean),
+  longConversationReminderEnabled: Schema.optionalKey(Schema.Boolean),
+  turnThroughputEnabled: Schema.optionalKey(Schema.Boolean),
   boringSidebarEnabled: Schema.optionalKey(Schema.Boolean),
   boringSidebarMultilineRows: Schema.optionalKey(Schema.Boolean),
   toolCallVisibility: Schema.optionalKey(ToolCallVisibility),

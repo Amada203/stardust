@@ -1,3 +1,4 @@
+import { threadCreated } from "../state/threadSubscriptionWakeups.ts";
 import { remapComposerContextAttachments } from "@t3tools/shared/composerContextReferences";
 import {
   type ThreadLinkedPullRequest,
@@ -99,7 +100,9 @@ export interface DeleteThreadInput extends ThreadCommandInput {
   /** The server deletes only a thread with no runs and no messages. */
   readonly onlyIfUnused?: boolean;
 }
-export type ArchiveThreadInput = ThreadCommandInput;
+export interface ArchiveThreadInput extends ThreadCommandInput {
+  readonly requireIdle?: true;
+}
 export type UnarchiveThreadInput = ThreadCommandInput;
 export type SettleThreadInput = ThreadCommandInput;
 
@@ -468,7 +471,7 @@ export const deleteProject = Effect.fn("EnvironmentCommands.deleteProject")(func
 export const createThread = Effect.fn("EnvironmentCommands.createThread")(function* (
   input: CreateThreadInput,
 ) {
-  return yield* dispatch({
+  const result = yield* dispatch({
     type: "thread.create",
     commandId: yield* allocateCommandId(input),
     createdBy: "user",
@@ -482,6 +485,9 @@ export const createThread = Effect.fn("EnvironmentCommands.createThread")(functi
     branch: input.branch,
     worktreePath: input.worktreePath,
   });
+  const supervisor = yield* EnvironmentSupervisor.EnvironmentSupervisor;
+  yield* threadCreated(supervisor.target.environmentId, input.threadId);
+  return result;
 });
 
 function simpleThreadCommand(
@@ -552,7 +558,12 @@ export const resolveGuestMessage = Effect.fn("EnvironmentCommands.resolveGuestMe
 export const archiveThread = Effect.fn("EnvironmentCommands.archiveThread")(function* (
   input: ArchiveThreadInput,
 ) {
-  return yield* simpleThreadCommand("thread.archive", input);
+  return yield* dispatch({
+    type: "thread.archive",
+    commandId: yield* allocateCommandId(input),
+    threadId: input.threadId,
+    ...(input.requireIdle === undefined ? {} : { requireIdle: input.requireIdle }),
+  });
 });
 
 export const unarchiveThread = Effect.fn("EnvironmentCommands.unarchiveThread")(function* (
@@ -784,7 +795,7 @@ export const startThreadTurn = Effect.fn("EnvironmentCommands.startThreadTurn")(
                 ? {}
                 : { branch: bootstrap.branch }),
             };
-    return yield* request(ORCHESTRATION_V2_WS_METHODS.launchThread, {
+    const result = yield* request(ORCHESTRATION_V2_WS_METHODS.launchThread, {
       commandId,
       creationSource: input.creationSource ?? "web",
       threadId: input.threadId,
@@ -803,6 +814,9 @@ export const startThreadTurn = Effect.fn("EnvironmentCommands.startThreadTurn")(
         attachments,
       },
     });
+    const supervisor = yield* EnvironmentSupervisor.EnvironmentSupervisor;
+    yield* threadCreated(supervisor.target.environmentId, input.threadId);
+    return result;
   }
 
   const requestedMode = input.dispatchMode ?? "auto";

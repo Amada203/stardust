@@ -28,6 +28,17 @@ export class SecretStoreSecureError extends Schema.TaggedError<SecretStoreSecure
   }
 }
 
+export class SecretStoreNameError extends Schema.TaggedError<SecretStoreNameError>()(
+  "SecretStoreNameError",
+  {
+    resource: Schema.String,
+  },
+) {
+  override get message(): string {
+    return `Refused ${this.resource}: a secret name cannot contain a path separator.`;
+  }
+}
+
 export class SecretStoreReadError extends Schema.TaggedError<SecretStoreReadError>()(
   "SecretStoreReadError",
   {
@@ -118,6 +129,7 @@ export class SecretStoreEncodeError extends Schema.TaggedError<SecretStoreEncode
 
 export const SecretStoreError = Schema.Union([
   SecretStoreSecureError,
+  SecretStoreNameError,
   SecretStoreReadError,
   SecretStoreTemporaryPathError,
   SecretStorePersistError,
@@ -169,101 +181,113 @@ export const make = Effect.gen(function* () {
     ),
   );
 
-  const resolveSecretPath = (name: string) => path.join(serverConfig.secretsDir, `${name}.bin`);
+  // Some names carry text from outside the server; one with a separator would leave the directory.
+  const resolveSecretPath = (name: string): Effect.Effect<string, SecretStoreNameError> =>
+    /[/\\\0]/.test(name)
+      ? Effect.fail(new SecretStoreNameError({ resource: `secret ${JSON.stringify(name)}` }))
+      : Effect.succeed(path.join(serverConfig.secretsDir, `${name}.bin`));
   const emptySecretRepair = yield* Semaphore.make(1);
   const isMissingOrNonEmpty = (secret: Option.Option<Uint8Array>) =>
     Option.isNone(secret) || secret.value.byteLength > 0;
 
   const get: ServerSecretStore["Service"]["get"] = (name) =>
-    fileSystem.readFile(resolveSecretPath(name)).pipe(
-      Effect.map((bytes) => Option.some(Uint8Array.from(bytes))),
-      Effect.catch((cause) =>
-        cause.reason._tag === "NotFound"
-          ? Effect.succeedNone
-          : Effect.fail(
-              new SecretStoreReadError({
-                resource: `secret ${name}`,
-                cause,
-              }),
-            ),
-      ),
-      Effect.withSpan("ServerSecretStore.get"),
-    );
-
-  const set: ServerSecretStore["Service"]["set"] = (name, value) => {
-    const secretPath = resolveSecretPath(name);
-    return crypto.uuidV4().pipe(
-      Effect.mapError(
-        (cause) =>
-          new SecretStoreTemporaryPathError({
-            resource: `secret ${name}`,
-            cause,
-          }),
-      ),
-      Effect.flatMap((uuid) => {
-        const tempPath = `${secretPath}.${uuid}.tmp`;
-        return Effect.gen(function* () {
-          yield* fileSystem.writeFile(tempPath, value);
-          yield* fileSystem.chmod(tempPath, 0o600);
-          yield* fileSystem.rename(tempPath, secretPath);
-          yield* fileSystem.chmod(secretPath, 0o600);
-        }).pipe(
+    resolveSecretPath(name).pipe(
+      Effect.flatMap((secretPath) =>
+        fileSystem.readFile(secretPath).pipe(
+          Effect.map((bytes) => Option.some(Uint8Array.from(bytes))),
           Effect.catch((cause) =>
-            fileSystem.remove(tempPath).pipe(
-              Effect.ignore,
-              Effect.flatMap(() =>
-                Effect.fail(
-                  new SecretStorePersistError({
+            cause.reason._tag === "NotFound"
+              ? Effect.succeedNone
+              : Effect.fail(
+                  new SecretStoreReadError({
                     resource: `secret ${name}`,
                     cause,
                   }),
                 ),
-              ),
-            ),
           ),
-        );
-      }),
-      Effect.withSpan("ServerSecretStore.set"),
-    );
-  };
-
-  // `link` publishes the fully written temp file under the final name, or fails with
-  // AlreadyExists, so a concurrent reader never observes a partially written secret.
-  const create: ServerSecretStore["Service"]["create"] = (name, value) => {
-    const secretPath = resolveSecretPath(name);
-    return crypto.uuidV4().pipe(
-      Effect.mapError(
-        (cause) =>
-          new SecretStoreTemporaryPathError({
-            resource: `secret ${name}`,
-            cause,
-          }),
+        ),
       ),
-      Effect.flatMap((uuid) => {
-        const tempPath = `${secretPath}.${uuid}.tmp`;
-        return Effect.gen(function* () {
-          yield* Effect.scoped(
-            Effect.gen(function* () {
-              const file = yield* fileSystem.open(tempPath, { flag: "wx", mode: 0o600 });
-              yield* file.writeAll(value);
-              yield* file.sync;
-            }),
-          );
-          yield* fileSystem.chmod(tempPath, 0o600);
-          yield* fileSystem.link(tempPath, secretPath);
-        }).pipe(
-          Effect.ensuring(fileSystem.remove(tempPath).pipe(Effect.ignore)),
+      Effect.withSpan("ServerSecretStore.get"),
+    );
+
+  const set: ServerSecretStore["Service"]["set"] = (name, value) =>
+    resolveSecretPath(name).pipe(
+      Effect.flatMap((secretPath) =>
+        crypto.uuidV4().pipe(
           Effect.mapError(
             (cause) =>
-              new SecretStorePersistError({
+              new SecretStoreTemporaryPathError({
                 resource: `secret ${name}`,
                 cause,
               }),
           ),
-        );
-      }),
+          Effect.flatMap((uuid) => {
+            const tempPath = `${secretPath}.${uuid}.tmp`;
+            return Effect.gen(function* () {
+              yield* fileSystem.writeFile(tempPath, value);
+              yield* fileSystem.chmod(tempPath, 0o600);
+              yield* fileSystem.rename(tempPath, secretPath);
+              yield* fileSystem.chmod(secretPath, 0o600);
+            }).pipe(
+              Effect.catch((cause) =>
+                fileSystem.remove(tempPath).pipe(
+                  Effect.ignore,
+                  Effect.flatMap(() =>
+                    Effect.fail(
+                      new SecretStorePersistError({
+                        resource: `secret ${name}`,
+                        cause,
+                      }),
+                    ),
+                  ),
+                ),
+              ),
+            );
+          }),
+        ),
+      ),
+      Effect.withSpan("ServerSecretStore.set"),
     );
-  };
+
+  // `link` publishes the fully written temp file under the final name, or fails with
+  // AlreadyExists, so a concurrent reader never observes a partially written secret.
+  const create: ServerSecretStore["Service"]["create"] = (name, value) =>
+    resolveSecretPath(name).pipe(
+      Effect.flatMap((secretPath) =>
+        crypto.uuidV4().pipe(
+          Effect.mapError(
+            (cause) =>
+              new SecretStoreTemporaryPathError({
+                resource: `secret ${name}`,
+                cause,
+              }),
+          ),
+          Effect.flatMap((uuid) => {
+            const tempPath = `${secretPath}.${uuid}.tmp`;
+            return Effect.gen(function* () {
+              yield* Effect.scoped(
+                Effect.gen(function* () {
+                  const file = yield* fileSystem.open(tempPath, { flag: "wx", mode: 0o600 });
+                  yield* file.writeAll(value);
+                  yield* file.sync;
+                }),
+              );
+              yield* fileSystem.chmod(tempPath, 0o600);
+              yield* fileSystem.link(tempPath, secretPath);
+            }).pipe(
+              Effect.ensuring(fileSystem.remove(tempPath).pipe(Effect.ignore)),
+              Effect.mapError(
+                (cause) =>
+                  new SecretStorePersistError({
+                    resource: `secret ${name}`,
+                    cause,
+                  }),
+              ),
+            );
+          }),
+        ),
+      ),
+    );
 
   const getOrCreateRandom: ServerSecretStore["Service"]["getOrCreateRandom"] = (name, bytes) =>
     get(name).pipe(
@@ -321,16 +345,20 @@ export const make = Effect.gen(function* () {
     );
 
   const remove: ServerSecretStore["Service"]["remove"] = (name) =>
-    fileSystem.remove(resolveSecretPath(name)).pipe(
-      Effect.catch((cause) =>
-        cause.reason._tag === "NotFound"
-          ? Effect.void
-          : Effect.fail(
-              new SecretStoreRemoveError({
-                resource: `secret ${name}`,
-                cause,
-              }),
-            ),
+    resolveSecretPath(name).pipe(
+      Effect.flatMap((secretPath) =>
+        fileSystem.remove(secretPath).pipe(
+          Effect.catch((cause) =>
+            cause.reason._tag === "NotFound"
+              ? Effect.void
+              : Effect.fail(
+                  new SecretStoreRemoveError({
+                    resource: `secret ${name}`,
+                    cause,
+                  }),
+                ),
+          ),
+        ),
       ),
       Effect.withSpan("ServerSecretStore.remove"),
     );

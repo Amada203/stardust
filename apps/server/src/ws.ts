@@ -1,4 +1,7 @@
-import { OrchestrationDispatchCommandError } from "@t3tools/contracts";
+import { suggestSidebarCategories } from "./textGeneration/SidebarCategorySuggestions.ts";
+import * as DiskSpace from "./diskSpace.ts";
+import * as StorageManagement from "./storageManagement.ts";
+import { OrchestrationDispatchCommandError, ServerSettingsError } from "@t3tools/contracts";
 // @effect-diagnostics-next-line nodeBuiltinImport:off -- A synchronous digest inside the pure provider mapping.
 import * as NodeCrypto from "node:crypto";
 import * as HostProcess from "@t3tools/shared/HostProcess";
@@ -1539,6 +1542,8 @@ export const layerWsRpc = (
       const config = yield* ServerConfig.ServerConfig;
       const lifecycleEvents = yield* ServerLifecycleEvents.ServerLifecycleEvents;
       const storageCleanup = yield* StorageCleanup.StorageCleanup;
+      const diskSpace = yield* DiskSpace.DiskSpace;
+      const storageManagement = yield* StorageManagement.StorageManagement;
       const databaseStorage = yield* DatabaseStorage.DatabaseStorage;
       const serverSettings = yield* ServerSettings.ServerSettingsService;
       const secretResolver = yield* SecretResolver.SecretResolver;
@@ -1892,6 +1897,7 @@ export const layerWsRpc = (
           threadFind: true,
           threadFindProgressive: true,
           secretProviderSettings: true,
+          memorySettings: true,
           secretReferences: true,
           secretRequestReferences: true,
           ...Option.match(scratchWorkspaceRoot, {
@@ -2655,6 +2661,9 @@ export const layerWsRpc = (
           Effect.fnUntraced(function* (rule) {
             return yield* keybindings.removeKeybindingRule(rule);
           }),
+        [WS_METHODS.serverGetDiskSpace]: (input) => diskSpace.report(input),
+        [WS_METHODS.serverInspectStorage]: (input) => storageManagement.inspect(input),
+        [WS_METHODS.serverManageStorage]: (input) => storageManagement.manage(input),
         [WS_METHODS.serverRunStorageCleanup]: () => storageCleanup.runNow,
         [WS_METHODS.serverGetStorageCleanupReport]: () => storageCleanup.reports,
         [WS_METHODS.serverGetDatabaseStorage]: () => databaseStorage.status,
@@ -2674,7 +2683,7 @@ export const layerWsRpc = (
           ),
         [WS_METHODS.serverUpdateSettings]:
           /* Request instrumentation already owns the span; keep this helper in that context. */
-          Effect.fnUntraced(function* ({ patch, providerInstanceMutation }) {
+          Effect.fnUntraced(function* ({ patch, providerInstanceMutation, memoryMutation }) {
             const deviceHosts = patch.deviceHosts
               ? yield* remoteSshDeviceHosts(patch.deviceHosts).pipe(
                   Effect.provide(deviceHostContext),
@@ -2682,8 +2691,16 @@ export const layerWsRpc = (
               : undefined;
             const nextPatch = { ...patch, ...(deviceHosts ? { deviceHosts } : {}) };
             const settings = yield* providerInstanceMutation === undefined
-              ? serverSettings.updateSettings(nextPatch)
-              : serverSettings.updateProviderInstance(providerInstanceMutation, nextPatch);
+              ? serverSettings.updateSettings(nextPatch, memoryMutation)
+              : memoryMutation === undefined
+                ? serverSettings.updateProviderInstance(providerInstanceMutation, nextPatch)
+                : Effect.fail(
+                    new ServerSettingsError({
+                      settingsPath: config.settingsPath,
+                      operation: "write-file",
+                      cause: new Error("Send memory and provider mutations separately."),
+                    }),
+                  );
             return ServerSettings.redactServerSettingsForClient(settings, settingsClient);
           }),
         [WS_METHODS.serverDiscoverSourceControl]: (_input) => sourceControlDiscovery.discover,
@@ -2703,6 +2720,12 @@ export const layerWsRpc = (
         [WS_METHODS.serverRefreshUsageRates]: (_input) => usage.refreshRates,
         [WS_METHODS.serverRetryResourceTelemetry]: (_input) => resourceTelemetry.retry,
         [WS_METHODS.serverCheckOtlpEndpoint]: (input) => otlpEndpointCheck.check(input),
+        [WS_METHODS.serverSuggestSidebarCategories]: (input) =>
+          providerRegistry.getProviders.pipe(
+            Effect.flatMap((providers) =>
+              suggestSidebarCategories(input, providers, providerInstances, usage),
+            ),
+          ),
         [WS_METHODS.serverListTextGeneratorModels]: (input) => textGenerators.listModels(input),
         [WS_METHODS.serverPrepareTriage]: (input) => triage.prepare(input),
         [WS_METHODS.serverSignalProcess]: (input) => processDiagnostics.signal(input),

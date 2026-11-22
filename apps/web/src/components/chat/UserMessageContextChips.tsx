@@ -1,3 +1,6 @@
+import { uiText } from "../../i18n";
+import { useUiText } from "~/i18n/useUiText";
+
 import { documentChipKindForFileName } from "~/pierre-icons";
 import { isSvgAttachment } from "@t3tools/shared/image";
 import { useRenderedAppearance } from "../../hooks/useTheme";
@@ -144,6 +147,7 @@ function UserMessagePreviewAnnotationDetails(props: {
   record: Extract<KnownComposerContextRecord, { kind: "preview-annotation" }>;
   image: ChatImageAttachment | null;
 }) {
+  const uiText = useUiText();
   const ctx = use(TimelineRowCtx);
   const visibleElements = props.record.elements ?? [];
   return (
@@ -161,16 +165,24 @@ function UserMessagePreviewAnnotationDetails(props: {
         >
           <img
             src={props.image.previewUrl}
-            alt="Annotated preview crop"
+            alt={uiText("Annotated preview crop")}
             className="max-h-64 w-full object-contain"
           />
         </button>
-      ) : (
+      ) : props.record.pins?.length ? null : (
         <div className="border-b border-border/70 bg-muted/40 px-3 py-2 text-secondary-label text-xs">
-          Screenshot unavailable
+          {uiText("Screenshot unavailable")}
         </div>
       )}
       <div className="min-w-0 px-3 py-2.5">
+        {props.record.pins?.length ? (
+          <details>
+            <summary>{uiText("What the assistant received")}</summary>
+            <pre className="overflow-auto whitespace-pre-wrap text-xs">
+              {JSON.stringify(props.record.pins, null, 2)}
+            </pre>
+          </details>
+        ) : null}
         <div className="text-message-foreground text-xs font-medium">
           {props.record.pageTitle?.trim() || props.record.pageUrl || "Preview annotation"}
         </div>
@@ -276,17 +288,16 @@ interface UserMessageContextRenderContext {
   onExpandVideo: (file: ChatFileAttachment) => void;
   onOpenFile: (file: ChatFileAttachment) => void;
 }
-
 function UnavailableUserMessageContextChip(props: UserMessageContextRenderContext) {
+  const uiText = useUiText();
   return (
     <UnresolvedChip
       label={props.reference.label}
       copyMarkdown={props.copyMarkdown}
-      tooltip="This context is no longer available."
+      tooltip={uiText("This context is no longer available.")}
     />
   );
 }
-
 const userMessageContextPresentationRegistry = createContextPresentationRegistry<
   KnownComposerContextRecord,
   UserMessageContextRenderContext,
@@ -509,10 +520,14 @@ const userMessageContextPresentationRegistry = createContextPresentationRegistry
         record.kind === "preview-annotation" ? (
           <UserMessageContextPopover
             copyMarkdown={context.copyMarkdown}
-            accessibleLabel={`Preview annotation, ${record.label}`}
+            accessibleLabel={
+              record.pins
+                ? uiText("What the assistant received, {label}", { label: record.label })
+                : `Preview annotation, ${record.label}`
+            }
             kind="preview-annotation"
             icon={<MousePointerClickIcon />}
-            label={record.label}
+            label={record.pins ? uiText("What the assistant received") : record.label}
           >
             <UserMessagePreviewAnnotationDetails record={record} image={context.annotationImage} />
           </UserMessageContextPopover>

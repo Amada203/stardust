@@ -544,3 +544,7 @@ describe("server model preferences", () => {
     expect(decodeServerSettingsPatch(input)).toEqual(input);
   });
 });
+
+it("keeps Cursor Keychain usage opt-in when restoring a setting removed by C72", () => {
+  expect(DEFAULT_SERVER_SETTINGS.cursorKeychainUsageEnabled).toBe(false);
+});

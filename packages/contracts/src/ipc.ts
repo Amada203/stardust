@@ -686,6 +686,7 @@ export const DesktopPreviewWebviewConfigSchema: Schema.Codec<DesktopPreviewWebvi
   });
 
 export interface DesktopPreviewAnnotationTheme {
+  locale?: "en" | "zh-CN";
   colorScheme: "light" | "dark";
   radius: string;
   background: string;
@@ -707,6 +708,7 @@ export interface DesktopPreviewAnnotationTheme {
 
 export const DesktopPreviewAnnotationThemeSchema: Schema.Codec<DesktopPreviewAnnotationTheme> =
   Schema.Struct({
+    locale: Schema.optionalKey(Schema.Literals(["en", "zh-CN"])),
     colorScheme: Schema.Literals(["light", "dark"]),
     radius: Schema.String,
     background: Schema.String,
@@ -909,7 +911,28 @@ export const PreviewAnnotationScreenshotSchema: Schema.Codec<PreviewAnnotationSc
     cropRect: PreviewAnnotationRectSchema,
   });
 
+export const PreviewPinSchema = Schema.Struct({
+  id: Schema.String,
+  number: Schema.Int,
+  text: Schema.String,
+  selectorChain: Schema.Array(Schema.String),
+  tag: Schema.String,
+  elementText: Schema.String,
+  ancestor: Schema.NullOr(Schema.String),
+  relative: PreviewAnnotationPointSchema,
+  documentPosition: PreviewAnnotationPointSchema,
+  rect: PreviewAnnotationRectSchema,
+  pageKey: Schema.String,
+  createdAt: Schema.String,
+  wasSent: Schema.optionalKey(Schema.Boolean),
+  status: Schema.Literals(["unsent", "sent", "fixed"]),
+  element: PickedElementPayloadSchema,
+  screenshot: Schema.NullOr(PreviewAnnotationScreenshotSchema),
+});
+export type PreviewPin = typeof PreviewPinSchema.Type;
+
 export interface PreviewAnnotationPayload {
+  pins?: ReadonlyArray<PreviewPin>;
   id: string;
   pageUrl: string;
   pageTitle: string | null;
@@ -924,6 +947,7 @@ export interface PreviewAnnotationPayload {
 
 export const PreviewAnnotationPayloadSchema: Schema.Codec<PreviewAnnotationPayload> = Schema.Struct(
   {
+    pins: Schema.optionalKey(Schema.Array(PreviewPinSchema)),
     id: Schema.String,
     pageUrl: Schema.String,
     pageTitle: Schema.NullOr(Schema.String),
@@ -1083,6 +1107,7 @@ export interface DesktopBridge {
   /** False when the OS turned off middle-click PRIMARY paste (`gtk-enable-primary-paste`). */
   getPrimaryPasteEnabled?: () => boolean;
   getLocalEnvironmentBootstraps: () => readonly DesktopEnvironmentBootstrap[];
+  onLocalEnvironmentBootstrapsChanged?: (listener: () => void) => () => void;
   getLocalEnvironmentEnabled: () => boolean;
   setLocalEnvironmentEnabled: (enabled: boolean) => Promise<void>;
   /** The environment ID recorded in this app's T3 home, such as its own machine's background service. */
@@ -1267,9 +1292,21 @@ export type DesktopPreviewAnnotationVoiceState =
 export const DesktopPreviewPickElementInputSchema = Schema.Struct({
   tabId: DesktopPreviewTabIdSchema,
   voice: Schema.optional(DesktopPreviewAnnotationVoiceConfigSchema),
+  pins: Schema.optional(Schema.Boolean),
 });
 
+export const DesktopPreviewPinActionSchema = Schema.Struct({
+  tabId: DesktopPreviewTabIdSchema,
+  action: Schema.Literals(["send", "accepted", "close"]),
+  ids: Schema.Array(Schema.String),
+});
 export interface DesktopPreviewBridge {
+  pinAction?: (
+    tabId: string,
+    action: "send" | "accepted" | "close",
+    ids: readonly string[],
+  ) => Promise<void>;
+  onPinState?: (listener: (tabId: string, count: number) => void) => () => void;
   setForwardedShortcuts: (shortcuts: ReadonlyArray<PreviewForwardedShortcut>) => Promise<void>;
   createTab: (tabId: string, defaults?: DesktopPreviewTabDefaults) => Promise<void>;
   closeTab: (tabId: string) => Promise<void>;
@@ -1322,6 +1359,7 @@ export interface DesktopPreviewBridge {
   pickElement: (
     tabId: string,
     voice?: DesktopPreviewAnnotationVoiceConfig,
+    pins?: boolean,
   ) => Promise<PreviewAnnotationSubmissionResult | null>;
   cancelPickElement: (tabId: string) => Promise<void>;
   captureScreenshot: (

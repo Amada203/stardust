@@ -1,3 +1,5 @@
+import { useUiText } from "~/i18n/useUiText";
+
 import type {
   EnvironmentProject,
   EnvironmentThreadShell,
@@ -85,6 +87,7 @@ interface ChatTerminalActionsInput {
  * code blocks, which run in a reused or new drawer terminal.
  */
 export function useChatTerminalActions(input: ChatTerminalActionsInput) {
+  const uiText = useUiText();
   const {
     environmentId,
     composerRef,
@@ -309,7 +312,7 @@ export function useChatTerminalActions(input: ChatTerminalActionsInput) {
         toastManager.add(
           stackedThreadToast({
             type: "error",
-            title: "Could not open preview",
+            title: uiText("Could not open preview"),
             description: error instanceof Error ? error.message : "An unexpected error occurred.",
           }),
         );

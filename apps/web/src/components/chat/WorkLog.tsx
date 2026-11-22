@@ -1,3 +1,6 @@
+import { useUiText } from "~/i18n/useUiText";
+import { conversationLabel } from "~/i18n/conversationLabel";
+import { Tooltip, TooltipTrigger, TooltipPopup } from "../ui/tooltip";
 import {
   createContext,
   use,
@@ -51,6 +54,8 @@ type RowContent = {
 };
 
 function WorkLogLine({ icon, label, trailing, wrapLabel }: RowContent) {
+  const text = useUiText();
+  const localized = typeof label === "string" ? conversationLabel(label, text) : label;
   return (
     <div
       className={cn(
@@ -72,7 +77,16 @@ function WorkLogLine({ icon, label, trailing, wrapLabel }: RowContent) {
             !wrapLabel && "truncate [&_*]:whitespace-nowrap",
           )}
         >
-          {label}
+          {typeof label === "string" &&
+          /MCP server requires OAuth/.test(label) &&
+          localized !== label ? (
+            <Tooltip>
+              <TooltipTrigger render={<span />}>{localized}</TooltipTrigger>
+              <TooltipPopup>{label}</TooltipPopup>
+            </Tooltip>
+          ) : (
+            localized
+          )}
         </div>
       </div>
       {trailing}

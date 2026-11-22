@@ -5,10 +5,13 @@ import type {
 } from "@t3tools/contracts";
 import {
   buildProjectGroups,
+  deriveLogicalProjectKey,
+  deriveLogicalProjectKeyFromSettings,
   derivePhysicalProjectKey,
-  resolveScratchProjectScopeKey,
   type ProjectGroupingSettings,
-} from "@t3tools/client-runtime/state/project-grouping";
+} from "./logicalProject";
+import { resolveScratchProjectScopeKey } from "@t3tools/client-runtime/state/project-grouping";
+import { buildWorkspaceCollections, isWorkspaceCollectionKey } from "./workspaceCollections";
 import type { Project } from "./types";
 
 export const PROJECT_GROUPING_MODE_LABELS: Record<SidebarProjectGroupingMode, string> = {
@@ -36,6 +39,10 @@ export interface SidebarProjectGroupMember extends Project {
 }
 
 export interface SidebarProjectSnapshot extends Project {
+  sourceProjectKey?: string;
+  providerLabel?: string;
+  providerThreadKeys?: ReadonlySet<string>;
+  providerModelSelection?: Project["defaultModelSelection"];
   projectKey: string;
   displayName: string;
   groupedProjectCount: number;
@@ -74,7 +81,7 @@ export function getSidebarProjectSettingsKey(
   projects: ReadonlyArray<Project>,
   projectRef?: ScopedProjectRef,
 ): string {
-  if (!group.isScratch) return group.projectKey;
+  if (!group.isScratch && !isWorkspaceCollectionKey(group.projectKey)) return group.projectKey;
   const project =
     group.memberProjects.find(
       (member) =>
@@ -83,9 +90,12 @@ export function getSidebarProjectSettingsKey(
     group.memberProjects.find((member) => member.environmentId === projectRef?.environmentId) ??
     group;
   return (
-    buildPhysicalToLogicalProjectKeyMap({ projects, settings, primaryEnvironmentId: null }).get(
-      derivePhysicalProjectKey(project),
-    ) ?? group.projectKey
+    buildPhysicalToLogicalProjectKeyMap({
+      projects,
+      settings,
+      primaryEnvironmentId: null,
+      workspaceCollections: false,
+    }).get(derivePhysicalProjectKey(project)) ?? group.projectKey
   );
 }
 
@@ -96,15 +106,38 @@ export function resolveSidebarProjectScopeKey(input: {
   readonly canClearMissingScope?: boolean;
 }): string | null {
   if (input.key === null) return null;
-  const group =
-    input.groups.find((candidate) => candidate.projectKey === input.key) ??
-    input.groups.find(
-      (candidate) =>
+  const exact = input.groups.find((candidate) => candidate.projectKey === input.key);
+  if (exact) return exact.projectKey;
+  const matches = input.groups.filter((candidate) => {
+    if (!isWorkspaceCollectionKey(candidate.projectKey)) {
+      return (
         candidate.isScratch &&
         resolveScratchProjectScopeKey(input.key, candidate.memberProjects, input.settings) ===
-          candidate.projectKey,
+          candidate.projectKey
+      );
+    }
+    return (
+      candidate.memberProjects.some((member) => {
+        if (member.physicalProjectKey === input.key) return true;
+        // A scratch workspace may have been saved before its config arrived.
+        const project = { ...member };
+        delete project.isScratch;
+        const logicalKey = input.settings
+          ? deriveLogicalProjectKeyFromSettings(project, input.settings)
+          : deriveLogicalProjectKey(project);
+        return logicalKey === input.key;
+      }) ||
+      (candidate.memberProjects.every((member) => member.isScratch) &&
+        candidate.memberProjects.some(
+          (member) => deriveLogicalProjectKey(member, { groupScratchProjects: true }) === input.key,
+        ))
     );
-  return group?.projectKey ?? (input.canClearMissingScope ? null : input.key);
+  });
+  return matches.length === 1
+    ? matches[0]!.projectKey
+    : input.canClearMissingScope
+      ? null
+      : input.key;
 }
 
 export function resolveSidebarProjectScopeKeys(input: {
@@ -122,12 +155,17 @@ export function buildPhysicalToLogicalProjectKeyMap(input: {
   projects: ReadonlyArray<Project>;
   settings: ProjectGroupingSettings;
   primaryEnvironmentId: EnvironmentId | null;
+  workspaceCollections?: boolean;
+  legacyCategoryRules?: Parameters<typeof buildWorkspaceCollections>[0]["legacyCategoryRules"];
 }): Map<string, string> {
   const mapping = new Map<string, string>();
-  const groups = buildProjectGroups({
+  const buildGroups =
+    input.workspaceCollections === true ? buildWorkspaceCollections : buildProjectGroups;
+  const groups = buildGroups({
     projects: input.projects,
     settings: input.settings,
     preferredEnvironmentId: input.primaryEnvironmentId,
+    legacyCategoryRules: input.legacyCategoryRules,
   });
   for (const group of groups) {
     for (const member of group.members) {
@@ -143,14 +181,19 @@ export function buildSidebarProjectSnapshots(input: {
   groupScratchProjects?: boolean;
   primaryEnvironmentId: EnvironmentId | null;
   resolveEnvironmentLabel: (environmentId: EnvironmentId) => string | null;
+  workspaceCollections?: boolean;
+  legacyCategoryRules?: Parameters<typeof buildWorkspaceCollections>[0]["legacyCategoryRules"];
   isDesktopLocalEnvironment?: (environmentId: EnvironmentId) => boolean;
   isWslEnvironment?: (environmentId: EnvironmentId) => boolean;
 }): SidebarProjectSnapshot[] {
-  return buildProjectGroups({
+  const buildGroups =
+    input.workspaceCollections === true ? buildWorkspaceCollections : buildProjectGroups;
+  return buildGroups({
     projects: input.projects,
     groupScratchProjects: input.groupScratchProjects ?? false,
     settings: input.settings,
     preferredEnvironmentId: input.primaryEnvironmentId,
+    legacyCategoryRules: input.legacyCategoryRules,
   }).map((group): SidebarProjectSnapshot => {
     const members = group.members.map(
       ({ physicalProjectKey, project }): SidebarProjectGroupMember => ({
@@ -190,6 +233,7 @@ export function buildSidebarProjectSnapshots(input: {
 
     return {
       ...representative,
+      ...(input.workspaceCollections === true ? { title: group.label } : {}),
       projectKey: group.key,
       displayName: group.label,
       groupedProjectCount: members.length,

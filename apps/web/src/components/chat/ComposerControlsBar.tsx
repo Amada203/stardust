@@ -1,3 +1,5 @@
+import { useUiText } from "~/i18n/useUiText";
+
 import type { ChatComposerProps } from "./ChatComposer";
 import type { PromptUltrathink } from "./TraitsPicker";
 import type { ProviderInstanceEntry } from "../../providerInstances";
@@ -24,6 +26,7 @@ import { resolveComposerTraitsInput } from "./composerProviderState";
 import { useApplyThreadModelPick } from "./useApplyThreadModelPick";
 import { useStableCallback } from "../../hooks/useStableCallback";
 import {
+  ComposerEffortMenu,
   ComposerEffortColumn,
   ComposerPickerFooter,
   describeComposerEffort,
@@ -32,11 +35,11 @@ import type { useComposerProviderModel } from "./useComposerProviderModel";
 import { resolveComposerControlsOwnership } from "./composerControlsOwnership";
 
 /**
- * The composer footer controls: the model picker (which also holds effort, speed and
- * permissions), mode controls and the overflow menu for blocks that do not fit. Rendered in the
+ * The composer footer controls: separate model and parameter pickers,
+ * mode controls and the overflow menu for blocks that do not fit. Rendered in the
  * expanded footer or the resting controls host.
  */
-// Model and effort share one trigger; it stays filled while its popup is open.
+// Separate model selection from effort, speed and permissions.
 const MODEL_TRIGGER_STATES = "data-popup-open:bg-accent data-popup-open:text-foreground";
 
 export function ComposerControlsBar(props: {
@@ -87,6 +90,9 @@ export function ComposerControlsBar(props: {
   modelPickerIconClassName: string | undefined;
   getModelDisabledReason: ChatComposerProps["getModelDisabledReason"];
 }) {
+  const uiText = useUiText();
+  // Always unify Model + Cosmic Reasoning Effort + Permissions inside one clean picker capsule.
+  const unifiedModelPicker = true;
   const {
     environmentId,
     routeKind,
@@ -101,7 +107,7 @@ export function ComposerControlsBar(props: {
     promptUltrathink,
     onPromptEdit,
     compatibleRuntimeMode,
-    defaultRuntimeMode,
+    defaultRuntimeMode: _defaultRuntimeMode,
     compatibleRuntimeModeOptions,
     handleRuntimeModeChange,
     composerControlsCollapsed,
@@ -131,7 +137,9 @@ export function ComposerControlsBar(props: {
     modelPickerIconClassName,
     getModelDisabledReason,
   } = props;
-  const accessMatchesDefault = compatibleRuntimeMode === defaultRuntimeMode;
+  // V9: only full access stays out of the footer; Auto and Supervised always show their capsule,
+  // whatever the user's default is.
+  const accessMatchesDefault = compatibleRuntimeMode === "full-access";
   const {
     accessDisplay,
     showModeBlock,
@@ -183,6 +191,24 @@ export function ComposerControlsBar(props: {
   // Its own element, so typing (which rebuilds the controls around it) leaves it cached.
   const composerModelPicker = (
     <ComposerModelPicker
+      {...(unifiedModelPicker
+        ? {
+            triggerSuffix: effort.suffix,
+            triggerDetail: effort.detail,
+            triggerShortcuts: pickerOwnsModeShortcut
+              ? "composer.effort composer.mode"
+              : "composer.effort",
+            effortColumn: <ComposerEffortColumn traits={traitsInput} />,
+            footer: (
+              <ComposerPickerFooter
+                traits={traitsInput}
+                runtimeMode={compatibleRuntimeMode}
+                runtimeModeOptions={compatibleRuntimeModeOptions}
+                onRuntimeModeChange={handleRuntimeModeChange}
+              />
+            ),
+          }
+        : {})}
       environmentId={environmentId}
       workspaceCwd={props.workspaceCwd}
       compact={false}
@@ -216,20 +242,6 @@ export function ComposerControlsBar(props: {
         MODEL_TRIGGER_STATES,
         composerControlsCollapsed ? "min-w-13 shrink text-xs!" : "min-w-13",
       )}
-      triggerSuffix={effort.suffix}
-      triggerDetail={effort.detail}
-      triggerShortcuts={
-        pickerOwnsModeShortcut ? "composer.effort composer.mode" : "composer.effort"
-      }
-      effortColumn={<ComposerEffortColumn traits={traitsInput} />}
-      footer={
-        <ComposerPickerFooter
-          traits={traitsInput}
-          runtimeMode={compatibleRuntimeMode}
-          runtimeModeOptions={compatibleRuntimeModeOptions}
-          onRuntimeModeChange={handleRuntimeModeChange}
-        />
-      }
       terminalOpen={terminalOpen}
       open={modelPickerOpen}
       instanceIndicatorBackground={
@@ -258,12 +270,10 @@ export function ComposerControlsBar(props: {
       className="shrink-0"
     >
       <CircleAlertIcon className="size-4" />
-      {providerSetupInstanceId ? "Open provider settings" : "No provider available"}
+      {providerSetupInstanceId ? uiText("Open provider settings") : uiText("No provider available")}
     </ComposerControl>
   ) : (
     <>
-      {composerModelPicker}
-
       <>
         {restingBlockDefs.map((def, index) => {
           const hidden = index >= restingBlockDefs.length - restingHiddenBlockCount;
@@ -307,6 +317,25 @@ export function ComposerControlsBar(props: {
           />
         </div>
       </>
+      {composerModelPicker}
+      {!unifiedModelPicker && (
+        <ComposerEffortMenu
+          traits={traitsInput}
+          modelLabel={
+            selectedProviderModels.find((model) => model.slug === selectedModel)?.name ??
+            selectedModel
+          }
+          suffix={effort.suffix}
+          detail={effort.detail}
+          size={controlSize}
+          hidden={composerControlsHidden}
+          disabled={providerCatalogPending || isSendBusy}
+          ownsModeShortcut={pickerOwnsModeShortcut}
+          runtimeMode={compatibleRuntimeMode}
+          runtimeModeOptions={compatibleRuntimeModeOptions}
+          onRuntimeModeChange={handleRuntimeModeChange}
+        />
+      )}
     </>
   );
 }

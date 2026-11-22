@@ -1,3 +1,5 @@
+import { useUiText } from "~/i18n/useUiText";
+
 import { useRef, useSyncExternalStore, use } from "react";
 import { useSyncExternalStoreWithSelector } from "use-sync-external-store/with-selector";
 import { RegistryContext, useAtomValue } from "@effect/atom-react";
@@ -451,6 +453,7 @@ export async function prepareModelPreferencesPatch(
 }
 
 export function useUpdateEnvironmentModelPreferences(environmentId: EnvironmentId | null) {
+  const uiText = useUiText();
   const settings = useAtomValue(
     environmentId ? serverEnvironment.settingsValueAtom(environmentId) : noEnvironmentSettingsAtom,
   );
@@ -463,20 +466,27 @@ export function useUpdateEnvironmentModelPreferences(environmentId: EnvironmentI
     } catch {
       toastManager.add({
         type: "error",
-        title: "Model preferences not saved",
-        description: "Could not load saved model preferences. Try again.",
+        title: uiText("Model preferences not saved"),
+        description: uiText("Could not load saved model preferences. Try again."),
       });
       return;
     }
     return save({ environmentId, input: { patch: prepared } });
   };
 }
-
 /** Send the desired state so two clients adding a favorite do not cancel each other. */
 export function useToggleEnvironmentModelFavorite(environmentId: EnvironmentId | null) {
+  const uiText = useUiText();
   const registry = use(RegistryContext);
   const pendingFavorites = useRef(
-    new Map<string, { favorite: boolean; settings: ServerSettings; pending: boolean }>(),
+    new Map<
+      string,
+      {
+        favorite: boolean;
+        settings: ServerSettings;
+        pending: boolean;
+      }
+    >(),
   );
   const save = useUpdateEnvironmentModelPreferences(environmentId);
   return async (provider: ProviderInstanceId, model: string) => {
@@ -490,8 +500,8 @@ export function useToggleEnvironmentModelFavorite(environmentId: EnvironmentId |
       } catch {
         toastManager.add({
           type: "error",
-          title: "Favorites not saved",
-          description: "Could not load saved model preferences. Try again.",
+          title: uiText("Favorites not saved"),
+          description: uiText("Could not load saved model preferences. Try again."),
         });
         return;
       }
@@ -598,11 +608,11 @@ function useSharedSettingsSyncTargetIds(includePending = false): ReadonlyArray<E
       : [];
   });
 }
-
 function useUpdateSettingsTarget(environmentId: EnvironmentId | null) {
+  const uiText = useUiText();
   useEnvironmentScope(environmentId, AuthSettingsWriteScope);
   const persist = useAtomCommand(serverEnvironment.updateSettings, {
-    label: "server settings update",
+    label: uiText("server settings update"),
     reportFailure: false,
   });
   const { environments } = useEnvironments();
@@ -619,7 +629,7 @@ function useUpdateSettingsTarget(environmentId: EnvironmentId | null) {
       const error = squashAtomCommandFailure(result);
       toastManager.add({
         type: "error",
-        title: "Setting not saved",
+        title: uiText("Setting not saved"),
         description: `Could not save on ${label}: ${error instanceof Error ? error.message : "The save failed. Try reconnecting and saving again."}`,
       });
     }
@@ -641,7 +651,7 @@ function useUpdateSettingsTarget(environmentId: EnvironmentId | null) {
       options?.onFailed?.();
       toastManager.add({
         type: "warning",
-        title: "Setting not saved",
+        title: uiText("Setting not saved"),
         description: `This connection lacks permission to change settings on ${environments.find((target) => target.environmentId === environmentId)?.label ?? "the selected environment"}.`,
       });
     }
@@ -652,7 +662,7 @@ function useUpdateSettingsTarget(environmentId: EnvironmentId | null) {
         options?.onFailed?.();
         return toastManager.add({
           type: "warning",
-          title: "Setting not saved",
+          title: uiText("Setting not saved"),
           description,
         });
       };
@@ -743,7 +753,10 @@ function useUpdateSettingsTarget(environmentId: EnvironmentId | null) {
               .map(({ label }) => label);
             toastManager.add({
               type: "error",
-              title: saved.length > 0 ? "Setting saved on some environments" : "Setting not saved",
+              title:
+                saved.length > 0
+                  ? "Setting saved on some environments"
+                  : uiText("Setting not saved"),
               description: [
                 ...failures,
                 ...(saved.length > 0 ? [`Saved on ${saved.join(", ")}.`] : []),
@@ -791,4 +804,10 @@ export function __setClientSettingsForTests(settings: ClientSettings): void {
   clientSettingsSnapshot = settings;
   clientSettingsHydrationStatus = "ready";
   clientSettingsHydrationPromise = null;
+}
+
+export function useLegacySidebarEnabled() {
+  return useClientSettings(
+    (settings) => settings.legacySidebarEnabled && !settings.boringSidebarEnabled,
+  );
 }

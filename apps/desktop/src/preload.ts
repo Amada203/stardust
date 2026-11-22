@@ -13,6 +13,14 @@ import { contextBridge, ipcRenderer, webFrame, webUtils } from "electron";
 
 import * as IpcChannels from "./ipc/channels.ts";
 import { mergeLegacyLocalStorage } from "./legacyLocalStorageMerge.ts";
+import { createLocalBootstrapCache } from "./localBootstrapCache.ts";
+const localBootstraps = createLocalBootstrapCache(() => {
+  const result = ipcRenderer.sendSync(IpcChannels.GET_LOCAL_ENVIRONMENT_BOOTSTRAPS_CHANNEL);
+  return Array.isArray(result) ? result : [];
+});
+ipcRenderer.on(IpcChannels.LOCAL_ENVIRONMENT_BOOTSTRAPS_CHANGED_CHANNEL, (_event, entries) => {
+  if (Array.isArray(entries)) localBootstraps.update(entries);
+});
 
 const SNAP_SHOT_EVENT_TYPES = new Set([
   "requested",
@@ -23,7 +31,10 @@ const SNAP_SHOT_EVENT_TYPES = new Set([
 ]);
 function isSnapShotEvent(value: unknown): value is DesktopSnapShotEvent {
   if (typeof value !== "object" || value === null) return false;
-  const { type, id } = value as { type?: unknown; id?: unknown };
+  const { type, id } = value as {
+    type?: unknown;
+    id?: unknown;
+  };
   return (
     typeof type === "string" &&
     SNAP_SHOT_EVENT_TYPES.has(type) &&
@@ -145,13 +156,8 @@ contextBridge.exposeInMainWorld("desktopBridge", {
     );
     return Array.isArray(result) ? result.filter((tag) => typeof tag === "string") : [];
   },
-  getLocalEnvironmentBootstraps: () => {
-    const result = ipcRenderer.sendSync(IpcChannels.GET_LOCAL_ENVIRONMENT_BOOTSTRAPS_CHANNEL);
-    if (!Array.isArray(result)) {
-      return [];
-    }
-    return result as ReturnType<DesktopBridge["getLocalEnvironmentBootstraps"]>;
-  },
+  getLocalEnvironmentBootstraps: localBootstraps.read,
+  onLocalEnvironmentBootstrapsChanged: localBootstraps.subscribe,
   getLocalEnvironmentBearerToken: () =>
     ipcRenderer.invoke(IpcChannels.GET_LOCAL_ENVIRONMENT_BEARER_TOKEN_CHANNEL),
   getLocalEnvironmentEnabled: () =>
@@ -447,8 +453,16 @@ contextBridge.exposeInMainWorld("desktopBridge", {
       update: (state) =>
         ipcRenderer.invoke(IpcChannels.PREVIEW_ANNOTATION_VOICE_STATE_CHANNEL, state),
     },
-    pickElement: (tabId, voice) =>
-      ipcRenderer.invoke(IpcChannels.PREVIEW_PICK_ELEMENT_CHANNEL, { tabId, voice }),
+    pinAction: (tabId, action, ids) =>
+      ipcRenderer.invoke(IpcChannels.PREVIEW_PIN_ACTION_CHANNEL, { tabId, action, ids }),
+    onPinState: (listener) => {
+      const wrapped = (_event: Electron.IpcRendererEvent, tabId: string, count: number) =>
+        listener(tabId, count);
+      ipcRenderer.on(IpcChannels.PREVIEW_PIN_STATE_CHANNEL, wrapped);
+      return () => ipcRenderer.removeListener(IpcChannels.PREVIEW_PIN_STATE_CHANNEL, wrapped);
+    },
+    pickElement: (tabId, voice, pins) =>
+      ipcRenderer.invoke(IpcChannels.PREVIEW_PICK_ELEMENT_CHANNEL, { tabId, voice, pins }),
     cancelPickElement: (tabId) =>
       ipcRenderer.invoke(IpcChannels.PREVIEW_CANCEL_PICK_ELEMENT_CHANNEL, { tabId }),
     captureScreenshot: (tabId) =>

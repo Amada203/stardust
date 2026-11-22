@@ -1,3 +1,5 @@
+import { useUiText } from "~/i18n/useUiText";
+
 import {
   useId,
   useRef,
@@ -66,6 +68,7 @@ export function ColorSaturationValuePlane({
   className,
   variant = "inset",
 }: ColorControlProps<HsvColor> & { variant?: "inset" | "edge" }) {
+  const uiText = useUiText();
   const instructionsId = useId();
   const saturationRef = useRef<HTMLInputElement>(null);
   const { handlers, thumbTransition } = useColorDrag(
@@ -122,8 +125,9 @@ export function ColorSaturationValuePlane({
       {...handlers}
     >
       <span id={instructionsId} className="sr-only">
-        Use arrow keys to adjust the focused value. Hold Shift for larger steps. Use Home and End
-        for the minimum and maximum. Press Tab to move between saturation and brightness.
+        {uiText(
+          "Use arrow keys to adjust the focused value. Hold Shift for larger steps. Use Home and End for the minimum and maximum. Press Tab to move between saturation and brightness.",
+        )}
       </span>
       {(
         [

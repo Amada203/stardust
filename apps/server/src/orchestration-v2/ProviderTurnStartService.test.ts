@@ -1,3 +1,4 @@
+import type { MemoryState } from "@t3tools/contracts";
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { expect, it, vi } from "vite-plus/test";
@@ -92,11 +93,11 @@ const normalize = (target: string) => {
   }
   return `/${parts.join("/")}`;
 };
-const layerWorktreeLocation = (worktreesDir = managedWorktreesDir) =>
+const layerWorktreeLocation = (worktreesDir = managedWorktreesDir, memory?: MemoryState) =>
   Layer.mergeAll(
     Path.layer,
     Layer.mock(ServerConfig.ServerConfig)({ worktreesDir } as ServerConfig.ServerConfig["Service"]),
-    ServerSettings.layerTest(),
+    ServerSettings.layerTest(memory === undefined ? {} : { memory }),
   );
 
 function startWithMissingWorktree(
@@ -389,6 +390,7 @@ it.each([
 });
 
 function makeLocalCommandHarness(input: {
+  readonly memory?: MemoryState;
   readonly text: string;
   readonly manualContinuation?: boolean;
   readonly nativeResumeUnsupported?: boolean;
@@ -1256,7 +1258,7 @@ function makeLocalCommandHarness(input: {
         }),
         IdAllocator.layer,
         Layer.mock(TurnItemPositionStore.TurnItemPositionStoreV2)({}),
-        layerWorktreeLocation(input.worktreesDir),
+        layerWorktreeLocation(input.worktreesDir, input.memory),
         input.fileSystem === undefined
           ? FileSystem.layerNoop({ exists: () => Effect.succeed(true) })
           : Layer.succeed(FileSystem.FileSystem, input.fileSystem),
@@ -2149,6 +2151,7 @@ effectIt.effect.each([
     context: "SIDE_CHAT_CONTEXT",
   },
   { contextRun: "delivered", runtimeMode: "full-access", context: "" },
+  { contextRun: "delivered", runtimeMode: "full-access", context: "", withMemory: true },
   { contextRun: "delivered", runtimeMode: "full-access", context: "", unsentResume: true },
   {
     contextRun: "delivered",
@@ -2180,12 +2183,30 @@ effectIt.effect.each([
   },
 ] as const)(
   "sends side chat context inline once, for the first turn that reaches the provider: %j",
-  ({ runtimeMode, context, ...sideChat }) =>
+  ({ runtimeMode, context, ...scenario }) =>
     Effect.gen(function* () {
+      const { withMemory: _withMemory, ...sideChat } = { withMemory: false, ...scenario };
       const harness = makeLocalCommandHarness({
         text: "",
         manualContinuation: true,
         sideChat,
+        ...(_withMemory
+          ? {
+              memory: {
+                pending: [],
+                approved: [
+                  {
+                    id: "approved-fact",
+                    text: "Keep reviewed context",
+                    scope: { kind: "global" },
+                    createdAt: "2026-01-01T00:00:00Z",
+                    updatedAt: "2026-01-01T00:00:00Z",
+                    source: { kind: "user" },
+                  },
+                ],
+              },
+            }
+          : {}),
       });
 
       yield* harness.start;

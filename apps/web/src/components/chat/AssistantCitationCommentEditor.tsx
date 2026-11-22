@@ -1,3 +1,5 @@
+import { useUiText } from "~/i18n/useUiText";
+
 import { ASSISTANT_CITATION_MAX_COMMENT_LENGTH, type AssistantCitation } from "@t3tools/contracts";
 import { use, useEffect, useRef, useState, type RefObject } from "react";
 
@@ -24,6 +26,7 @@ export function AssistantCitationCommentEditor({
   onDraftChange?: (comment: string) => void;
   onVoiceSetupOpenChange?: (open: boolean) => void;
 }) {
+  const uiText = useUiText();
   const [comment, setComment] = useState(citation.comment ?? "");
   const localInputRef = useRef<HTMLTextAreaElement | null>(null);
   const textareaRef = inputRef ?? localInputRef;
@@ -120,7 +123,7 @@ export function AssistantCitationCommentEditor({
           onPointerDown={(event) => event.preventDefault()}
           onClick={onCancel}
         >
-          Cancel
+          {uiText("Cancel")}
         </Button>
         <Button
           size="xs"
@@ -128,7 +131,7 @@ export function AssistantCitationCommentEditor({
           onPointerDown={(event) => event.preventDefault()}
           onClick={submit}
         >
-          {commentTooLong ? "Shorten comment" : "Save"}
+          {commentTooLong ? uiText("Shorten comment") : uiText("Save")}
         </Button>
       </div>
     </div>

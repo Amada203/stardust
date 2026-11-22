@@ -1,3 +1,5 @@
+import { useUiText } from "~/i18n/useUiText";
+
 import {
   ANTIGRAVITY_DEFAULT_MODEL,
   type ProviderInstanceId,
@@ -20,6 +22,7 @@ import { Badge } from "../ui/badge";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { cn } from "~/lib/utils";
+import "./composerV9.css";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { ModelPickerContent, resolveModelPickerSelectedModel } from "./ModelPickerContent";
 import { retainedModelWhileProviderLocked } from "./ProviderModelPicker.logic";
@@ -128,6 +131,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
   effortColumn?: ReactNode;
   footer?: ReactNode;
 }) {
+  const uiText = useUiText();
   const composerFloatingLayerProps = useComposerMenuProps();
   const [uncontrolledIsMenuOpen, setUncontrolledIsMenuOpen] = useState(false);
   const isMenuOpen = props.open ?? uncontrolledIsMenuOpen;
@@ -171,7 +175,9 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
       ? undefined
       : selectedInstanceOptions[0]);
   const triggerTitle = selectedModel
-    ? getTriggerDisplayModelName(selectedModel, activeEntry?.driverKind)
+    ? props.isComposerOwned
+      ? getDisplayModelName(selectedModel)
+      : getTriggerDisplayModelName(selectedModel, activeEntry?.driverKind)
     : props.model === ANTIGRAVITY_DEFAULT_MODEL
       ? "Choose model"
       : props.model || "Choose model";
@@ -211,6 +217,13 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
   const openTarget = (target: "effort" | "permissions") => {
     if (target === "effort") {
       focusEffort("any");
+      return;
+    }
+    const checkedPermission = popupRef.current?.querySelector<HTMLButtonElement>(
+      '[data-composer-permission-option][aria-checked="true"]',
+    );
+    if (checkedPermission) {
+      checkedPermission.focus({ preventScroll: true });
       return;
     }
     popupRef.current
@@ -349,6 +362,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
               .join(", ")}
             size={size}
             data-chat-provider-model-picker="true"
+            data-v9-unified-model-btn={props.isComposerOwned ? "true" : undefined}
             data-composer-shortcut={props.triggerShortcuts}
             onClick={(event) => {
               if (!isMenuOpen || !docked) return;
@@ -404,7 +418,12 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
             </span>
           ) : activeEntry && props.triggerLabel === undefined ? (
             // Narrow compacted composers hide the provider icon before truncating the name.
-            <span data-chat-provider-model-picker-icon className="contents">
+            <span
+              data-chat-provider-model-picker-icon
+              data-v9-logo-chip={props.isComposerOwned ? "" : undefined}
+              data-size={props.isComposerOwned ? "trigger" : undefined}
+              className={props.isComposerOwned ? undefined : "contents"}
+            >
               <ProviderInstanceIcon
                 driverKind={activeEntry.driverKind}
                 displayName={activeEntry.displayName}
@@ -412,9 +431,16 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
                 acpRegistryAgentId={activeEntry.acpRegistryAgentId}
                 acpRegistryIconUrl={activeEntry.acpRegistryIconUrl}
                 showBadge={showInstanceBadge}
-                className="size-4"
-                iconClassName={cn("size-4", props.activeProviderIconClassName)}
-                indicatorBackground={props.instanceIndicatorBackground ?? "var(--contrast-input)"}
+                className={props.isComposerOwned ? "size-3.5" : "size-4"}
+                iconClassName={cn(
+                  props.isComposerOwned ? "size-3.5" : "size-4",
+                  props.activeProviderIconClassName,
+                )}
+                indicatorBackground={
+                  props.isComposerOwned
+                    ? "var(--v9-logo-bg)"
+                    : (props.instanceIndicatorBackground ?? "var(--contrast-input)")
+                }
                 badgeClassName={cn(
                   "right-[-0.125rem] bottom-[-0.125rem] h-3 min-w-3 px-0.5 text-5xs",
                   size === "xs" && "shadow-none",
@@ -433,7 +459,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
           {props.triggerSuffix}
           {selectedModel?.isUnavailable && !selectedEntries && props.triggerLabel === undefined ? (
             <Badge variant="outline" size="sm">
-              Unavailable
+              {uiText("Unavailable")}
             </Badge>
           ) : null}
         </span>
@@ -450,10 +476,16 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
         }}
         initialFocus={isCoarsePointer ? popupRef : searchInputRef}
         align={props.popupAlign ?? "start"}
+        data-v9-model-picker-popup
+        data-align={props.popupAlign ?? "start"}
         // Docked, the popup opens above the composer and slides over it when that space is short,
         // so a short window gets its full height (Floating UI sizes to the viewport) instead of a sliver.
         {...(docked
-          ? { side: "top" as const, collisionAvoidance: { side: "shift", align: "shift" } as const }
+          ? {
+              side: "top" as const,
+              sideOffset: 10,
+              collisionAvoidance: { side: "shift", align: "shift" } as const,
+            }
           : {})}
         className="before:hidden"
         padding="none"
@@ -461,30 +493,25 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
       >
         {props.effortColumn ? (
           <DockedPickerContext value={{ modelLabel: triggerTitle }}>
-            <div className="flex max-h-(--available-height) flex-col">
-              {/* One fixed height, so a model with more options never resizes the popup. Short
-                  windows shrink it and keep the footer. */}
-              <div className="flex h-86.5 min-h-0 max-sm:h-auto max-sm:flex-col">
-                {picker}
-                <div
-                  data-model-picker-effort
-                  className="flex min-h-0 w-48 flex-col sm:shrink-0 border-l border-border/70 bg-muted/40 max-sm:h-64 max-sm:w-full max-sm:border-t max-sm:border-l-0"
-                  onKeyDown={(event) => {
-                    if (event.key !== "ArrowLeft" || event.altKey || event.ctrlKey || event.metaKey)
-                      return;
-                    event.preventDefault();
-                    event.stopPropagation();
-                    searchInputRef.current?.focus();
-                  }}
-                >
-                  {props.effortColumn}
-                </div>
+            <div data-v9-picker-stack className="max-h-(--available-height)">
+              {picker}
+              <div
+                data-model-picker-effort
+                onKeyDown={(event) => {
+                  if (event.key !== "ArrowLeft" || event.altKey || event.ctrlKey || event.metaKey)
+                    return;
+                  event.preventDefault();
+                  event.stopPropagation();
+                  searchInputRef.current?.focus();
+                }}
+              >
+                {props.effortColumn}
               </div>
               {props.footer}
             </div>
           </DockedPickerContext>
         ) : (
-          picker
+          <div data-v9-picker-stack>{picker}</div>
         )}
         {props.selectedModels === undefined && !docked ? (
           <ChatGptSharingControl provider={activeEntry?.snapshot ?? null} />

@@ -1,3 +1,4 @@
+import { uiText } from "~/i18n";
 import { sourceControlClients } from "@t3tools/client-runtime/source-control-clients";
 
 import { resolvePullRequestAuthorFilter } from "@t3tools/contracts";
@@ -23,60 +24,54 @@ import type {
 import { isStalePullRequestReply } from "@t3tools/client-runtime/pull-request-reply";
 import { toSortableTimestamp } from "@t3tools/client-runtime/state/thread-sort";
 import type { PullRequestListSort } from "./pullRequestListPreferences";
-
 export interface EnvironmentPullRequestEntry extends PullRequestListEntry {
   readonly environmentId: EnvironmentId;
 }
-
 export interface EnvironmentPullRequestStat extends PullRequestDiffStat {
   readonly environmentId: EnvironmentId;
 }
-
 export interface EnvironmentPullRequestError extends PullRequestListProjectError {
   readonly environmentId: EnvironmentId;
 }
-
 export type PullRequestGroupKey = "reviewRequested" | "authored" | "others";
-
 export interface PullRequestGroup<Entry extends PullRequestListEntry = PullRequestListEntry> {
   readonly key: PullRequestGroupKey;
   readonly label: string;
   readonly entries: ReadonlyArray<Entry>;
 }
-
 export interface PullRequestAuthorFacet {
   readonly actor: PullRequestActor;
   readonly count: number;
   readonly mergedCount: number;
 }
-
 export interface PullRequestLabelFacet extends PullRequestLabel {
   readonly count: number;
 }
-
 export type PullRequestViewers = PullRequestListResult["viewers"];
-
-type ScopedEntry = PullRequestListEntry & { readonly environmentId?: string };
-
+type ScopedEntry = PullRequestListEntry & {
+  readonly environmentId?: string;
+};
 const pullRequestViewerKey = (entry: ScopedEntry): string =>
   `${entry.environmentId ?? ""} ${entry.host}`;
-
 const GROUP_LABELS: Record<PullRequestGroupKey, string> = {
-  reviewRequested: "Review requested",
-  authored: "Authored",
-  others: "Others",
+  get reviewRequested() {
+    return uiText("Review requested");
+  },
+  get authored() {
+    return uiText("Authored");
+  },
+  get others() {
+    return uiText("Others");
+  },
 };
-
 function normalize(value: string | null | undefined): string | null {
   const trimmed = value?.trim().toLowerCase() ?? "";
   return trimmed.length > 0 ? trimmed : null;
 }
-
 export function pullRequestLabelColor(color: string | null): string | null {
   const hex = color?.trim().replace(/^#/, "") ?? "";
   return /^[0-9a-fA-F]{6}$/.test(hex) ? `#${hex}` : null;
 }
-
 export function collectPullRequestListFacets(
   entries: ReadonlyArray<PullRequestListEntry>,
   state: PullRequestListState,

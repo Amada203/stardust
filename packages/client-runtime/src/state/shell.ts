@@ -1,3 +1,4 @@
+import { threadsInShell } from "./threadSubscriptionWakeups.ts";
 import {
   ORCHESTRATION_V2_WS_METHODS,
   type EnvironmentId,
@@ -416,6 +417,8 @@ export const makeEnvironmentShellState = Effect.fn("EnvironmentShellState.make")
       );
     }
     yield* SubscriptionRef.set(state, next);
+    if (Option.isSome(next.snapshot))
+      yield* threadsInShell(environmentId, next.snapshot.value.threads);
     if (next.snapshot !== initial.snapshot && Option.isSome(next.snapshot)) {
       yield* Queue.offer(persistence, next.snapshot.value);
     }

@@ -1,3 +1,4 @@
+import { uiText } from "~/i18n";
 import {
   type EnvironmentId,
   type ProviderInstanceId,
@@ -117,7 +118,7 @@ export function getProviderStatusMessage(status: ServerProvider): string {
         ? "Open provider setup to sign in with Google."
         : "Open provider setup to sign in.";
     }
-    return "Sign in via the CLI to authenticate again.";
+    return uiText("Sign in via the CLI to authenticate again.");
   }
   return status.status === "ready"
     ? "No models are available for this provider."

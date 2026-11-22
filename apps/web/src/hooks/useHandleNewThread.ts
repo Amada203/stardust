@@ -1,3 +1,4 @@
+import { readWorkbench } from "../components/workbench/workPresets";
 import {
   scopedProjectKey,
   scopeProjectRef,
@@ -88,6 +89,9 @@ export type NewThreadHandler = ReturnType<typeof createNewThreadHandler>;
 
 export function createNewThreadHandler(router: AnyRouter) {
   const getCurrentRouteTarget = () => {
+    // Location advances before committed match params during a concurrent draft open.
+    const draftPath = /^\/draft\/([^/]+)\/?$/.exec(router.state.location.pathname);
+    if (draftPath?.[1]) return resolveThreadRouteTarget({ draftId: draftPath[1] });
     const currentRouteParams = router.state.matches[router.state.matches.length - 1]?.params ?? {};
     return resolveThreadRouteTarget(currentRouteParams);
   };
@@ -102,6 +106,8 @@ export function createNewThreadHandler(router: AnyRouter) {
       replace?: boolean;
       /** Composer text for the draft, set before it shows. A draft with user text keeps it. */
       prompt?: string;
+      /** Always create a fresh local draft, preserving any populated draft. */
+      forceNew?: boolean;
     },
   ): Promise<{ draftId: DraftId; threadId: ThreadId } | null> => {
     const projects = readProjects();
@@ -242,13 +248,14 @@ export function createNewThreadHandler(router: AnyRouter) {
       ? scopeThreadRef(storedDraftThread.environmentId, storedDraftThread.threadId)
       : null;
     const reusableStoredDraftThread =
+      !options?.forceNew &&
       storedDraftThread !== null &&
       storedDraftThread.promotedTo == null &&
       storedDraftThreadRef !== null &&
       readThreadShell(storedDraftThreadRef) === null
         ? storedDraftThread
         : null;
-    if (storedDraftThreadRef && reusableStoredDraftThread === null) {
+    if (!options?.forceNew && storedDraftThreadRef && reusableStoredDraftThread === null) {
       markPromotedDraftThreadByRef(storedDraftThreadRef);
     }
     const emptyStoredDraftThread =
@@ -273,9 +280,6 @@ export function createNewThreadHandler(router: AnyRouter) {
           workspaceContext = pickExplicitWorkspaceOptions(options);
         } else if (!isDraftAlreadyOpen) {
           const defaultEnvMode = await resolveDefaultEnvMode();
-          if (abandonedSinceRequest()) {
-            return null;
-          }
           // Concurrent calls may change the draft; stale resets, remaps, or navigation could clobber it.
           const routeTargetNow = getCurrentRouteTarget();
           const openedMeanwhile =
@@ -289,7 +293,24 @@ export function createNewThreadHandler(router: AnyRouter) {
           const investedMeanwhile = composerDraftHasUserContent(
             getComposerDraft(emptyStoredDraftThread.draftId),
           );
-          if (openedMeanwhile || promotedMeanwhile || remappedMeanwhile || investedMeanwhile) {
+          if (
+            openedMeanwhile &&
+            !promotedMeanwhile &&
+            !remappedMeanwhile &&
+            (project === undefined || readProject(projectRef) !== null)
+          ) {
+            seedPrompt(emptyStoredDraftThread.draftId);
+            return {
+              draftId: emptyStoredDraftThread.draftId,
+              threadId: emptyStoredDraftThread.threadId,
+            };
+          }
+          if (
+            abandonedSinceRequest() ||
+            promotedMeanwhile ||
+            remappedMeanwhile ||
+            investedMeanwhile
+          ) {
             return null;
           }
           workspaceContext = {
@@ -356,6 +377,7 @@ export function createNewThreadHandler(router: AnyRouter) {
     }
 
     if (
+      !options?.forceNew &&
       latestActiveDraftThread &&
       currentRouteTarget?.kind === "draft" &&
       latestActiveDraftThread.logicalProjectKey === logicalProjectKey &&
@@ -389,12 +411,29 @@ export function createNewThreadHandler(router: AnyRouter) {
     const createdAt = new Date().toISOString();
     return (async () => {
       const initialEnvMode = options?.envMode ?? (await resolveDefaultEnvMode());
+      const racedDraft = getDraftSessionByLogicalProjectKey(logicalProjectKey);
       if (abandonedSinceRequest()) {
+        const routeTargetNow = getCurrentRouteTarget();
+        if (
+          !options?.forceNew &&
+          racedDraft &&
+          routeTargetNow?.kind === "draft" &&
+          routeTargetNow.draftId === racedDraft.draftId &&
+          (project === undefined || readProject(projectRef) !== null) &&
+          !hasBranchOption &&
+          !hasWorktreePathOption &&
+          !hasEnvModeOption &&
+          !hasStartFromOriginOption &&
+          readThreadShell(scopeThreadRef(racedDraft.environmentId, racedDraft.threadId)) === null
+        ) {
+          seedPrompt(racedDraft.draftId);
+          return { draftId: racedDraft.draftId, threadId: racedDraft.threadId };
+        }
         return null;
       }
       // Reuse drafts registered while awaiting so their pending navigation cannot lose them.
-      const racedDraft = getDraftSessionByLogicalProjectKey(logicalProjectKey);
       if (
+        !options?.forceNew &&
         racedDraft &&
         racedDraft.draftId !== storedDraftThread?.draftId &&
         readThreadShell(scopeThreadRef(racedDraft.environmentId, racedDraft.threadId)) === null
@@ -429,10 +468,28 @@ export function createNewThreadHandler(router: AnyRouter) {
         runtimeMode: defaultRuntimeMode,
         ...(carryInteractionMode ? { interactionMode: carryInteractionMode } : {}),
       });
-      applyStickyState(draftId);
-      const modelSelectionOverride = resolveModelSelectionOverride(draftId);
-      if (modelSelectionOverride) {
-        setModelSelection(draftId, modelSelectionOverride, { replaceOptions: true });
+      const presets = readWorkbench().scopes[projectRef.environmentId];
+      const preset = presets?.selectedId ? presets.presets[presets.selectedId] : undefined;
+      const presetProvider = preset
+        ? environmentServerConfigs
+            .get(projectRef.environmentId)
+            ?.providers.find((provider) => provider.instanceId === preset.selection.instanceId)
+        : undefined;
+      if (
+        preset &&
+        presetProvider?.enabled &&
+        presetProvider.models.some((model) => model.slug === preset.selection.model) &&
+        !hasExplicitComposerModelSelection(getComposerDraft(draftId))
+      ) {
+        setModelSelection(draftId, preset.selection, { replaceOptions: true });
+      }
+      // Draft creation may have captured an explicit work-style preset.
+      if (!hasExplicitComposerModelSelection(getComposerDraft(draftId))) {
+        applyStickyState(draftId);
+        const modelSelectionOverride = resolveModelSelectionOverride(draftId);
+        if (modelSelectionOverride) {
+          setModelSelection(draftId, modelSelectionOverride, { replaceOptions: true });
+        }
       }
       seedPrompt(draftId);
       await router.navigate({

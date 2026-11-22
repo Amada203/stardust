@@ -51,10 +51,12 @@ function AlertDialogViewport({ className, ...props }: AlertDialogPrimitive.Viewp
 function AlertDialogPopup({
   className,
   bottomStickOnMobile = true,
+  variant = "default",
   portalContainer,
   ...props
 }: AlertDialogPrimitive.Popup.Props & {
   bottomStickOnMobile?: boolean;
+  variant?: "default" | "usage-reset";
   portalContainer?: AlertDialogPrimitive.Portal.Props["container"];
 }) {
   const { popupRef, initialFocus } = useDialogActionInitialFocus();
@@ -64,6 +66,7 @@ function AlertDialogPopup({
       <AlertDialogPrimitive.Popup
         className={cn(
           DIALOG_POPUP_CLASS,
+          variant === "usage-reset" && "usage-reset-dialog",
           "row-start-2 max-h-full max-w-lg text-popover-foreground",
           bottomStickOnMobile && DIALOG_MOBILE_SHEET_CLASS,
           className,

@@ -1,3 +1,6 @@
+import { createHandoffSummaryAtom } from "./handoffShellSummary";
+import { parseScopedThreadKey, scopedThreadKey } from "@t3tools/client-runtime/environment";
+import { presentThreadShell } from "@t3tools/client-runtime/state/models";
 import type * as DateTime from "effect/DateTime";
 import { useAtomValue } from "@effect/atom-react";
 import type {
@@ -545,4 +548,21 @@ export function readResponseSubagents(
         ?.title.trim() ||
       "Agent",
   }));
+}
+
+const handoffShellSummaryAtom = Atom.family((key: string) => {
+  const ref = parseScopedThreadKey(key)!;
+  const relevantShells = Atom.make((get) =>
+    get(environmentThreadShells.environmentThreadsAtom(ref.environmentId))
+      .filter(
+        (shell) =>
+          shell.lineage.parentThreadId === ref.threadId ||
+          shell.continuedFromThreadId === ref.threadId,
+      )
+      .map((shell) => presentThreadShell(ref.environmentId, shell)),
+  );
+  return createHandoffSummaryAtom(relevantShells, ref.threadId);
+});
+export function useThreadHandoffSummary(ref: ScopedThreadRef) {
+  return useAtomValue(handoffShellSummaryAtom(scopedThreadKey(ref)));
 }

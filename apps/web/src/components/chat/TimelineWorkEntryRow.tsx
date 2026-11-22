@@ -1,3 +1,7 @@
+import { workEntryHasNoMatches } from "@t3tools/client-runtime/work-log/presentation";
+import { conversationLabel } from "~/i18n/conversationLabel";
+import { useUiText } from "~/i18n/useUiText";
+
 import { TimelinePendingApprovalRow } from "./TimelinePendingApprovalRow";
 import { WorkLogDetails, WorkLogRow } from "./WorkLog";
 import {
@@ -208,6 +212,7 @@ export function ViewedImagesTimelineRow({
 }
 
 function WorkEntryLogRow(props: WorkEntryRowProps) {
+  const uiText = useUiText();
   const { workEntry, workspaceRoot, displayLabel } = props;
   const ctx = use(TimelineRowCtx);
   const { threadRef, onImageExpand, timestampFormat } = ctx;
@@ -278,7 +283,7 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
           <span
             className={cn("text-sm font-medium", warning ? "text-warning" : "text-destructive")}
           >
-            {label}
+            {conversationLabel(label, uiText)}
           </span>
         }
         trailing={
@@ -303,7 +308,7 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
               onClick={() => onRetryWorkspacePreparation(retryRunId)}
             >
               <RotateCcwIcon aria-hidden />
-              Retry
+              {uiText("Retry")}
             </Button>
           </div>
         ) : null}
@@ -328,12 +333,18 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
   const questionHeading = workEntry.questionAnswer
     ? getQuestionTextPreview(workEntry.questionAnswer)
     : "";
-  const previewText =
+  const rawPreviewText =
     isReasoning && expanded
       ? workEntry.toolLifecycleStatus === "inProgress"
-        ? "Thinking"
-        : "Thought"
+        ? uiText("Thinking")
+        : uiText("Thought")
       : questionHeading || (displayLabel ?? workEntryDisplayLabel(workEntry, workspaceRoot));
+  // App-generated labels ("Tasks 4/6 · …", "Running pnpm") are localized; the agent's own thought text
+  // and question headings are not ours to translate.
+  const previewText =
+    showWarningIndicator || !(isReasoning || questionHeading)
+      ? conversationLabel(rawPreviewText, uiText)
+      : rawPreviewText;
   const answerPreview =
     workEntry.questionAnswer && hasQuestionAnswer(workEntry.questionAnswer)
       ? getQuestionAnswerPreview(workEntry.questionAnswer)
@@ -424,9 +435,11 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
   const accessiblePreview = [threadLabel?.text ?? previewText, answerPreview]
     .filter(Boolean)
     .join(": ");
+  const noMatches = workEntryHasNoMatches(workEntry);
+  const noMatchesLabel = noMatches ? uiText("No matches") : null;
   const accessibleDisplayText = showFailedIndicator
     ? `${accessiblePreview}, tool call failed`
-    : accessiblePreview;
+    : [accessiblePreview, noMatchesLabel].filter(Boolean).join(", ");
   const rowToggleProps = canExpandProjectedItem
     ? {
         role: "button" as const,
@@ -453,7 +466,7 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
         <span
           className={iconWrapperClass}
           role={showFailedIndicator ? "img" : undefined}
-          aria-label={showFailedIndicator ? "Tool call failed" : undefined}
+          aria-label={showFailedIndicator ? uiText("Tool call failed") : undefined}
         >
           <ToolActivityIconView
             icon={entryToolIcon}
@@ -513,6 +526,9 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
       }
       trailing={
         <>
+          {noMatchesLabel ? (
+            <span className="shrink-0 text-xs text-muted-foreground">{noMatchesLabel}</span>
+          ) : null}
           {createdThread ? (
             <button
               type="button"

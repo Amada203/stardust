@@ -258,6 +258,15 @@ describe("settings mutation authorization", () => {
           providerInstanceMutation,
         }).pipe(Effect.flip),
       ).toMatchObject({ requiredPermission: AuthSettingsWriteScope });
+      for (const patch of [{}, { usageModelAliases: { custom: "official" } }]) {
+        expect(
+          yield* client[WS_METHODS.serverUpdateSettings]({
+            patch,
+            providerInstanceMutation,
+            memoryMutation: { type: "add", text: "Reviewed fact", scope: { kind: "global" } },
+          }).pipe(Effect.flip),
+        ).toMatchObject({ requiredPermission: AuthSettingsWriteScope });
+      }
       // Removing a secret provider clears settings fields that read from it.
       expect(
         yield* client[WS_METHODS.serverUpdateSettings]({

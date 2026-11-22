@@ -1,3 +1,5 @@
+import { useUiText } from "~/i18n/useUiText";
+
 import { Alert, AlertDescription } from "../ui/alert";
 import type { AuthSessionState } from "@t3tools/contracts";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
@@ -16,11 +18,12 @@ import { StandalonePage, StandalonePageHeader } from "../ui/standalone-page";
 import { useAtomCommand } from "../../state/use-atom-command";
 
 export function PairingPendingSurface() {
+  const uiText = useUiText();
   return (
     <StandalonePage>
       <StandalonePageHeader
-        title="Pairing with this environment"
-        description="Validating the pairing link and preparing your session."
+        title={uiText("Pairing with this environment")}
+        description={uiText("Validating the pairing link and preparing your session.")}
       />
     </StandalonePage>
   );
@@ -35,6 +38,7 @@ export function PairingRouteSurface({
   initialErrorMessage?: string;
   onAuthenticated: () => void;
 }) {
+  const uiText = useUiText();
   const [autoPairToken] = useState(peekPairingTokenFromUrl);
   const [credential, setCredential] = useState(autoPairToken ?? "");
   const [errorMessage, setErrorMessage] = useState(initialErrorMessage ?? "");
@@ -85,14 +89,14 @@ export function PairingRouteSurface({
   return (
     <StandalonePage>
       <StandalonePageHeader
-        title="Pair with this environment"
+        title={uiText("Pair with this environment")}
         description={describeAuthGate(auth.bootstrapMethods)}
       />
 
       <form className="mt-6 space-y-4" onSubmit={(event) => void handleSubmit(event)}>
         <div className="space-y-2">
           <label className="text-sm font-medium" htmlFor="pairing-token">
-            Pairing token
+            {uiText("Pairing token")}
           </label>
           <Input
             id="pairing-token"
@@ -102,7 +106,7 @@ export function PairingRouteSurface({
             disabled={isSubmitting}
             nativeInput
             onChange={(event) => setCredential(event.currentTarget.value)}
-            placeholder="Paste a one-time token or pairing secret"
+            placeholder={uiText("Paste a one-time token or pairing secret")}
             spellCheck={false}
             value={credential}
           />
@@ -116,7 +120,7 @@ export function PairingRouteSurface({
 
         <div className="flex flex-wrap gap-2">
           <Button disabled={isSubmitting} size="sm" type="submit">
-            {isSubmitting ? "Pairing..." : "Continue"}
+            {isSubmitting ? uiText("Pairing...") : uiText("Continue")}
           </Button>
           <Button
             disabled={isSubmitting}
@@ -124,7 +128,7 @@ export function PairingRouteSurface({
             size="sm"
             variant="outline"
           >
-            Reload app
+            {uiText("Reload app")}
           </Button>
         </div>
       </form>
@@ -137,6 +141,7 @@ export function PairingRouteSurface({
 }
 
 export function HostedPairingRouteSurface() {
+  const uiText = useUiText();
   const connectPairingEnvironment = useAtomCommand(connectPairing, {
     reportFailure: false,
   });
@@ -237,16 +242,16 @@ export function HostedPairingRouteSurface() {
       <div className="mt-6 flex flex-wrap gap-2">
         {status === "pairing" ? (
           <Button disabled size="sm">
-            Pairing...
+            {uiText("Pairing...")}
           </Button>
         ) : canRetry ? (
           <Button size="sm" onClick={() => void submitHostedPairingRequest()}>
-            Try again
+            {uiText("Try again")}
           </Button>
         ) : null}
         {status === "paired" ? (
           <Button size="sm" variant="outline" onClick={() => (window.location.href = "/")}>
-            Open app
+            {uiText("Open app")}
           </Button>
         ) : null}
       </div>

@@ -1,3 +1,5 @@
+import { useUiText } from "~/i18n/useUiText";
+
 import type { ReactNode } from "react";
 import type { DeviceToolVersions as ToolVersions } from "@t3tools/contracts";
 import { InlineButton } from "~/components/ui/button";
@@ -16,6 +18,7 @@ export function DeviceToolVersions({
   owner?: string | undefined;
   error?: string | undefined;
 }) {
+  const uiText = useUiText();
   const selected = kind ? tools?.[kind] : undefined;
   const version =
     selected?.runningVersion ??
@@ -39,14 +42,14 @@ export function DeviceToolVersions({
           ? version
             ? `v${version}`
             : selected
-              ? "Not installed"
-              : "Version unknown"
+              ? uiText("Not installed")
+              : uiText("Version unknown")
           : error
-            ? "Versions unavailable"
-            : "Versions"}
+            ? uiText("Versions unavailable")
+            : uiText("Versions")}
       </PopoverTrigger>
       <PopoverPopup align="end" width="md">
-        <PopoverTitle>{kind ? label : "Device tools"}</PopoverTitle>
+        <PopoverTitle>{kind ? label : uiText("Device tools")}</PopoverTitle>
         {tools ? (
           <div className="mt-4 divide-y divide-border/50">
             {(

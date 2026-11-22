@@ -1,3 +1,5 @@
+import { uiText as terminalEventText } from "~/i18n";
+
 import { workspaceAreaProps } from "../lib/workspaceFocus";
 import { useAtomMount, useAtomValue } from "@effect/atom-react";
 import {
@@ -1071,7 +1073,7 @@ function TerminalSessionViewport({
               toastManager.add(
                 stackedThreadToast({
                   type: "error",
-                  title: "Unable to open link",
+                  title: terminalEventText("Unable to open link"),
                   description: error instanceof Error ? error.message : "An error occurred.",
                 }),
               );

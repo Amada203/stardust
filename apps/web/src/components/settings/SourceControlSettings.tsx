@@ -1,3 +1,5 @@
+import { useUiText } from "~/i18n/useUiText";
+
 import { RefreshIcon } from "~/components/ui/refresh-icon";
 import { ChevronDownIcon } from "lucide-react";
 import { useAtomValue } from "@effect/atom-react";
@@ -223,6 +225,7 @@ function DiscoveryItemRow({
   };
   readonly children?: ReactNode;
 }) {
+  const uiText = useUiText();
   const version = optionLabel(item.version);
   const auth = isProviderDiscoveryItem(item) ? item.auth : null;
   const authStatus = auth ? authPresentation(auth) : null;
@@ -253,7 +256,7 @@ function DiscoveryItemRow({
               {version ? <code className="text-xs text-muted-foreground">{version}</code> : null}
               {isVcsNotReady(item) ? (
                 <Badge variant="warning" size="sm">
-                  Coming Soon
+                  {uiText("Coming Soon")}
                 </Badge>
               ) : null}
               {authStatus?.badge ? (
@@ -393,6 +396,7 @@ function EmptySourceControlDiscovery({
 }
 
 export function SourceControlSettingsPanel() {
+  const uiText = useUiText();
   const { scope, environment, connectedEnvironments } = useSettingsScope();
 
   const environmentId =
@@ -442,7 +446,7 @@ export function SourceControlSettingsPanel() {
             {credentials.appSignIn && item.appSignIn === true ? (
               <div className="flex items-center gap-3 text-2xs text-muted-foreground">
                 <span aria-hidden className="h-px flex-1 bg-border" />
-                Or use your own credentials
+                {uiText("Or use your own credentials")}
                 <span aria-hidden className="h-px flex-1 bg-border" />
               </div>
             ) : null}

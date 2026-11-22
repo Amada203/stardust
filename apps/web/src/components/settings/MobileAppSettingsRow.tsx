@@ -1,3 +1,5 @@
+import { useUiText } from "~/i18n/useUiText";
+import { uiText } from "~/i18n";
 import { AndroidIcon, AppleIcon } from "../Icons";
 import { Button } from "../ui/button";
 import { Popover, PopoverPopup, PopoverTitle, PopoverTrigger } from "../ui/popover";
@@ -7,13 +9,17 @@ import { searchableSetting } from "./settingsSearch";
 
 const stores = [
   {
-    label: "iPhone and iPad",
+    get label() {
+      return uiText("iPhone and iPad");
+    },
     store: "App Store",
     url: "https://apps.apple.com/us/app/t3-code-remote-claude-more/id6787819824",
     Icon: AppleIcon,
   },
   {
-    label: "Android",
+    get label() {
+      return uiText("Android");
+    },
     store: "Google Play",
     url: "https://play.google.com/store/apps/details?id=com.t3tools.t3code",
     Icon: AndroidIcon,
@@ -21,10 +27,11 @@ const stores = [
 ];
 
 export function MobileAppSettingsRow() {
+  const uiText = useUiText();
   return (
     <SettingsRow
       {...searchableSetting("mobile-app")}
-      description="Connect to your server from your phone or tablet."
+      description={uiText("Connect to your server from your phone or tablet.")}
       control={
         <div className="flex items-center gap-2">
           {stores.map(({ label, store, url, Icon }) => (

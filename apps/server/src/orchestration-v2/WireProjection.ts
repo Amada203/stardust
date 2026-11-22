@@ -17,6 +17,7 @@ import {
 } from "@t3tools/shared/orchestrationV2DedupedBodies";
 import { MCP_APP_OUTPUT_KEY, readMcpAppReference } from "@t3tools/shared/mcpApp";
 import {
+  commandHadNoMatches,
   compactDynamicToolOutput,
   omitToolOutputImageData,
   toolOutputImages,
@@ -172,7 +173,7 @@ export function projectTurnItemForWire(item: OrchestrationV2TurnItem): Orchestra
           ? item.outputIndicatesFailure === true ||
             (output !== undefined &&
               toolOutputIndicatesFailure(output.slice(0, MAX_DETAIL_STRING_BYTES)))
-          : item.exitCode !== 0;
+          : item.exitCode !== 0 && !commandHadNoMatches(item);
       return {
         ...projected,
         ...(failed ? { outputIndicatesFailure: true } : {}),

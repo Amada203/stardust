@@ -1,3 +1,5 @@
+import { useUiText } from "~/i18n/useUiText";
+
 import { settlePromise } from "@t3tools/client-runtime/state/runtime";
 import { AsyncResult } from "effect/reactivity";
 import { PlayIcon, RotateCwIcon, TriangleAlertIcon } from "lucide-react";
@@ -47,6 +49,7 @@ export function MediaVideoPlayer({
   onRetry,
   actionsSource,
 }: MediaVideoPlayerProps) {
+  const uiText = useUiText();
   const [playbackSource, setPlaybackSource] = useState<{
     src: string;
     revision: string | null;
@@ -151,7 +154,7 @@ export function MediaVideoPlayer({
                 onClick={() => void retry()}
               >
                 <RotateCwIcon />
-                {retrying ? "Retrying…" : "Retry video"}
+                {retrying ? uiText("Retrying…") : uiText("Retry video")}
               </Button>
             ) : null}
             <OpenMediaLink originalUrl={originalUrl} src={latestSrc ?? src} fileName={label} />
@@ -162,7 +165,7 @@ export function MediaVideoPlayer({
           key={loadAttempt}
           ref={attachVideo}
           src={src}
-          aria-label={label || "Video preview"}
+          aria-label={label || uiText("Video preview")}
           aria-hidden={onOpen ? true : undefined}
           autoPlay={onOpen ? false : autoPlay}
           controls={!onOpen}
@@ -194,7 +197,7 @@ export function MediaVideoPlayer({
       ) : (
         <span
           role="status"
-          aria-label={failed ? "Video preview unavailable" : "Loading video"}
+          aria-label={failed ? uiText("Video preview unavailable") : uiText("Loading video")}
           className={cn("block aspect-video w-full rounded-lg bg-muted/60", stateClassName)}
           style={style}
         />

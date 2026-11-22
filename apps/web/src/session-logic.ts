@@ -1,3 +1,5 @@
+import { serverCopy } from "~/i18n/serverCopy";
+import { uiText } from "~/i18n";
 import type { ThreadStructureRuntime } from "@t3tools/client-runtime/state/shell";
 import { resolveThreadWorkingStartedAt } from "@t3tools/client-runtime/state/models";
 import {
@@ -314,7 +316,7 @@ export function providerErrorPresentation(
     return {
       label:
         item.failure.class === "usage_limit"
-          ? "Usage limit reached"
+          ? uiText("Usage limit reached")
           : item.title?.trim() || "Provider error",
       detail: item.failure.message,
     };
@@ -362,7 +364,7 @@ function projectedWorkEntry(row: OrchestrationV2ProjectedTurnItem): WorkLogEntry
     case "thread_created":
       return {
         ...common,
-        label: "Created thread",
+        label: uiText("Created thread"),
       };
     case "compaction":
       return {
@@ -427,7 +429,7 @@ function projectedWorkEntry(row: OrchestrationV2ProjectedTurnItem): WorkLogEntry
     case "system_notice":
       return {
         ...common,
-        label: item.message,
+        label: serverCopy(item.message),
         ...(item.level === "info" ? {} : { sourceActivityKind: "runtime.warning" }),
       };
     case "error": {

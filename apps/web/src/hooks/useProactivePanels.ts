@@ -34,6 +34,8 @@ export function useProactivePanels(input: {
   readonly runningTurnId: RunId | null;
   readonly latestRun: { readonly runId: RunId; readonly status: string } | null;
   readonly latestRunSettled: boolean;
+  /** Background work still runs after the turn, so the turn is not finished for the user yet. */
+  readonly completionDeferred: boolean;
   readonly turnDiffSummaries: ReadonlyArray<TurnDiffSummary>;
   readonly isGitRepo: boolean | undefined;
   readonly linkedPullRequest: ThreadLinkedPullRequest | null;
@@ -53,6 +55,7 @@ export function useProactivePanels(input: {
     runningTurnId: activeRunningTurnId,
     latestRun: activeLatestRun,
     latestRunSettled,
+    completionDeferred,
     turnDiffSummaries,
     isGitRepo,
     linkedPullRequest: linkedThreadPullRequest,
@@ -144,7 +147,8 @@ export function useProactivePanels(input: {
     }
     if (threadDetailLoading) return;
 
-    const settledTurnId = latestRunSettled ? (activeLatestRun?.runId ?? null) : null;
+    const settledTurnId =
+      latestRunSettled && !completionDeferred ? (activeLatestRun?.runId ?? null) : null;
     const newlyCompletedTurnId = shouldOpenProactiveTurnDiff({
       previousRunningTurnId,
       runningTurnId: activeRunningTurnId,
@@ -173,7 +177,9 @@ export function useProactivePanels(input: {
       ...proactivePanelObservationRef.current,
       // Preserve first-entry eligibility while capabilities, checkpoint or repository load.
       runningTurnId:
-        diffAction === "defer" || shouldDeferLink ? previousRunningTurnId : activeRunningTurnId,
+        diffAction === "defer" || shouldDeferLink || (completionDeferred && latestRunSettled)
+          ? previousRunningTurnId
+          : activeRunningTurnId,
     };
     if (diffAction !== "open" || newlyCompletedTurnId === null) return;
     if (
@@ -192,6 +198,7 @@ export function useProactivePanels(input: {
     activeLatestRun?.status,
     activeRunningTurnId,
     clientSettingsHydrated,
+    completionDeferred,
     hasLinkedPullRequestDetail,
     isGitRepo,
     latestRunSettled,

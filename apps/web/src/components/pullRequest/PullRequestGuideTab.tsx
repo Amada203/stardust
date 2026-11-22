@@ -1,3 +1,5 @@
+import { useUiText } from "~/i18n/useUiText";
+
 import type { EnvironmentId, PullRequestRef, PullRequestReviewGuideStop } from "@t3tools/contracts";
 import { ScrollTextIcon, TriangleAlertIcon } from "lucide-react";
 import { useEffect, useEffectEvent } from "react";
@@ -50,6 +52,7 @@ export function PullRequestGuideTab({
   onOpenFile: (path: string) => void;
   onTourShown?: (() => void) | undefined;
 }) {
+  const uiText = useUiText();
   const { query, data, running, canWrite, write } = useReviewGuideWriter({
     environmentId,
     reference,
@@ -111,17 +114,21 @@ export function PullRequestGuideTab({
       <div className="scrollbar-gutter-both flex h-full flex-col items-center justify-center-safe gap-2 overflow-y-auto px-4 py-10 text-center">
         <p className="text-sm font-medium text-foreground">
           {running
-            ? "Writing a review guide"
+            ? uiText("Writing a review guide")
             : failure === null
-              ? "No review guide yet"
+              ? uiText("No review guide yet")
               : "Could not write a review guide"}
         </p>
         <p className="max-w-md text-xs text-muted-foreground">
           {running
-            ? "An agent is reading the change. A large one takes a few minutes. You can leave; you will be told when it is ready."
+            ? uiText(
+                "An agent is reading the change. A large one takes a few minutes. You can leave; you will be told when it is ready.",
+              )
             : failure === null
               ? (query.error ??
-                "A guide is a tour of the change: stops through the code in reading order, with the calls only a maintainer can make.")
+                uiText(
+                  "A guide is a tour of the change: stops through the code in reading order, with the calls only a maintainer can make.",
+                ))
               : FAILURE_HINT}
         </p>
         {writeButton(failure === null ? "Write guide" : "Try again", "sm")}
@@ -136,9 +143,9 @@ export function PullRequestGuideTab({
         {running ? <Spinner /> : <TriangleAlertIcon />}
         <AlertDescription>
           {running ? (
-            "Rewriting this guide. You will be told when the new one is ready."
+            uiText("Rewriting this guide. You will be told when the new one is ready.")
           ) : failure === null ? (
-            "Written before the latest push."
+            uiText("Written before the latest push.")
           ) : (
             <>
               {`Could not rewrite this guide. ${FAILURE_HINT}`}

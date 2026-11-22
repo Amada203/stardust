@@ -73,3 +73,12 @@ export * from "./secretRequest.ts";
 export * from "./secretReference.ts";
 export * from "./settingsSecretValue.ts";
 export * from "./clientRpcPermissions.ts";
+
+export * from "./memory.ts";
+
+export * from "./artifactWall.ts";
+
+export * from "./diskSpace.ts";
+export * from "./storageManagement.ts";
+
+export * from "./sidebarCategories.ts";

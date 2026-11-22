@@ -1,3 +1,5 @@
+import { useSyncExternalStore } from "react";
+import { createComposerDraftPersistence } from "./lib/composerDraftPersistence";
 import {
   composerFileAttachmentMimeType,
   composerImageDedupKey,
@@ -96,7 +98,7 @@ import { create } from "zustand";
 import { persist, type PersistStorage, type StorageValue } from "zustand/middleware";
 import { useShallow } from "zustand/react/shallow";
 import { draftModelSelectionApplies } from "./lib/chatThreadActions";
-import { createDeferredStorage, createMemoryStorage } from "./lib/storage";
+import { createMemoryStorage } from "./lib/storage";
 import { getDefaultServerModel } from "./providerModels";
 import {
   replaceComposerContextReferences,
@@ -215,24 +217,47 @@ function serializeComposerDraftState(value: StorageValue<ComposerPersistState>):
   return text;
 }
 
-const composerDebouncedStorage = createDeferredStorage<StorageValue<ComposerPersistState>>(
+const composerDebouncedStorage = createComposerDraftPersistence<StorageValue<ComposerPersistState>>(
   {
-    getItem: (name) => composerDraftBaseStorage.getItem(name),
-    setItem: (name, text) => {
-      composerDraftBaseStorage.setItem(name, text);
-      if (composerDraftPendingWrite?.text === text)
-        composerDraftLastWrite = composerDraftPendingWrite;
-    },
-    removeItem: (name) => {
-      composerDraftBaseStorage.removeItem(name);
-      composerDraftLoadedState = null;
-      composerDraftLastWrite = null;
-    },
+    storage: () => ({
+      getItem: (name) => {
+        const value = composerDraftBaseStorage.getItem(name);
+        return typeof value === "string" ? value : null;
+      },
+      setItem: (name, text) => {
+        composerDraftBaseStorage.setItem(name, text);
+        if (composerDraftPendingWrite?.text === text)
+          composerDraftLastWrite = composerDraftPendingWrite;
+      },
+      removeItem: (name) => {
+        composerDraftBaseStorage.removeItem(name);
+        composerDraftLoadedState = null;
+        composerDraftLastWrite = null;
+      },
+    }),
+    serialize: serializeComposerDraftState,
+    debounceMs: COMPOSER_PERSIST_DEBOUNCE_MS,
   },
-  serializeComposerDraftState,
-  COMPOSER_PERSIST_DEBOUNCE_MS,
 );
 
+export function useComposerDraftPersistenceStatus() {
+  return useSyncExternalStore(
+    composerDebouncedStorage.subscribe,
+    composerDebouncedStorage.getStatus,
+    composerDebouncedStorage.getStatus,
+  );
+}
+export const retryComposerDraftPersistence = composerDebouncedStorage.retry;
+export function exportComposerDraftRecovery() {
+  return JSON.stringify({
+    format: "t3-composer-draft-recovery-v1",
+    ...composerDebouncedStorage.recovery(),
+    currentRecord: {
+      state: partializeComposerDraftStoreState(composerDraftStore.getState()),
+      version: COMPOSER_DRAFT_STORAGE_VERSION,
+    },
+  });
+}
 const composerPersistStorage: PersistStorage<ComposerPersistState> = {
   getItem: (name) => {
     const raw = composerDebouncedStorage.getItem(name);
@@ -248,6 +273,10 @@ const composerPersistStorage: PersistStorage<ComposerPersistState> = {
 if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
   window.addEventListener("beforeunload", () => {
     composerDebouncedStorage.flush();
+  });
+  window.addEventListener("t3:prepare-shutdown", (event) => {
+    composerDebouncedStorage.flush();
+    if (composerDebouncedStorage.getStatus() !== "saved") event.preventDefault();
   });
 }
 

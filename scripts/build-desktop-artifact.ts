@@ -2712,6 +2712,9 @@ export const resolveGitHubPublishConfig = Effect.fn("resolveGitHubPublishConfig"
 
   const [owner, repo, ...rest] = rawRepo.split("/");
   if (!owner || !repo || rest.length > 0) return undefined;
+  // This fork must never bake the upstream project's feed into an app: that app would offer
+  // upstream builds as updates. No feed is the safe default; the installed app then has no updater.
+  if (owner.toLowerCase() === "pingdotgg") return undefined;
 
   return {
     provider: "github",
@@ -3925,7 +3928,7 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
     description:
       "T3 Code is an open-source desktop app for coding agents. Work with your existing agent subscriptions, review code changes, and run commands in your projects. Connect from desktop, web, or mobile to continue working remotely.",
     license: "MIT",
-    homepage: "https://t3.codes",
+    homepage: "https://github.com/zds-xiaoxin/xiaoxin-t3code",
     author: "T3 Tools",
     main: "apps/desktop/dist-electron/boot.cjs",
     build: yield* createBuildConfig(

@@ -1,3 +1,6 @@
+import { useLocale } from "gt-react";
+import { useUiText } from "~/i18n/useUiText";
+
 import { shouldPreserveAssistantLineBreaks } from "@t3tools/shared/markdownPipeline";
 import { MessageId, type RunId, type TurnItemId } from "@t3tools/contracts";
 import { canForkProjectedAssistantItem } from "@t3tools/client-runtime/state/thread-workflows";
@@ -39,6 +42,7 @@ import { vcsEnvironment } from "../../state/vcs";
 const NO_VCS_STATUS = Atom.make(AsyncResult.initial());
 
 export function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" }> }) {
+  useLocale();
   const ctx = use(TimelineRowCtx);
   // The timeline holds a streaming message's row while only its text grows.
   const liveText = useAssistantMessageText(
@@ -114,6 +118,7 @@ export function SentMessageTimelineRow({
 }: {
   row: Extract<TimelineRow, { kind: "sent-message" }>;
 }) {
+  useLocale();
   const ctx = use(TimelineRowCtx);
 
   return (
@@ -148,6 +153,8 @@ function AssistantForkButton({
 }: {
   readonly projectedItem: NonNullable<Extract<TimelineRow, { kind: "message" }>["projectedItem"]>;
 }) {
+  const uiText = useUiText();
+  useLocale();
   const ctx = use(TimelineRowCtx);
   const [busy, setBusy] = useState(false);
   const support = useV2ItemSupport({
@@ -179,13 +186,13 @@ function AssistantForkButton({
                 () => setBusy(false),
               );
             }}
-            aria-label="Fork from this response"
+            aria-label={uiText("Fork from this response")}
           />
         }
       >
         <GitForkIcon className={cn("size-3", busy && "animate-pulse")} />
       </TooltipTrigger>
-      <TooltipPopup side="top">Fork from this response</TooltipPopup>
+      <TooltipPopup side="top">{uiText("Fork from this response")}</TooltipPopup>
     </Tooltip>
   );
 }
@@ -224,6 +231,7 @@ function AssistantMessageMeta({
   copyStreaming: boolean;
   alwaysVisible?: boolean;
 }) {
+  useLocale();
   const ctx = use(TimelineRowCtx);
 
   return (
@@ -265,6 +273,7 @@ function AssistantMessageMeta({
 }
 
 function AssistantReplyButton({ message, itemId }: { message: ChatMessage; itemId: TurnItemId }) {
+  useLocale();
   const ctx = use(TimelineRowCtx);
   const { threadRef, onReplyToResponse } = ctx;
   if (!threadRef || !onReplyToResponse || !message.text.trim()) return null;
@@ -345,6 +354,7 @@ export function ProposedPlanTimelineRow({
 }: {
   row: Extract<TimelineRow, { kind: "proposed-plan" }>;
 }) {
+  useLocale();
   const ctx = use(TimelineRowCtx);
 
   return (
@@ -366,6 +376,7 @@ export function HtmlRenderTimelineRow({
 }: {
   row: Extract<TimelineRow, { kind: "html-render" }>;
 }) {
+  useLocale();
   const ctx = use(TimelineRowCtx);
   const { onAppFullscreenChange } = ctx;
   const onFullscreenChange = (fullscreen: boolean) => onAppFullscreenChange(row.id, fullscreen);
@@ -387,6 +398,7 @@ export function HtmlRenderTimelineRow({
 }
 
 export function McpAppTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "mcp-app" }> }) {
+  useLocale();
   const ctx = use(TimelineRowCtx);
   const { awaitingUser } = use(TimelineRowActivityCtx);
 
@@ -451,6 +463,7 @@ function AssistantChangedFilesSectionInner({
   displayThreadKey?: string;
   onOpenTurnDiff: (runId: RunId, filePath?: string) => void;
 }) {
+  useLocale();
   const ctx = use(TimelineRowCtx);
   const persistedExpanded = useUiStateStore(
     (store) => store.threadChangedFilesExpandedById[routeThreadKey]?.[turnSummary.runId],

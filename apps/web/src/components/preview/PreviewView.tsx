@@ -1,3 +1,4 @@
+import { PreviewPinsControl } from "./PreviewPinsControl";
 import { useAtomValue } from "@effect/atom-react";
 import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 import { settlePromise } from "@t3tools/client-runtime/state/runtime";
@@ -111,7 +112,7 @@ interface Props {
   onSendAnnotation?: (
     annotation: PreviewAnnotationPayload,
     image: ComposerImageAttachment | null,
-  ) => void;
+  ) => void | boolean | Promise<void | boolean>;
 }
 
 function previewProfileName(
@@ -1015,14 +1016,30 @@ export function PreviewView({
           isUnreachable ? "Page didn't load. Pick is unavailable until the page renders" : undefined
         }
         leadingActions={
-          activeProfileId !== browserDefaults.profileId ? (
-            <Tooltip>
-              <TooltipTrigger render={<Badge variant="outline" className="max-w-28 shrink-0" />}>
-                <span className="truncate">{activeProfileName}</span>
-              </TooltipTrigger>
-              <TooltipPopup side="top">{activeProfileName}</TooltipPopup>
-            </Tooltip>
-          ) : null
+          <>
+            {visible &&
+              previewBridge?.pinAction &&
+              runtimeTabId &&
+              !isServerTab &&
+              !isUnreachable && (
+                <PreviewPinsControl
+                  key={runtimeTabId}
+                  tabId={runtimeTabId}
+                  url={url}
+                  loading={loading}
+                  enabled={canSendAnnotation}
+                  onSend={onSendAnnotation}
+                />
+              )}
+            {activeProfileId !== browserDefaults.profileId ? (
+              <Tooltip>
+                <TooltipTrigger render={<Badge variant="outline" className="max-w-28 shrink-0" />}>
+                  <span className="truncate">{activeProfileName}</span>
+                </TooltipTrigger>
+                <TooltipPopup side="top">{activeProfileName}</TooltipPopup>
+              </Tooltip>
+            ) : null}
+          </>
         }
         trailingActions={
           moreMenuActions ? (

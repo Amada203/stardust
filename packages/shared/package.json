@@ -582,6 +582,11 @@
     "./pinOrderKey": {
       "types": "./src/pinOrderKey.ts",
       "import": "./src/pinOrderKey.ts"
+    },
+    "./clientSettingsMigration": "./src/clientSettingsMigration.ts",
+    "./previewPins": {
+      "types": "./src/previewPins.ts",
+      "import": "./src/previewPins.ts"
     }
   },
   "scripts": {

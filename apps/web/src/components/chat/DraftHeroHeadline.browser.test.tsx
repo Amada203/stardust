@@ -81,6 +81,7 @@ it("the new-thread project picker follows the manual sidebar project order", asy
   await vi.waitFor(() => {
     expect(
       page
+        .getByRole("listbox")
         .getByRole("option")
         .elements()
         .map((option) => option.textContent),

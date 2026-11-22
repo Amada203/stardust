@@ -1,3 +1,5 @@
+import { useUiText } from "~/i18n/useUiText";
+
 import type {
   DeviceServiceState,
   EnvironmentId,
@@ -146,6 +148,7 @@ export function BranchRestoreConfirmHost(props: {
   readonly canWriteSourceControl: boolean;
   readonly onConfirm: () => void;
 }) {
+  const uiText = useUiText();
   const open = useThreadOverlay(branchRestoreConfirmAtom, props.threadKey) !== null;
   return (
     <AlertDialog
@@ -174,7 +177,7 @@ export function BranchRestoreConfirmHost(props: {
               props.onConfirm();
             }}
           >
-            Switch branch
+            {uiText("Switch branch")}
           </Button>
         </AlertDialogFooter>
       </AlertDialogPopup>

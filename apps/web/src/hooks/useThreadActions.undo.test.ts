@@ -444,3 +444,9 @@ describe("archive and delete Undo expiry", () => {
     },
   );
 });
+
+// These permission tests invoke hooks with a stubbed React runtime.
+vi.mock("~/i18n/useUiText", async () => {
+  const { uiText } = await import("~/i18n");
+  return { useUiText: () => uiText };
+});

@@ -1,3 +1,5 @@
+import { useUiText } from "~/i18n/useUiText";
+
 import { clientHostEnvironmentAtom } from "../state/clientHostEnvironment";
 import { buildFileLinkParentSuffixByPath, fileLinkLabel } from "@t3tools/shared/fileLinks";
 import {
@@ -294,6 +296,7 @@ function CodexArtifactTemplateCard(props: {
   readonly template: CodexArtifactTemplate;
   readonly onUse?: ((template: CodexArtifactTemplate) => void) | undefined;
 }) {
+  const uiText = useUiText();
   const Icon = ARTIFACT_TEMPLATE_ICON_BY_KIND[props.template.artifactKind];
   const presentationLabel = codexArtifactTemplatePresentationLabel(props.template.artifactKind);
 
@@ -328,7 +331,7 @@ function CodexArtifactTemplateCard(props: {
           className="shrink-0"
           onClick={() => props.onUse?.(props.template)}
         >
-          Use template
+          {uiText("Use template")}
         </Button>
       ) : null}
     </div>
@@ -527,6 +530,7 @@ function useChatMarkdownState({
   sourceControlMedia = false,
   sourceControlMediaRepository,
 }: ChatMarkdownProps) {
+  const uiText = useUiText();
   const resolvedTheme = useRenderedAppearance();
   const markdownRef = useRef<HTMLElement>(null);
   const mediaRequestId = useRef(0);
@@ -643,7 +647,7 @@ function useChatMarkdownState({
         toastManager.add(
           stackedThreadToast({
             type: "error",
-            title: "Media unavailable",
+            title: uiText("Media unavailable"),
             description,
           }),
         );
@@ -750,7 +754,7 @@ function useChatMarkdownState({
           toastManager.add(
             stackedThreadToast({
               type: "error",
-              title: "Unable to open link in browser",
+              title: uiText("Unable to open link in browser"),
               description: error.message,
             }),
           );
@@ -1895,6 +1899,23 @@ function ChatMarkdown({
       )}
       data-streaming={componentState.isStreaming ? "" : undefined}
       onCopy={handleCopy}
+      onKeyDown={(event) => {
+        if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) return;
+        const link = event.target instanceof Element ? event.target.closest("a") : null;
+        if (!link || !event.currentTarget.contains(link)) return;
+        // macOS needs an explicit keyboard gesture; MouseEvent normalizes button -1 to 0.
+        event.preventDefault();
+        const bounds = link.getBoundingClientRect();
+        link.dispatchEvent(
+          new MouseEvent("contextmenu", {
+            bubbles: true,
+            cancelable: true,
+            button: -1,
+            clientX: bounds.left,
+            clientY: bounds.bottom,
+          }),
+        );
+      }}
     >
       <ChatMarkdownRendererContext value={componentState}>
         {blocks.map((source, index) => (

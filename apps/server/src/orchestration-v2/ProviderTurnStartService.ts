@@ -1,3 +1,4 @@
+import { formatMemoryContext } from "../memory/memory.ts";
 import { modelSelectionsEqual } from "@t3tools/shared/model";
 import { projectComposerContextForProvider } from "@t3tools/shared/composerContextReferences";
 import {
@@ -192,6 +193,7 @@ export const layer: Layer.Layer<
     const fileSystem = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
     const projects = yield* ProjectService.ProjectService;
+    const serverSettings = yield* ServerSettings.ServerSettingsService;
     const providerAuth = yield* ProviderAuthService.ProviderAuthService;
     const projectionStore = yield* ProjectionStore.ProjectionStoreV2;
     const providerSessions = yield* ProviderSessionManager.ProviderSessionManagerV2;
@@ -1706,6 +1708,10 @@ export const layer: Layer.Layer<
           ],
         });
       });
+      const approvedMemoryContext = formatMemoryContext(
+        (yield* serverSettings.getSettings).memory,
+        projection.thread.projectId,
+      );
       const startWithHandoffs = Effect.fn("ProviderTurnStartService.startWithHandoffs")(
         function* (turnInput: Parameters<typeof session.startTurn>[0], compact = false) {
           const delivery = yield* deliverContextHandoffs({
@@ -1732,7 +1738,10 @@ export const layer: Layer.Layer<
             sideChatHandoff === undefined || compact || goalCommand
               ? ""
               : sideChatHandoff.summaryText;
-          const context = [delivery.context, sideChatContext, restartNote]
+          // Native resume must not become an extra prompted turn just to repeat approved memory.
+          const memoryContext =
+            compact || goalCommand || turnInput.resume ? "" : approvedMemoryContext;
+          const context = [memoryContext, delivery.context, sideChatContext, restartNote]
             .filter((part) => part !== "")
             .join("\n\n");
           const { restartContinuationOfRunId: _resumedRunId, ...promptedInput } = turnInput;
@@ -1807,6 +1816,7 @@ export const layer: Layer.Layer<
         ),
       );
       const deliverySession =
+        approvedMemoryContext === "" &&
         effectiveHandoffs.length === 0 &&
         retryHandoff.length === 0 &&
         sideChatHandoff === undefined &&

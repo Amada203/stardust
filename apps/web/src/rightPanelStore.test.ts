@@ -1,5 +1,5 @@
-import { scopeThreadRef } from "@t3tools/client-runtime/environment";
-import { type EnvironmentId, RunId, ThreadId } from "@t3tools/contracts";
+import { scopeThreadRef, scopedThreadKey } from "@t3tools/client-runtime/environment";
+import { EnvironmentId, RunId, ThreadId } from "@t3tools/contracts";
 import { beforeEach, describe, expect, it } from "vite-plus/test";
 
 import { useClosedViewStore } from "./closedViewStore";
@@ -1277,4 +1277,17 @@ describe("rightPanelStore", () => {
     expect(surfaceIds()).toEqual(["browser:tab-a", "terminal:term-1", "diff", "browser:tab-b"]);
     expect(store.getUserActionRevision(refA)).toBe(revision);
   });
+});
+
+it("opens the task board surface from inbox links and retains other surfaces", () => {
+  const ref = {
+    environmentId: EnvironmentId.make("task-board-env"),
+    threadId: ThreadId.make("task-board-thread"),
+  };
+  useRightPanelStore.getState().open(ref, "files");
+  useRightPanelStore.getState().open(ref, "tasks");
+  const state = useRightPanelStore.getState().byThreadKey[scopedThreadKey(ref)];
+  expect(state?.isOpen).toBe(true);
+  expect(state?.activeSurfaceId).toBe("tasks");
+  expect(state?.surfaces.map((surface) => surface.kind)).toEqual(["files", "tasks"]);
 });

@@ -1,3 +1,4 @@
+import { uiText } from "~/i18n";
 import type { PullRequestInvolvement, PullRequestListState } from "@t3tools/contracts";
 import {
   CalendarArrowDownIcon,
@@ -17,24 +18,108 @@ import type { PullRequestListSort } from "./pullRequestListPreferences";
 import { PullRequestGlyph } from "./pullRequestIcons";
 
 export const INVOLVEMENT_TABS = [
-  { value: "all", label: "All", Icon: LayersIcon },
-  { value: "reviewing", label: "Reviewing", Icon: EyeIcon },
-  { value: "authored", label: "Authored", Icon: PenLineIcon },
+  {
+    value: "all",
+    get label() {
+      return uiText("All");
+    },
+    Icon: LayersIcon,
+  },
+  {
+    value: "reviewing",
+    get label() {
+      return uiText("Reviewing");
+    },
+    Icon: EyeIcon,
+  },
+  {
+    value: "authored",
+    get label() {
+      return uiText("Authored");
+    },
+    Icon: PenLineIcon,
+  },
 ] as const satisfies ReadonlyArray<PullRequestFilterOption<PullRequestInvolvement>>;
 
 export const STATE_TABS = [
-  { value: "all", label: "All", Icon: LayersIcon },
-  { value: "open", label: "Open", Icon: PullRequestGlyph.pullRequest },
-  { value: "closed", label: "Closed", Icon: PullRequestGlyph.closed },
-  { value: "merged", label: "Merged", Icon: PullRequestGlyph.merged },
+  {
+    value: "all",
+    get label() {
+      return uiText("All");
+    },
+    Icon: LayersIcon,
+  },
+  {
+    value: "open",
+    get label() {
+      return uiText("Open");
+    },
+    Icon: PullRequestGlyph.pullRequest,
+  },
+  {
+    value: "closed",
+    get label() {
+      return uiText("Closed");
+    },
+    Icon: PullRequestGlyph.closed,
+  },
+  {
+    value: "merged",
+    get label() {
+      return uiText("Merged");
+    },
+    Icon: PullRequestGlyph.merged,
+  },
 ] as const satisfies ReadonlyArray<PullRequestFilterOption<PullRequestListState>>;
 
 export const SORT_OPTIONS = [
-  { value: "ready", label: "Merge readiness", Icon: ListChecksIcon },
-  { value: "blocked", label: "Blocked on me", Icon: UserLockIcon },
-  { value: "updated", label: "Recently updated", Icon: ClockIcon },
-  { value: "newest", label: "Newest shown", Icon: CalendarArrowDownIcon },
-  { value: "oldest", label: "Oldest shown", Icon: CalendarArrowUpIcon },
-  { value: "largest", label: "Largest shown", Icon: Maximize2Icon },
-  { value: "smallest", label: "Smallest shown", Icon: Minimize2Icon },
+  {
+    value: "ready",
+    get label() {
+      return uiText("Merge readiness");
+    },
+    Icon: ListChecksIcon,
+  },
+  {
+    value: "blocked",
+    get label() {
+      return uiText("Blocked on me");
+    },
+    Icon: UserLockIcon,
+  },
+  {
+    value: "updated",
+    get label() {
+      return uiText("Recently updated");
+    },
+    Icon: ClockIcon,
+  },
+  {
+    value: "newest",
+    get label() {
+      return uiText("Newest shown");
+    },
+    Icon: CalendarArrowDownIcon,
+  },
+  {
+    value: "oldest",
+    get label() {
+      return uiText("Oldest shown");
+    },
+    Icon: CalendarArrowUpIcon,
+  },
+  {
+    value: "largest",
+    get label() {
+      return uiText("Largest shown");
+    },
+    Icon: Maximize2Icon,
+  },
+  {
+    value: "smallest",
+    get label() {
+      return uiText("Smallest shown");
+    },
+    Icon: Minimize2Icon,
+  },
 ] as const satisfies ReadonlyArray<PullRequestFilterOption<PullRequestListSort>>;

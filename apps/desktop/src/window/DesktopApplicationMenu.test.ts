@@ -101,6 +101,7 @@ const layerDesktopWindow = (selectedAction: Deferred.Deferred<string>) =>
     showConnectingSplash: Effect.void,
     handleBackendReady: () => Effect.void,
     handleBackendNotReady: Effect.void,
+    prepareForShutdown: Effect.succeed(true),
     flushMainWindowBounds: Effect.void,
     prepareCaptureReveal: Effect.void,
     dispatchMenuAction: (action) => Deferred.succeed(selectedAction, action).pipe(Effect.asVoid),

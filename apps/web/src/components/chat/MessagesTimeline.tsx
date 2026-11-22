@@ -1,6 +1,9 @@
+import { timelineLabel } from "~/i18n/timelineLabel";
+import { useUiText } from "~/i18n/useUiText";
 import { threadEnvironment } from "../../state/threads";
 import { useAtomCommand } from "../../state/use-atom-command";
 import type { ToolCallDiffTarget } from "../../diffPanelStore";
+
 import { AudioPreviewUnmountContext } from "../files/AudioPreview";
 import { ThreadFindTimelineContext } from "./ThreadFindProvider";
 import { MarkdownFindContext } from "./markdownFindContext";
@@ -24,13 +27,11 @@ import { resolveWorkGroupScrollAnchor } from "@t3tools/client-runtime/work-log/s
 import type { WorkflowOpening } from "@t3tools/client-runtime/state/subagentRuntime";
 import { observeResize } from "~/lib/observeResize";
 import { useStableCallback } from "~/hooks/useStableCallback";
-
 const NOOP_USE_ARTIFACT_TEMPLATE = () => {};
 const EMPTY_PENDING_APPROVALS: ReadonlyArray<PendingApproval> = [];
 const EMPTY_RESPONDING_REQUEST_IDS: TimelineRowSharedState["respondingRequestIds"] = [];
 
 const NOOP_OPEN_ATTACHMENT = (_attachment: ChatFileAttachment) => {};
-
 import { resolveChatListAnchoredEndSpace } from "@t3tools/shared/chatList";
 import { observeVisibleAnimation } from "../../lib/visibleAnimation";
 import {
@@ -100,7 +101,6 @@ import { cn } from "~/lib/utils";
 import { type TimestampFormat } from "@t3tools/contracts/settings";
 import { type HandoffTimelineRun } from "./V2LifecycleRow";
 import { TimelineSystemDivider } from "./TimelineSystemDivider";
-
 import { forwardWheelToTimeline } from "./timelineMinimapWheel";
 import { TimelineMinimap } from "./TimelineMinimap";
 import {
@@ -157,7 +157,6 @@ function timelineListStateFor(identity: string): {
     },
   };
 }
-
 const TIMELINE_LIST_HEADER = <div className="h-3 sm:h-4" />;
 const TIMELINE_LIST_FADE_HEADER = (
   <div className="h-[var(--workspace-titlebar-scroll-fade-height)]" />
@@ -191,7 +190,6 @@ function TimelineListFooter({
     </div>
   );
 }
-
 const EMPTY_TIMELINE_SKILLS: ReadonlyArray<ServerProviderSkill> = [];
 const TIMELINE_MAINTAIN_SCROLL_AT_END = {
   animated: false,
@@ -208,18 +206,16 @@ const TIMELINE_MAINTAIN_SCROLL_AT_END_SMOOTH = {
   ...TIMELINE_MAINTAIN_SCROLL_AT_END,
   animated: true,
 } as const satisfies MaintainScrollAtEndOptions;
-
 const CITED_HISTORY_LOADING: CitedHistory = { _tag: "loading" };
-
 export interface MessagesTimelineHistoryControls {
   readonly hasMoreHistory: boolean;
   readonly loading: boolean;
   readonly error: string | null;
   readonly onLoadEarlier: (throughEntryId?: string) => void;
 }
-
 interface MessagesTimelineProps {
   pendingApprovals?: ReadonlyArray<PendingApproval>;
+  approvalsInTaskTrail?: boolean;
   heldApprovalRequestIds?: ReadonlySet<string> | undefined;
   respondingRequestIds?: TimelineRowSharedState["respondingRequestIds"];
   canOperateThread?: boolean;
@@ -248,12 +244,14 @@ interface MessagesTimelineProps {
   /** Which request is waiting, so a second one of the same kind is announced too. */
   awaitingRequestId?: string | null;
   footer?: ReactNode;
-
   listRef: React.RefObject<LegendListRef | null>;
   timelineEntries: ReadonlyArray<TimelineEntry>;
   latestRun: TimelineLatestRun | null;
   /** The run the screen reader announcer follows; see announcedRun. */
-  announcedRun?: { readonly runId: RunId; readonly status: TimelineLatestRun["status"] } | null;
+  announcedRun?: {
+    readonly runId: RunId;
+    readonly status: TimelineLatestRun["status"];
+  } | null;
   /** See isDetailBehindShell. */
   detailBehindShell?: boolean;
   runningRunId?: RunId | null;
@@ -327,7 +325,6 @@ interface MessagesTimelineProps {
   activeFindMatch?: ThreadFindMatch | null;
   findNavigationId?: number;
 }
-
 export function MessagesTimeline(props: MessagesTimelineProps) {
   const find = useContext(ThreadFindTimelineContext);
   const findOpen = find?.findOpen ?? props.findOpen;
@@ -339,9 +336,9 @@ export function MessagesTimeline(props: MessagesTimelineProps) {
     />
   );
 }
-
 const ConversationTimeline = memo(function ConversationTimeline({
   pendingApprovals = EMPTY_PENDING_APPROVALS,
+  approvalsInTaskTrail = false,
   heldApprovalRequestIds,
   respondingRequestIds = EMPTY_RESPONDING_REQUEST_IDS,
   canOperateThread = false,
@@ -419,6 +416,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
   topFadeEnabled = false,
   historyControls,
 }: MessagesTimelineProps) {
+  const uiText = useUiText();
   const listIdentityKey = displayThreadKey ?? routeThreadKey;
   // Snapshot restore positions on identity changes; ongoing scroll writes must not move them.
   // Find open at the opening is part of the snapshot: opening find later
@@ -594,7 +592,6 @@ const ConversationTimeline = memo(function ConversationTimeline({
       return next;
     });
   };
-
   // An interrupted run opens its fold; a newer run closes the previous run's.
   const [observedLatestRun, setObservedLatestRun] = useState({
     identity: listIdentityKey,
@@ -712,7 +709,6 @@ const ConversationTimeline = memo(function ConversationTimeline({
     !activeFindRunId || paintedExpandedRunIds.has(activeFindRunId)
       ? paintedExpandedRunIds
       : new Set(paintedExpandedRunIds).add(activeFindRunId);
-
   const activeFindAttemptId = activeFindMatch
     ? timelineEntries.find((entry) => entry.id === activeFindMatch.entryId)?.attempt?.id
     : undefined;
@@ -824,7 +820,6 @@ const ConversationTimeline = memo(function ConversationTimeline({
     restoreReady,
     viewportRef,
   ]);
-
   const [timelineViewportElement, setTimelineViewportElement] = useState<HTMLDivElement | null>(
     null,
   );
@@ -919,7 +914,6 @@ const ConversationTimeline = memo(function ConversationTimeline({
     if (!state || minimapItems.length === 0) {
       return;
     }
-
     const firstBufferedIndex = state.startBuffered;
     const firstBufferedRow: HTMLElement | undefined =
       firstBufferedIndex == null ? undefined : state.elementAtIndex(firstBufferedIndex);
@@ -1029,7 +1023,6 @@ const ConversationTimeline = memo(function ConversationTimeline({
       rememberTimelinePosition(last.threadKey, last.position, false);
     }
   };
-
   const handleScroll = () => {
     if (restoringThreadPosition || listRef.current?.getState?.().data !== rows) return;
     const isAtEnd = rememberPosition(liveFollowEnabled && !anchoredEndSpace);
@@ -1099,6 +1092,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
   );
   const sharedState: TimelineRowSharedState = {
     pendingApprovals: pendingApprovalsByRequestId,
+    approvalsInTaskTrail,
     respondingRequestIds,
     canOperateThread,
     onRespondToApproval,
@@ -1208,7 +1202,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
       <div className="messages-timeline-row-frame">
         <div className="chat-content-lane pt-1 sm:pt-2">
           <TimelineSystemDivider
-            label={parentThreadLink.sideChat ? "Context from" : "Subagent of"}
+            label={parentThreadLink.sideChat ? uiText("Context from") : uiText("Subagent of")}
             detail={
               parentThreadLink.environmentLabel === undefined
                 ? parentThreadLink.title
@@ -1229,7 +1223,6 @@ const ConversationTimeline = memo(function ConversationTimeline({
       {parentThreadLink !== null ? listHeaderLeadingContent : null}
     </>
   );
-
   const canvas = useChatCanvas();
   const registerTimeline = canvas?.registerTimeline;
   // Stable so the list attaches once per mount, not on every render.
@@ -1308,7 +1301,6 @@ const ConversationTimeline = memo(function ConversationTimeline({
     rows,
     contentInsetEndAdjustment,
   });
-
   useThreadFindNavigation({
     // Find reveals its match only after the opening restore settles; both
     // scroll the list directly, so the restore would otherwise pull it back.
@@ -1323,7 +1315,6 @@ const ConversationTimeline = memo(function ConversationTimeline({
     listRef,
     contentInsetEndAdjustment,
   });
-
   // LegendList moves rows one commit late; per-row providers prevent thread context leaks.
   const onAudioPlaybackChange = (rowId: string, event: SyntheticEvent) => {
     const audio = event.target;
@@ -1392,7 +1383,6 @@ const ConversationTimeline = memo(function ConversationTimeline({
     const scrollNode = listRef.current?.getScrollableNode();
     if (scrollNode) forwardWheelToTimeline(event, scrollNode);
   };
-
   if (showsEmptyState) {
     if (hideEmptyPlaceholder) {
       return (
@@ -1409,12 +1399,13 @@ const ConversationTimeline = memo(function ConversationTimeline({
           className="flex h-full items-center justify-center ps-(--chat-lane-inset-start) pe-(--chat-lane-inset-end)"
           style={{ paddingBottom: emptyPlaceholderInset }}
         >
-          <p className="text-sm text-muted-foreground">Send a message to start the conversation.</p>
+          <p className="text-sm text-muted-foreground">
+            {uiText("Send a message to start the conversation.")}
+          </p>
         </div>
       </>
     );
   }
-
   return (
     <>
       {activityAnnouncer}
@@ -1477,7 +1468,15 @@ const ConversationTimeline = memo(function ConversationTimeline({
               className={cn(
                 "messages-timeline-scroll scrollbar-gutter-both h-full min-h-0 overflow-x-hidden overscroll-y-contain [overflow-anchor:none]",
                 topFadeEnabled && "topbar-scroll-fade",
+                contentInsetEndAdjustment > 0 && "composer-bottom-fade",
               )}
+              {...(contentInsetEndAdjustment > 0
+                ? {
+                    style: {
+                      "--composer-fade-d": `${contentInsetEndAdjustment}px`,
+                    } as React.CSSProperties,
+                  }
+                : {})}
               ListHeaderComponent={listHeader}
               ListFooterComponent={timelineListFooter}
             />
@@ -1504,8 +1503,8 @@ const ConversationTimeline = memo(function ConversationTimeline({
     </>
   );
 });
-
 function TimelineHistoryControl(props: MessagesTimelineHistoryControls) {
+  const uiText = useUiText();
   if (!props.hasMoreHistory && props.error === null) {
     return null;
   }
@@ -1516,13 +1515,13 @@ function TimelineHistoryControl(props: MessagesTimelineHistoryControls) {
           <button
             type="button"
             disabled={props.loading}
-            aria-label="Load earlier turns"
+            aria-label={uiText("Load earlier turns")}
             onClick={() => props.onLoadEarlier()}
             className="flex w-full cursor-pointer items-center gap-3 py-1.5 text-muted-foreground text-xs hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring disabled:cursor-default"
           >
             <span aria-hidden="true" className="h-px flex-1 bg-border/70" />
             <span className="shrink-0">
-              {props.loading ? "Loading earlier turns…" : "Load earlier turns"}
+              {props.loading ? uiText("Loading earlier turns…") : uiText("Load earlier turns")}
             </span>
             <span aria-hidden="true" className="h-px flex-1 bg-border/70" />
           </button>
@@ -1612,7 +1611,6 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
   const isExpandedToolGroupHeader =
     (row.kind === "work-toggle" || row.kind === "work-live" || row.kind === "thinking") &&
     row.expanded === true;
-
   return (
     <div
       className={cn(
@@ -1689,11 +1687,15 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
     </div>
   );
 });
-
 function WorktreeSetupTimelineRow({
   row,
 }: {
-  row: Extract<TimelineRow, { kind: "worktree-setup" }>;
+  row: Extract<
+    TimelineRow,
+    {
+      kind: "worktree-setup";
+    }
+  >;
 }) {
   const ctx = use(TimelineRowCtx);
   const terminalId = row.snapshot.setupScript?.terminalId ?? null;
@@ -1711,16 +1713,21 @@ function WorktreeSetupTimelineRow({
     />
   );
 }
-
 function ContextCompactionTimelineRow({
   row,
 }: {
-  row: Extract<TimelineRow, { kind: "context-compaction" }>;
+  row: Extract<
+    TimelineRow,
+    {
+      kind: "context-compaction";
+    }
+  >;
 }) {
+  const uiText = useUiText();
   const label =
     row.title && row.label.startsWith("Context compacted")
-      ? row.title + row.label.slice("Context compacted".length)
-      : row.label;
+      ? uiText(row.title) + row.label.slice("Context compacted".length)
+      : timelineLabel(row.label, uiText);
   const content = (
     <span className="flex min-w-0 items-center gap-1.5">
       {row.failed ? (
@@ -1730,15 +1737,19 @@ function ContextCompactionTimelineRow({
       )}
       {row.tokenCounts ? (
         <>
-          {row.title ?? "Context compacted"} {row.tokenCounts.before}
+          {uiText(row.title ?? "Context compacted")} {row.tokenCounts.before}
           <ArrowRightIcon aria-hidden="true" className="size-3" />
-          {row.tokenCounts.after} tokens
+          {row.tokenCounts.after}
+          {" " + uiText("tokens")}
         </>
       ) : (
         label
       )}
       {row.failure ? (
-        <span className="min-w-0 truncate opacity-80">&middot; {row.failure}</span>
+        <span className="min-w-0 truncate opacity-80">
+          {"&middot; "}
+          {row.failure}
+        </span>
       ) : null}
     </span>
   );
@@ -1804,8 +1815,13 @@ function useDeferredWorkLoading(
 }
 
 function WorkHistorySkeleton() {
+  const uiText = useUiText();
   return (
-    <div role="status" aria-label="Loading work history" className="space-y-2 px-1 pb-1 pt-3">
+    <div
+      role="status"
+      aria-label={uiText("Loading work history")}
+      className="space-y-2 px-1 pb-1 pt-3"
+    >
       {[0, 1, 2].map((index) => (
         <div key={index} className="flex items-center gap-2" aria-hidden="true">
           <Skeleton className="size-3 shrink-0" />
@@ -1820,6 +1836,7 @@ function WorkHistorySkeleton() {
 }
 
 function TurnFoldTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "turn-fold" }> }) {
+  const uiText = useUiText();
   const ctx = use(TimelineRowCtx);
   const { loading, error, toggle } = useDeferredWorkLoading(row, () =>
     ctx.onToggleTurnFold(row.runId),
@@ -1837,7 +1854,7 @@ function TurnFoldTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "turn-
           className="flex cursor-pointer select-none items-center gap-1 rounded-md px-1 text-sm leading-relaxed text-muted-foreground tabular-nums transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70"
         >
           <span>
-            {row.label}
+            {timelineLabel(row.label, uiText)}
             {error ? ` · ${error}` : ""}
           </span>
           {row.expanded ? (
@@ -1856,8 +1873,17 @@ function TurnFoldTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "turn-
     </div>
   );
 }
-
-function AttemptFoldTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "attempt-fold" }> }) {
+function AttemptFoldTimelineRow({
+  row,
+}: {
+  row: Extract<
+    TimelineRow,
+    {
+      kind: "attempt-fold";
+    }
+  >;
+}) {
+  const uiText = useUiText();
   const ctx = use(TimelineRowCtx);
   const { loading, error, toggle } = useDeferredWorkLoading(row, () =>
     ctx.onToggleAttemptFold(row.attemptId),
@@ -1880,10 +1906,10 @@ function AttemptFoldTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "at
           <ChevronRightIcon className="size-3.5 shrink-0 text-muted-foreground" />
         )}
         <span className="text-xs font-medium text-foreground/80">
-          {row.label}
+          {timelineLabel(row.label, uiText)}
           {error ? ` · ${error}` : ""}
         </span>
-        <span className="text-2xs text-muted-foreground">Cut off by a steer</span>
+        <span className="text-2xs text-muted-foreground">{uiText("Cut off by a steer")}</span>
       </button>
       {loading ? <WorkHistorySkeleton /> : null}
     </div>

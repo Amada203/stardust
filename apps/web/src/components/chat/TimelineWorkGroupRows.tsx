@@ -1,3 +1,8 @@
+import { conversationLabel, chineseDuration } from "~/i18n/conversationLabel";
+import { useLocale } from "gt-react";
+import { timelineLabel } from "~/i18n/timelineLabel";
+import { useUiText } from "~/i18n/useUiText";
+
 import { TimelinePendingApprovalRow } from "./TimelinePendingApprovalRow";
 import { WorkLogButton, WorkLogList, WorkLogRow } from "./WorkLog";
 import type { WorktreeSetupSnapshot } from "@t3tools/contracts";
@@ -6,6 +11,7 @@ import {
   liveThoughtLine,
   resolveViewedImageAsset,
   workEntriesViewedImagePaths,
+  workEntryHasNoMatches,
 } from "@t3tools/client-runtime/work-log/presentation";
 import { resolveWorkGroupScrollAnchor } from "@t3tools/client-runtime/work-log/scroll-anchor";
 import { useAssetUrls } from "~/assets/assetUrls";
@@ -76,6 +82,7 @@ export const WorkGroupSection = memo(function WorkGroupSection({
   isExpandedToolGroup: boolean;
   displayLabel?: string | undefined;
 }) {
+  const uiText = useUiText();
   const {
     workspaceRoot,
     routeThreadKey,
@@ -107,9 +114,8 @@ export const WorkGroupSection = memo(function WorkGroupSection({
       />
     );
   }
-
   return (
-    <section aria-label="Activity">
+    <section aria-label={uiText("Activity")}>
       {nonEmptyEntries.map((workEntry) => (
         <SimpleWorkEntryRow
           key={workEntry.id}
@@ -127,10 +133,14 @@ export const WorkGroupSection = memo(function WorkGroupSection({
 });
 
 function WorkingTimer({ createdAt }: { createdAt: string }) {
+  const locale = useLocale();
   const { activeThreadEnvironmentId } = use(TimelineRowCtx);
   return (
     <span
-      ref={tickTextContent(() => formatWorkingTimerNow(createdAt, activeThreadEnvironmentId), true)}
+      ref={tickTextContent(() => {
+        const value = formatWorkingTimerNow(createdAt, activeThreadEnvironmentId);
+        return locale.startsWith("zh") ? chineseDuration(value) : value;
+      }, true)}
       className="tabular-nums"
     />
   );
@@ -194,6 +204,7 @@ function ExpandedWorkGroupEntries({
   groupedEntries: ReadonlyArray<TimelineWorkEntry>;
   workspaceRoot: string | undefined;
 }) {
+  const uiText = useUiText();
   const {
     workGroupViewState: viewState,
     onToggleWorkEntry,
@@ -329,7 +340,7 @@ function ExpandedWorkGroupEntries({
           onItemSizeChanged={updateExpandedContentHeight}
           tabIndex={0}
           role="region"
-          aria-label="Tool calls"
+          aria-label={uiText("Tool calls")}
           data-tool-group-scroll
           style={{ maxHeight: `calc(min(18rem, 50dvh) + ${expandedContentHeight}px)` }}
           className={cn(
@@ -345,20 +356,21 @@ function ExpandedWorkGroupEntries({
 const workEntryKey = (entry: TimelineWorkEntry) => entry.id;
 
 export function WorkingTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "working" }> }) {
+  const uiText = useUiText();
   const { isCompacting, isPreparingWorktree, backgroundWorktreeSetup } =
     use(TimelineRowActivityCtx);
   const compacting = row.compacting === true || isCompacting;
   const shimmer = isPreparingWorktree || compacting;
   const label = isPreparingWorktree ? (
-    "Setting up worktree…"
+    uiText("Setting up worktree…")
   ) : compacting ? (
     <CompactingLabel createdAt={row.createdAt} />
   ) : row.createdAt ? (
     <>
-      Working for <WorkingTimer createdAt={row.createdAt} />
+      {uiText("Working for")} <WorkingTimer createdAt={row.createdAt} />
     </>
   ) : (
-    "Working..."
+    uiText("Working...")
   );
   return (
     <div className="border-b border-border/60 pb-2 pt-1">
@@ -379,11 +391,12 @@ export function WorkingTimelineRow({ row }: { row: Extract<TimelineRow, { kind: 
 }
 
 function BackgroundWorktreeSetupChip({ snapshot }: { snapshot: WorktreeSetupSnapshot }) {
+  const uiText = useUiText();
   const ctx = use(TimelineRowCtx);
   const terminalId = snapshot.setupScript?.terminalId ?? null;
   const openTerminal = ctx.onOpenWorktreeSetupTerminal;
   const onOpenTerminal = openTerminal && terminalId ? () => openTerminal(terminalId) : null;
-  const scriptName = snapshot.setupScript?.name ?? "Setup script";
+  const scriptName = snapshot.setupScript?.name ?? uiText("Setup script");
   return (
     <Popover>
       <PopoverTrigger
@@ -392,12 +405,14 @@ function BackgroundWorktreeSetupChip({ snapshot }: { snapshot: WorktreeSetupSnap
             variant="ghost-muted"
             size="micro"
             className="ml-auto min-w-0 shrink-0"
-            aria-label={`Background setup is still running: ${scriptName}. Show setup progress.`}
+            aria-label={uiText("Background setup is still running: {name}. Show setup progress.", {
+              name: scriptName,
+            })}
           />
         }
       >
         <Spinner className="size-3 shrink-0" />
-        <span className="truncate">Background setup</span>
+        <span className="truncate">{uiText("Background setup")}</span>
       </PopoverTrigger>
       <PopoverPopup side="bottom" align="end" width="lg" padding="compact">
         <WorktreeSetupCard
@@ -413,21 +428,23 @@ function BackgroundWorktreeSetupChip({ snapshot }: { snapshot: WorktreeSetupSnap
 }
 
 function CompactingLabel({ createdAt }: { createdAt: string | null }) {
+  const uiText = useUiText();
   return (
     <span className="inline-flex items-center gap-1.5">
       <Minimize2Icon aria-hidden="true" className="size-3" />
       {createdAt ? (
         <span>
-          Compacting for <WorkingTimer createdAt={createdAt} />
+          {uiText("Compacting for")} <WorkingTimer createdAt={createdAt} />
         </span>
       ) : (
-        "Compacting…"
+        uiText("Compacting…")
       )}
     </span>
   );
 }
 
 export function ThinkingTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "thinking" }> }) {
+  const uiText = useUiText();
   const ctx = use(TimelineRowCtx);
   const { isCompacting, isPreparingWorktree, liveAnswerPreview, providerStartingLabel } =
     use(TimelineRowActivityCtx);
@@ -436,7 +453,13 @@ export function ThinkingTimelineRow({ row }: { row: Extract<TimelineRow, { kind:
   const live = ctx.pendingApprovals.size === 0;
   const activity = (
     <LiveActivityRow
-      label={providerStartingLabel ?? row.label ?? liveAnswerPreview ?? "Thinking"}
+      label={
+        providerStartingLabel
+          ? uiText(providerStartingLabel)
+          : row.label
+            ? timelineLabel(row.label, uiText)
+            : (liveAnswerPreview ?? uiText("Thinking"))
+      }
       iconName="brain"
       active={live}
       shimmer={live}
@@ -512,6 +535,7 @@ function LiveActivityContent({
   active?: boolean;
   highlighted?: boolean;
 }) {
+  const uiText = useUiText();
   const showTrailingFailureMark =
     failed && iconName !== undefined && !toolIconAcceptsTint(toolIcon);
 
@@ -529,7 +553,7 @@ function LiveActivityContent({
                   : "text-icon-muted",
             )}
             role={announceFailure ? "img" : undefined}
-            aria-label={announceFailure ? "Tool call failed" : undefined}
+            aria-label={announceFailure ? uiText("Tool call failed") : undefined}
           >
             <ToolActivityIconView
               icon={toolIcon}
@@ -565,9 +589,13 @@ export function LiveWorkEntryTimelineRow({
 }: {
   row: Extract<TimelineRow, { kind: "work-live" }>;
 }) {
+  const uiText = useUiText();
   const ctx = use(TimelineRowCtx);
   const threadTarget = useThreadReadTarget(row.entry, ctx.activeThreadEnvironmentId);
-  const label = liveWorkEntryLabel(row.entry, ctx.workspaceRoot, row.active);
+  const label = conversationLabel(
+    liveWorkEntryLabel(row.entry, ctx.workspaceRoot, row.active),
+    uiText,
+  );
   const threadLabel = threadReadLabel(label, threadTarget);
 
   const item = row.entry.projectedItem?.item;
@@ -576,6 +604,7 @@ export function LiveWorkEntryTimelineRow({
   if (pendingApproval) return <TimelinePendingApprovalRow approval={pendingApproval} />;
 
   const failed = workEntryDisplayIndicatesToolFailure(row.entry);
+  const noMatches = workEntryHasNoMatches(row.entry);
   const thoughtLine =
     row.thought && !row.expanded
       ? liveThoughtLine((row.thought.detail ?? "").slice(0, THOUGHT_PREVIEW_SOURCE_MAX_LENGTH))
@@ -627,9 +656,9 @@ export function LiveWorkEntryTimelineRow({
         label={
           thoughtIsStatus ? (
             row.active ? (
-              "Thinking"
+              uiText("Thinking")
             ) : (
-              "Thought"
+              uiText("Thought")
             )
           ) : row.entry.itemType === "reasoning" ? (
             <ChatMarkdown
@@ -645,6 +674,11 @@ export function LiveWorkEntryTimelineRow({
               environmentId={ctx.activeThreadEnvironmentId}
               linked={false}
             />
+          ) : noMatches ? (
+            <>
+              {label}{" "}
+              <span className="text-xs text-muted-foreground">· {uiText("No matches")}</span>
+            </>
           ) : (
             label
           )
@@ -663,10 +697,11 @@ export function WorkGroupToggleTimelineRow({
 }: {
   row: Extract<TimelineRow, { kind: "work-toggle" }>;
 }) {
+  const uiText = useUiText();
   const ctx = use(TimelineRowCtx);
   return (
     <WorkGroupHeader
-      label={row.summary}
+      label={conversationLabel(row.summary, uiText)}
       iconName={row.toolSurface ?? toolGroupSummaryIconName(row.summaryKind)}
       toolIcon={row.toolIcon}
       failed={row.hasFailure}

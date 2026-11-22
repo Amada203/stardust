@@ -1,3 +1,4 @@
+import { CommunityUpdateCoordinator } from "../components/settings/CommunityUpdates";
 import { type ServerLifecycleWelcomePayload } from "@t3tools/contracts";
 import { scopedProjectKey, scopeProjectRef } from "@t3tools/client-runtime/environment";
 import {
@@ -13,7 +14,7 @@ import {
 import { CheckIcon, CopyIcon } from "lucide-react";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 
-import { APP_DISPLAY_NAME, APP_VERSION } from "../branding";
+import { appDisplayName, APP_VERSION } from "../branding";
 import { AppSidebarLayout } from "../components/AppSidebarLayout";
 import { CommandPalette } from "../components/CommandPalette";
 import { CustomSnoozeDialogHost } from "../components/CustomSnoozeDialog";
@@ -110,7 +111,7 @@ export const Route = createRootRoute({
   errorComponent: RootRouteErrorView,
   notFoundComponent: RootRouteNotFoundView,
   head: () => ({
-    meta: [{ name: "title", content: APP_DISPLAY_NAME }],
+    meta: [{ name: "title", content: appDisplayName() }],
   }),
 });
 
@@ -120,7 +121,7 @@ function RootRouteNotFoundView() {
       <div className="flex max-w-sm flex-col items-center gap-4 text-center">
         <h1 className="text-lg font-medium text-foreground">Page not found</h1>
         <p className="text-sm text-muted-foreground">
-          This link doesn't point to a page in {APP_DISPLAY_NAME}. Go home to choose a project or
+          This link doesn't point to a page in {appDisplayName()}. Go home to choose a project or
           start a thread.
         </p>
         <Button render={<Link to="/" replace />}>Go home</Button>
@@ -191,6 +192,7 @@ function RootRouteBranch() {
       <ReopenClosedViewShortcut />
       <ConfirmDialogHost />
       <CustomSnoozeDialogHost />
+      <CommunityUpdateCoordinator />
       <GuestShareDialogHost />
       <ProjectCloneToastCoordinator />
       <ConnectDeviceApprovalCoordinator />
@@ -314,7 +316,7 @@ const MAX_ERROR_CAUSE_DEPTH = 5;
 // Use only pathname to keep query tokens off the clipboard.
 function errorReport(error: unknown, pathname: string): string {
   const lines = [
-    `${APP_DISPLAY_NAME} ${APP_VERSION}`,
+    `${appDisplayName()} ${APP_VERSION}`,
     `Path: ${pathname}`,
     `Time: ${new Date().toISOString()}`,
     "",

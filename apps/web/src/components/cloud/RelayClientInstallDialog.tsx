@@ -1,3 +1,5 @@
+import { useUiText } from "~/i18n/useUiText";
+import { uiText } from "~/i18n";
 import { DownloadIcon } from "lucide-react";
 import { useSyncExternalStore } from "react";
 import type { RelayClientInstallProgressStage } from "@t3tools/contracts";
@@ -23,16 +25,52 @@ const installSteps: ReadonlyArray<{
   readonly stage: RelayClientInstallProgressStage;
   readonly label: string;
 }> = [
-  { stage: "checking", label: "Checking current installation" },
-  { stage: "waiting_for_lock", label: "Waiting for installer" },
-  { stage: "downloading", label: "Downloading relay client" },
-  { stage: "verifying", label: "Verifying download" },
-  { stage: "installing", label: "Installing relay client" },
-  { stage: "validating", label: "Validating executable" },
-  { stage: "activating", label: "Activating installation" },
+  {
+    stage: "checking",
+    get label() {
+      return uiText("Checking current installation");
+    },
+  },
+  {
+    stage: "waiting_for_lock",
+    get label() {
+      return uiText("Waiting for installer");
+    },
+  },
+  {
+    stage: "downloading",
+    get label() {
+      return uiText("Downloading relay client");
+    },
+  },
+  {
+    stage: "verifying",
+    get label() {
+      return uiText("Verifying download");
+    },
+  },
+  {
+    stage: "installing",
+    get label() {
+      return uiText("Installing relay client");
+    },
+  },
+  {
+    stage: "validating",
+    get label() {
+      return uiText("Validating executable");
+    },
+  },
+  {
+    stage: "activating",
+    get label() {
+      return uiText("Activating installation");
+    },
+  },
 ];
 
 export function RelayClientInstallDialog() {
+  const uiText = useUiText();
   const state = useSyncExternalStore(
     subscribeRelayClientInstallDialog,
     readRelayClientInstallDialogState,
@@ -66,12 +104,16 @@ export function RelayClientInstallDialog() {
             <DownloadIcon aria-hidden className="size-4.5 text-muted-foreground" />
           </div>
           <DialogTitle>
-            {isInstalling ? "Installing relay client" : "Install relay client?"}
+            {isInstalling ? uiText("Installing relay client") : uiText("Install relay client?")}
           </DialogTitle>
           <DialogDescription>
             {isInstalling
-              ? "T3 Code is preparing this environment for secure access through T3 Connect."
-              : "T3 Code needs the relay client to make this environment available through T3 Connect."}
+              ? uiText(
+                  "T3 Code is preparing this environment for secure access through T3 Connect.",
+                )
+              : uiText(
+                  "T3 Code needs the relay client to make this environment available through T3 Connect.",
+                )}
           </DialogDescription>
         </DialogHeader>
         <DialogPanel scrollFade={false}>

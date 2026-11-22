@@ -1,3 +1,5 @@
+import { useUiText } from "~/i18n/useUiText";
+
 import {
   AuthOrchestrationOperateScope,
   AuthProvidersManageScope,
@@ -106,6 +108,7 @@ function InstanceSessionManagement(
     readonly onProjectChange: (projectId: ProjectId) => void;
   },
 ) {
+  const uiText = useUiText();
   const canOperate = useEnvironmentScope(props.environmentId, AuthOrchestrationOperateScope);
   const canRead = useEnvironmentScope(props.environmentId, AuthOrchestrationReadScope);
   const { projectId } = props;
@@ -316,7 +319,7 @@ function InstanceSessionManagement(
     if (!parsedHeaders.ok) {
       toastManager.add({
         type: "error",
-        title: "Invalid provider headers",
+        title: uiText("Invalid provider headers"),
         description: parsedHeaders.error,
       });
       return;
@@ -434,13 +437,17 @@ function InstanceSessionManagement(
                   </SelectPopup>
                 </Select>
                 <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
+                  type={"button"}
+                  size={"sm"}
+                  variant={"outline"}
                   disabled={!canRead || loading || projectId === null}
                   onClick={() => void loadSessions()}
                 >
-                  {loading ? "Loading" : sessions.length === 0 ? "List sessions" : "Refresh"}
+                  {loading
+                    ? uiText("Loading")
+                    : sessions.length === 0
+                      ? uiText("List sessions")
+                      : uiText("Refresh")}
                 </Button>
               </>
             ) : null}
@@ -495,7 +502,9 @@ function InstanceSessionManagement(
                           }
                           onClick={() => void deleteNativeSession(session)}
                         >
-                          {deletingSessionId === session.sessionId ? "Deleting" : "Delete"}
+                          {deletingSessionId === session.sessionId
+                            ? uiText("Deleting")
+                            : uiText("Delete")}
                         </Button>
                       ) : null}
                     </div>
@@ -506,14 +515,14 @@ function InstanceSessionManagement(
 
             {nextCursor !== null ? (
               <Button
-                type="button"
-                size="xs"
-                variant="ghost-muted"
-                className="w-fit"
+                type={"button"}
+                size={"xs"}
+                variant={"ghost-muted"}
+                className={"w-fit"}
                 disabled={!canRead || loading}
                 onClick={() => void loadSessions(nextCursor)}
               >
-                {loading ? "Loading" : "Load more"}
+                {loading ? uiText("Loading") : uiText("Load more")}
               </Button>
             ) : null}
           </>
@@ -521,12 +530,12 @@ function InstanceSessionManagement(
       </SettingsRow>
 
       {canConfigureProviders ? (
-        <div className="grid gap-3 border-t border-border/60 px-3 py-3 sm:px-4">
-          <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className={"grid gap-3 border-t border-border/60 px-3 py-3 sm:px-4"}>
+          <div className={"flex flex-wrap items-center justify-between gap-2"}>
             <div>
-              <p className="text-xs font-medium text-foreground">Agent providers</p>
-              <p className="text-xs text-muted-foreground">
-                Configure non-secret routing. Headers are write-only.
+              <p className={"text-xs font-medium text-foreground"}>{uiText("Agent providers")}</p>
+              <p className={"text-xs text-muted-foreground"}>
+                {uiText("Configure non-secret routing. Headers are write-only.")}
               </p>
             </div>
             <Button
@@ -538,7 +547,11 @@ function InstanceSessionManagement(
               }
               onClick={() => void loadProviders()}
             >
-              {loadingProviders ? "Loading" : providers.length === 0 ? "List providers" : "Refresh"}
+              {loadingProviders
+                ? uiText("Loading")
+                : providers.length === 0
+                  ? uiText("List providers")
+                  : uiText("Refresh")}
             </Button>
           </div>
 
@@ -580,22 +593,22 @@ function InstanceSessionManagement(
                     [provider.providerId]: { ...draft, ...update },
                   }));
                 return (
-                  <div key={provider.providerId} className="grid gap-2 py-3">
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="min-w-0">
-                        <p className="truncate text-xs font-medium text-foreground">
+                  <div key={provider.providerId} className={"grid gap-2 py-3"}>
+                    <div className={"flex items-center justify-between gap-2"}>
+                      <div className={"min-w-0"}>
+                        <p className={"truncate text-xs font-medium text-foreground"}>
                           {provider.providerId}
                         </p>
-                        <p className="text-3xs text-muted-foreground">
-                          {provider.current === null ? "Disabled" : "Configured"}
-                          {provider.required ? " · Required" : ""}
+                        <p className={"text-3xs text-muted-foreground"}>
+                          {provider.current === null ? uiText("Disabled") : uiText("Configured")}
+                          {provider.required ? uiText("· Required") : ""}
                         </p>
                       </div>
-                      <div className="flex items-center gap-1">
+                      <div className={"flex items-center gap-1"}>
                         <Button
-                          type="button"
-                          size="xs"
-                          variant="outline"
+                          type={"button"}
+                          size={"xs"}
+                          variant={"outline"}
                           disabled={
                             props.readOnly ||
                             savingProviderId !== null ||
@@ -605,7 +618,9 @@ function InstanceSessionManagement(
                           }
                           onClick={() => void saveProvider(provider)}
                         >
-                          {savingProviderId === provider.providerId ? "Saving" : "Save"}
+                          {savingProviderId === provider.providerId
+                            ? uiText("Saving")
+                            : uiText("Save")}
                         </Button>
                         {!provider.required && provider.current !== null ? (
                           <Button
@@ -617,12 +632,12 @@ function InstanceSessionManagement(
                             }
                             onClick={() => void disableConfiguredProvider(provider)}
                           >
-                            Disable
+                            {uiText("Disable")}
                           </Button>
                         ) : null}
                       </div>
                     </div>
-                    <div className="grid gap-2 sm:grid-cols-[9rem_minmax(0,1fr)]">
+                    <div className={"grid gap-2 sm:grid-cols-[9rem_minmax(0,1fr)]"}>
                       <Select
                         value={draft.apiType}
                         disabled={props.readOnly || savingProviderId !== null}

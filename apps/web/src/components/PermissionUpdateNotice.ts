@@ -1,3 +1,4 @@
+import { uiText } from "~/i18n";
 import { sessionHasLegacyPermissions, type EnvironmentId } from "@t3tools/contracts";
 import type { AnyRouter } from "@tanstack/react-router";
 import * as Schema from "effect/Schema";
@@ -56,7 +57,7 @@ function showPermissionNotice(
     },
     data: {
       actionLayout: "stacked-end",
-      secondaryActionProps: { children: "Dismiss", onClick: dismiss },
+      secondaryActionProps: { children: uiText("Dismiss"), onClick: dismiss },
       secondaryActionVariant: "ghost",
     },
   });

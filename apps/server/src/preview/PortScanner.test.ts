@@ -173,9 +173,7 @@ effectIt.effect("preserves explicit loopback hosts and bounds wildcard rewrites"
   const ipv4Url = "https://127.0.0.1:43125/docs";
   const ipv6Url = "http://[::1]:43126/docs";
   const wildcardPrefix = "http://0.0.0.0/";
-  const maximumWildcardUrl = `${wildcardPrefix}${"a".repeat(
-    PREVIEW_URL_MAX_LENGTH - wildcardPrefix.length,
-  )}`;
+  const maximumWildcardUrl = `${wildcardPrefix}${"a".repeat(PREVIEW_URL_MAX_LENGTH - wildcardPrefix.length)}`;
   const requests: string[] = [];
   const fetchFn = ((input: Parameters<typeof globalThis.fetch>[0]) => {
     requests.push(String(input));
@@ -368,19 +366,19 @@ effectIt.effect(
 
     return Effect.gen(function* () {
       const scanner = yield* ownedScanner();
-      expect(yield* scanner.scan([configuredUrl])).toMatchObject([
+      expect(yield* scanner.scan([configuredUrl], { retryFailed: true })).toMatchObject([
         { pid: 1234, url: configuredUrl },
       ]);
 
       respond = async () => new Response("unavailable", { status: 503 });
       yield* TestClock.adjust(Duration.seconds(15));
-      expect(yield* scanner.scan([configuredUrl])).toMatchObject([
+      expect(yield* scanner.scan([configuredUrl], { retryFailed: true })).toMatchObject([
         { pid: 1234, url: configuredUrl },
       ]);
 
       respond = () => Promise.reject(new TypeError("fetch failed"));
       yield* TestClock.adjust(Duration.seconds(15));
-      expect(yield* scanner.scan([configuredUrl])).toMatchObject([
+      expect(yield* scanner.scan([configuredUrl], { retryFailed: true })).toMatchObject([
         { pid: 1234, url: configuredUrl },
       ]);
       expect(requests).toEqual(Array.from({ length: 3 }, () => [configuredUrl, "manual"]));

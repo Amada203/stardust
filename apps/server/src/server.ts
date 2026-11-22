@@ -1,3 +1,8 @@
+import * as SpotlightSearch from "./orchestration-v2/SpotlightSearch.ts";
+import * as DiskSpace from "./diskSpace.ts";
+import * as StorageManagement from "./storageManagement.ts";
+import * as UsageProjectAttribution from "./usage/UsageProjectAttribution.ts";
+import * as ArtifactWallHttp from "./artifacts/http.ts";
 import * as ProviderEventLoggers from "@t3tools/provider-core/server/ProviderEventLoggers";
 import type { RelayManagedEndpointRuntimeConfig } from "@t3tools/contracts/relay";
 import * as Random from "effect/Random";
@@ -303,6 +308,7 @@ const layerBackground = BackgroundPolicy.layer.pipe(
 );
 
 const layerUsage = UsageService.layer.pipe(
+  Layer.provide(UsageProjectAttribution.layer),
   Layer.provide(
     Layer.mergeAll(
       AntigravityUsage.layer,
@@ -674,12 +680,16 @@ const layerServerRestart = Layer.effect(
   }),
 );
 
+const layerStorageCleanup = StorageCleanup.layer.pipe(Layer.provide(ProjectionStoreV2.layer));
+
 const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
   AgentAwarenessRelay.layer,
   HeldHooksWaker.layer,
   layerThreadSettlementWorker,
   layerIdleCompactionWorker,
-  StorageCleanup.layer.pipe(Layer.provide(ProjectionStoreV2.layer)),
+  layerStorageCleanup,
+  DiskSpace.layer.pipe(Layer.provide(ProcessRunner.layer)),
+  StorageManagement.layer.pipe(Layer.provide(layerStorageCleanup)),
   DatabaseStorage.layer.pipe(
     Layer.provide(ProjectionMaintenance.layer),
     Layer.provide(layerServerRestart),
@@ -721,7 +731,9 @@ const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
 ).pipe(
   Layer.provideMerge(layerOrchestrationApplication),
   Layer.provideMerge(RuntimeLayer.layerEventInfrastructure),
-  Layer.provideMerge(Layer.merge(ProjectStore.layer, ThreadSearch.layer)),
+  Layer.provideMerge(
+    Layer.merge(ProjectStore.layer, ThreadSearch.layer.pipe(Layer.provide(SpotlightSearch.layer))),
+  ),
   Layer.provideMerge(SecretCheck.layer),
   Layer.provideMerge(SecretResolver.layer),
   // Above the settings it writes when a theme is applied.
@@ -798,13 +810,19 @@ const layerRuntimeCoreDependencies = layerRuntimeCoreDependenciesBase.pipe(
 );
 
 const layerRuntimeDependencies = layerRuntimeCoreDependencies.pipe(
-  Layer.provideMerge(layerUsage),
+  Layer.provideMerge(Layer.provideMerge(UsageService.layerWarmUp, layerUsage)),
   Layer.provideMerge(layerBackground),
   Layer.provideMerge(layerResourceDiagnostics),
   Layer.provideMerge(TraceDiagnostics.layer),
   Layer.provideMerge(TriageService.layer.pipe(Layer.provide(GitVcsDriver.layer))),
   // Layers memoize by reference, so this is the same policy the settings layer reads.
-  Layer.provideMerge(AnalyticsService.layer.pipe(Layer.provide(ManagedPolicy.layer))),
+  Layer.provideMerge(
+    AnalyticsService.layer.pipe(
+      Layer.provide(ManagedPolicy.layer),
+      // Telemetry is opt-in, so the service reads the same settings the rest of the server does.
+      Layer.provide(layerServerSettings),
+    ),
+  ),
   Layer.provideMerge(ExternalLauncher.layer),
   Layer.provideMerge(RemoteOpenTargets.layer),
   Layer.provideMerge(DirectEndpoints.layer.pipe(Layer.provide(layerServerEnvironment))),
@@ -839,6 +857,7 @@ const layerMakeRoutes = Layer.mergeAll(
     ),
     ServerHttp.layerOtlpTracesProxyRoute,
     ServerHttp.layerAssetRoute,
+    ArtifactWallHttp.layer,
     ServerHttp.layerAttachmentUploadRoute,
     GuestHttp.layer,
     DeviceHubProxy.layer,

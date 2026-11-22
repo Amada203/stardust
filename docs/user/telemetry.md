@@ -1,5 +1,13 @@
 # Product usage data
 
+**In the Stardust fork, product usage data is opt-in and off by default.** The server records,
+buffers and sends nothing, and makes no request to the endpoint below, until you turn on
+**Settings > About > Share anonymous usage data** (the `telemetryEnabled` server setting). Settings
+saved before this option existed count as off. Turning it off stops sending at once and discards
+events not yet sent. The environment variable and managed policy described below can still force
+it off; neither can turn it on. The endpoint `ingest.t3.codes` is run by the upstream T3 Code
+project, not by this fork. The rest of this page describes what is sent once you opt in.
+
 The T3 Code server sends product usage events to T3 Code's own endpoint at `ingest.t3.codes`,
 associated with a hashed account or installation identifier. To count how many installations one person
 uses, the server also sends hashed account identifiers: your T3 Connect account, your OpenAI and

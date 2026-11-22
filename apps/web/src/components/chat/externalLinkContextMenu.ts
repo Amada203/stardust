@@ -1,3 +1,4 @@
+import { uiText } from "~/i18n";
 import type { ContextMenuItem } from "@t3tools/contracts";
 
 type ExternalLinkContextMenuAction =
@@ -24,9 +25,24 @@ const FAILURE_OPERATION_BY_ACTION = {
 } as const satisfies Record<ExternalLinkContextMenuAction, ExternalLinkContextMenuFailureOperation>;
 
 const EXTERNAL_LINK_CONTEXT_MENU_ITEMS = [
-  { id: "open-in-preview", label: "Open in integrated browser" },
-  { id: "open-external", label: "Open in system browser" },
-  { id: "copy-link", label: "Copy Link" },
+  {
+    id: "open-in-preview",
+    get label() {
+      return uiText("Open in integrated browser");
+    },
+  },
+  {
+    id: "open-external",
+    get label() {
+      return uiText("Open in system browser");
+    },
+  },
+  {
+    id: "copy-link",
+    get label() {
+      return uiText("Copy Link");
+    },
+  },
 ] as const satisfies readonly ContextMenuItem<ExternalLinkContextMenuAction>[];
 
 function externalLinkContextMenuItems(options: {

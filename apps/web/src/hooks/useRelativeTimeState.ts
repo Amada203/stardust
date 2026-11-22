@@ -1,3 +1,4 @@
+import { useLocale } from "gt-react";
 import { useSyncExternalStore } from "react";
 
 import {
@@ -8,6 +9,7 @@ import {
 } from "../timestampFormat";
 
 export function useRelativeTimeState(isoDate: string | null): RelativeTimeState {
+  useLocale();
   const subscribe = (onChange: () => void) => {
     if (isoDate === null) return () => {};
     let timer: ReturnType<typeof setTimeout> | undefined;

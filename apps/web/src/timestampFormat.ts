@@ -1,3 +1,4 @@
+import { readUiLocale, uiText } from "./i18n";
 import { type TimestampFormat } from "@t3tools/contracts/settings";
 
 function getTimestampFormatOptions(
@@ -5,7 +6,7 @@ function getTimestampFormatOptions(
   includeSeconds: boolean,
 ): Intl.DateTimeFormatOptions {
   const baseOptions: Intl.DateTimeFormatOptions = {
-    hour: "numeric",
+    hour: readUiLocale() === "zh-CN" ? "2-digit" : "numeric",
     minute: "2-digit",
     ...(includeSeconds ? { second: "2-digit" } : {}),
   };
@@ -75,16 +76,19 @@ function getTimestampFormatter(
   includeSeconds: boolean,
   timeZone?: string,
 ): Intl.DateTimeFormat {
-  const cacheKey = `${timestampFormat}:${includeSeconds ? "seconds" : "minutes"}:${timeZone ?? ""}`;
+  const cacheKey = `${readUiLocale()}:${timestampFormat}:${includeSeconds ? "seconds" : "minutes"}:${timeZone ?? ""}`;
   const cachedFormatter = timestampFormatterCache.get(cacheKey);
   if (cachedFormatter) {
     return cachedFormatter;
   }
 
-  const formatter = new Intl.DateTimeFormat(timestampLocale, {
-    ...getTimestampFormatOptions(timestampFormat, includeSeconds),
-    ...(timeZone ? { timeZone } : {}),
-  });
+  const formatter = new Intl.DateTimeFormat(
+    readUiLocale() === "zh-CN" ? "zh-CN" : timestampLocale,
+    {
+      ...getTimestampFormatOptions(timestampFormat, includeSeconds),
+      ...(timeZone ? { timeZone } : {}),
+    },
+  );
   timestampFormatterCache.set(cacheKey, formatter);
   return formatter;
 }
@@ -124,6 +128,13 @@ export function formatChatTimestampTooltip(
 ): string {
   const date = parseTimestampDate(isoDate);
   if (!date) return "";
+  if (readUiLocale() === "zh-CN")
+    return uiText("{year}-{month}-{day} {time}", {
+      year: date.getFullYear(),
+      month: date.getMonth() + 1,
+      day: date.getDate(),
+      time: formatShortTimestamp(isoDate, timestampFormat),
+    });
   const time = formatShortTimestamp(isoDate, timestampFormat);
   const day = date.getDate();
   const month = monthNameFormatter.format(date);
@@ -133,7 +144,7 @@ export function formatChatTimestampTooltip(
 
 export function formatFullTimestamp(isoDate: string, timestampFormat: TimestampFormat): string {
   return new Date(isoDate).toLocaleString(
-    undefined,
+    readUiLocale() === "zh-CN" ? "zh-CN" : undefined,
     timestampFormat === "locale" ? undefined : { hour12: timestampFormat === "12-hour" },
   );
 }
@@ -179,10 +190,10 @@ function calendarDay(date: Date, timeZone: string | undefined): CalendarDay {
 }
 
 function formatNumericDate(date: Date, sameYear: boolean, timeZone: string | undefined): string {
-  if (!timeZone) {
+  if (!timeZone && readUiLocale() !== "zh-CN") {
     return (sameYear ? numericDateFormatter : numericDateWithYearFormatter).format(date);
   }
-  return new Intl.DateTimeFormat(timestampLocale, {
+  return new Intl.DateTimeFormat(readUiLocale() === "zh-CN" ? "zh-CN" : timestampLocale, {
     ...(sameYear ? numericDateOptions : numericDateWithYearOptions),
     timeZone,
   }).format(date);
@@ -203,7 +214,7 @@ export function formatDayAwareTimestamp(
   const dayDiff = today.index - messageDay.index;
 
   if (dayDiff <= 0) return time;
-  if (dayDiff === 1) return `yesterday at ${time}`;
+  if (dayDiff === 1) return uiText("yesterday at {time}", { time });
   return `${formatNumericDate(date, messageDay.year === today.year, timeZone)} ${time}`;
 }
 
@@ -224,7 +235,7 @@ export function formatUpcomingTimestamp(
 
   if (dayDiff < 0) return formatDayAwareTimestamp(isoDate, timestampFormat, nowMs, timeZone);
   if (dayDiff === 0) return time;
-  if (dayDiff === 1) return `tomorrow at ${time}`;
+  if (dayDiff === 1) return uiText("tomorrow at {time}", { time });
   return `${formatNumericDate(date, targetDay.year === today.year, timeZone)} ${time}`;
 }
 
@@ -267,8 +278,19 @@ export function msUntilRelativeTimeChange(
 }
 
 export function formatRelativeElapsed(elapsedMs: number): RelativeTimeParts {
+  if (readUiLocale() === "zh-CN") {
+    const value =
+      elapsedMs < MINUTE_MS
+        ? uiText("just now")
+        : elapsedMs < HOUR_MS
+          ? uiText("{count} minutes ago", { count: Math.floor(elapsedMs / MINUTE_MS) })
+          : elapsedMs < DAY_MS
+            ? uiText("{count} hours ago", { count: Math.floor(elapsedMs / HOUR_MS) })
+            : uiText("{count} days ago", { count: Math.floor(elapsedMs / DAY_MS) });
+    return { value, suffix: null };
+  }
   const seconds = Math.floor(elapsedMs / 1000);
-  if (seconds < 60) return { value: "just now", suffix: null };
+  if (seconds < 60) return { value: uiText("just now"), suffix: null };
   const minutes = Math.floor(seconds / 60);
   if (minutes < 60) return { value: `${minutes}m`, suffix: "ago" };
   const hours = Math.floor(minutes / 60);
@@ -295,10 +317,10 @@ export function formatElapsedDurationLabel(isoDate: string, nowMs: number = Date
   const date = parseTimestampDate(isoDate);
   if (!date) return "";
   const diffMs = nowMs - date.getTime();
-  if (diffMs <= 0) return "just now";
+  if (diffMs <= 0) return uiText("just now");
 
   const seconds = Math.floor(diffMs / 1000);
-  if (seconds < 5) return "just now";
+  if (seconds < 5) return uiText("just now");
   if (seconds < 60) return `${seconds}s`;
 
   const minutes = Math.floor(seconds / 60);
@@ -316,16 +338,18 @@ export function formatExpiresInLabel(isoDate: string, nowMs: number = Date.now()
   const date = parseTimestampDate(isoDate);
   if (!date) return "";
   const diffMs = date.getTime() - nowMs;
-  if (diffMs <= 0) return "Expired";
+  if (diffMs <= 0) return uiText("Expired");
 
   const totalSeconds = Math.floor(diffMs / 1000);
-  if (totalSeconds < 5) return "Expires in a moment";
-  if (totalSeconds < 60) return `Expires in ${totalSeconds}s`;
+  if (totalSeconds < 5) return uiText("Expires in a moment");
+  if (totalSeconds < 60) return uiText("Expires in {duration}", { duration: `${totalSeconds}s` });
 
   if (totalSeconds < 3600) {
     const minutes = Math.floor(totalSeconds / 60);
     const seconds = totalSeconds % 60;
-    return seconds === 0 ? `Expires in ${minutes}m` : `Expires in ${minutes}m ${seconds}s`;
+    return seconds === 0
+      ? uiText("Expires in {duration}", { duration: `${minutes}m` })
+      : uiText("Expires in {duration}", { duration: `${minutes}m ${seconds}s` });
   }
 
   if (totalSeconds < 86_400) {
@@ -336,12 +360,12 @@ export function formatExpiresInLabel(isoDate: string, nowMs: number = Date.now()
     const parts = [`${hours}h`];
     if (minutes > 0) parts.push(`${minutes}m`);
     if (seconds > 0) parts.push(`${seconds}s`);
-    return `Expires in ${parts.join(" ")}`;
+    return uiText("Expires in {duration}", { duration: `${parts.join(" ")}` });
   }
 
   const days = Math.floor(totalSeconds / 86_400);
   const remAfterDays = totalSeconds % 86_400;
-  if (remAfterDays === 0) return `Expires in ${days}d`;
+  if (remAfterDays === 0) return uiText("Expires in {duration}", { duration: `${days}d` });
   const hours = Math.floor(remAfterDays / 3600);
   const rem = remAfterDays % 3600;
   const minutes = Math.floor(rem / 60);
@@ -350,5 +374,7 @@ export function formatExpiresInLabel(isoDate: string, nowMs: number = Date.now()
   if (hours > 0) tail.push(`${hours}h`);
   if (minutes > 0) tail.push(`${minutes}m`);
   if (seconds > 0) tail.push(`${seconds}s`);
-  return tail.length > 0 ? `Expires in ${days}d ${tail.join(" ")}` : `Expires in ${days}d`;
+  return tail.length > 0
+    ? uiText("Expires in {duration}", { duration: `${days}d ${tail.join(" ")}` })
+    : uiText("Expires in {duration}", { duration: `${days}d` });
 }

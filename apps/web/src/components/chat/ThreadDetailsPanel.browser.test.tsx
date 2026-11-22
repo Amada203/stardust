@@ -1,3 +1,4 @@
+import { testUiLocale } from "../../../test/uiLocale";
 import {
   EnvironmentId,
   ProjectId,
@@ -8,6 +9,11 @@ import {
 import { AsyncResult, Atom } from "effect/reactivity";
 import { expect, it, vi } from "vite-plus/test";
 import { page } from "vite-plus/test/browser";
+
+const artifactWall = vi.hoisted(() =>
+  vi.fn((_props: { onAttach: (files: File[]) => void }) => null),
+);
+vi.mock("./ArtifactWall", () => ({ ArtifactWall: artifactWall }));
 
 const SCRATCH_ROOT = "/home/user/.t3/scratch";
 
@@ -111,6 +117,7 @@ function setup(input: {
   pullRequests?: ThreadPullRequestLink[];
   configLoaded?: boolean;
 }) {
+  artifactWall.mockClear();
   state.configLoaded = input.configLoaded ?? true;
   state.workspaceRoot = input.workspaceRoot;
   state.folder = input.folder;
@@ -125,7 +132,15 @@ function setup(input: {
   };
 }
 
-function Panel({ fixture }: { fixture: ReturnType<typeof setup> }) {
+function Panel({
+  fixture,
+  threadId = threadRef.threadId,
+  onAttach,
+}: {
+  fixture: ReturnType<typeof setup>;
+  threadId?: ThreadId;
+  onAttach?: (files: File[]) => void;
+}) {
   const noop = () => {};
   const scriptResult = async () => ({ ok: true }) as never;
   return (
@@ -146,7 +161,8 @@ function Panel({ fixture }: { fixture: ReturnType<typeof setup> }) {
         anchor={fixture.anchor}
         handle={fixture.handle}
         environmentId={threadRef.environmentId}
-        threadId={threadRef.threadId}
+        threadId={threadId}
+        {...(onAttach ? { onAttachArtifactFiles: onAttach } : {})}
         projectId={ProjectId.make("project")}
         composerDraftTarget={threadRef}
         worktreePath={state.folder}
@@ -214,4 +230,24 @@ it("offers no Initialize Git before the server config says where No project live
   await expect
     .element(page.getByRole("button", { name: "Initialize Git" }))
     .not.toBeInTheDocument();
+});
+
+it("keeps attachment handlers current in one thread and rejects a delayed attachment after switching threads", async () => {
+  using _locale = testUiLocale("zh-CN");
+  using fixture = setup({ workspaceRoot: SCRATCH_ROOT, folder: `${SCRATCH_ROOT}/thread` });
+  const first = vi.fn();
+  const latest = vi.fn();
+  await using screen = await render(<Panel fixture={fixture} onAttach={first} />);
+  const pendingAttach = artifactWall.mock.calls.at(-1)![0].onAttach;
+  const files = [new File(["image"], "result.png")];
+  await screen.rerender(<Panel fixture={fixture} onAttach={latest} />);
+  pendingAttach(files);
+  expect(first).not.toHaveBeenCalled();
+  expect(latest).toHaveBeenCalledExactlyOnceWith(files);
+  latest.mockClear();
+  await screen.rerender(
+    <Panel fixture={fixture} threadId={ThreadId.make("other")} onAttach={latest} />,
+  );
+  expect(() => pendingAttach(files)).toThrow("会话已切换");
+  expect(latest).not.toHaveBeenCalled();
 });

@@ -1296,3 +1296,61 @@ describe("DesktopUpdates under a managed policy", () => {
     ).pipe(Effect.provide(Layer.merge(TestClock.layer(), harness.layer)));
   });
 });
+
+describe("DesktopUpdates feed ownership", () => {
+  const configured = (appUpdateYml: string) => {
+    const harness = makeHarness({ appUpdateYml, env: { T3CODE_DESKTOP_MOCK_UPDATES: "false" } });
+    return Effect.scoped(
+      Effect.gen(function* () {
+        const updates = yield* DesktopUpdates.DesktopUpdates;
+        const desktopState = yield* DesktopState.DesktopState;
+        yield* updates.configure;
+        return {
+          state: yield* updates.getState,
+          canInstallUpdates: yield* Ref.get(desktopState.canInstallUpdates),
+          checks: harness.checkCount(),
+        };
+      }),
+    ).pipe(Effect.provide(harness.layer));
+  };
+
+  it.effect("turns updates off, with a reason, when the baked feed is the upstream project's", () =>
+    Effect.gen(function* () {
+      const result = yield* configured("provider: github\nowner: pingdotgg\nrepo: t3code\n");
+      assert.equal(result.state.status, "disabled");
+      assert.isFalse(result.state.enabled);
+      assert.isFalse(result.canInstallUpdates);
+      assert.include(result.state.message ?? "", "upstream T3 Code project");
+      assert.equal(result.checks, 0);
+    }),
+  );
+
+  it.effect("keeps updates on for this fork's own feed", () =>
+    Effect.gen(function* () {
+      const result = yield* configured(
+        "provider: github\nowner: zds-xiaoxin\nrepo: xiaoxin-t3code\n",
+      );
+      assert.equal(result.state.status, "idle");
+      assert.isTrue(result.canInstallUpdates);
+    }),
+  );
+});
+
+describe("updateFeedPointsUpstream", () => {
+  it("recognizes the upstream project in GitHub and generic feeds only", () => {
+    const upstream = DesktopUpdates.updateFeedPointsUpstream;
+    assert.isTrue(upstream({ provider: "github", owner: "pingdotgg", repo: "t3code" }));
+    assert.isTrue(upstream({ provider: "github", owner: "PingDotGG", repo: "t3code" }));
+    assert.isTrue(
+      upstream({
+        provider: "generic",
+        url: "https://github.com/pingdotgg/t3code/releases/download/v1",
+      }),
+    );
+    assert.isTrue(upstream({ provider: "generic", url: "https://updates.t3.codes/latest" }));
+    assert.isFalse(
+      upstream({ provider: "github", owner: "zds-xiaoxin", repo: "xiaoxin-t3code" }),
+    );
+    assert.isFalse(upstream({ provider: "generic", url: "https://mirror.example.com/t3" }));
+  });
+});
