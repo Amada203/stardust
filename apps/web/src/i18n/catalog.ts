@@ -9666,4 +9666,9 @@ export const zhCN: Readonly<Record<string, string>> = {
   "On by default. Once a day sends a random install ID, the app version and your system type to xiaoxin666.cn so the author knows how many people use T3 Stardust. No chats, accounts, projects or IP addresses are stored.":
     "默认开启。每天向 xiaoxin666.cn 发送一次随机安装 ID、应用版本和系统类型，让作者知道有多少人在用 T3 星尘版。不保存聊天、账号、项目或 IP 地址。",
   "{version} available · {action}": "发现 {version}；{action}",
+  "Sending when ready": "就绪后发送",
+  "Sending message": "正在发送消息",
+  "Edit or press Esc to cancel": "编辑，或按 Esc 取消",
+  "{count, plural, one {Sending once image is ready} other {Sending once {count} images are ready}}":
+    "{count, plural, one {图片就绪后发送} other {{count} 张图片就绪后发送}}",
 };
