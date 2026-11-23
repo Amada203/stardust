@@ -2,7 +2,7 @@ import type { DesktopBridge, DesktopUpdateState } from "@t3tools/contracts";
 import { uiText } from "../i18n";
 /** Community releases are independent of upstream Electron version numbers. */
 /** The community release this build ships as. Bump with every public release. */
-export const COMMUNITY_BASE_TAG = "v1.2.2";
+export const COMMUNITY_BASE_TAG = "v1.2.3";
 export const COMMUNITY_REPOSITORY = "zds-xiaoxin/xiaoxin-t3code";
 export const COMMUNITY_RELEASES_URL = `https://github.com/${COMMUNITY_REPOSITORY}/releases`;
 export const COMMUNITY_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
