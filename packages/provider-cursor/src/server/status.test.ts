@@ -443,6 +443,27 @@ describe("checkCursorProviderStatus", () => {
     }),
   );
 
+  it.effect("treats a full catalog timeout as a warning so chat can continue", () =>
+    Effect.gen(function* () {
+      const fiber = yield* checkCursorProviderStatus(baseCursorSettings, {
+        CURSOR_API_KEY: "test-cursor-key",
+      }).pipe(
+        Effect.provide(CursorSdkCatalog.layerTest(() => Effect.never)),
+        Effect.forkChild({ startImmediately: true }),
+      );
+      // Default probe is 30s and retries once on timeout.
+      yield* TestClock.adjust("2 minutes");
+      const provider = yield* Fiber.join(fiber);
+
+      expect(provider).toMatchObject({
+        status: "warning",
+        auth: { status: "authenticated", type: "api-key" },
+      });
+      expect(provider.message).toContain("timed out after");
+      expect(provider.message).toContain("keep chatting");
+    }),
+  );
+
   it.effect("requires a Cursor API key without probing any external Cursor binary", () =>
     Effect.gen(function* () {
       const provider = yield* checkCursorProviderStatus(baseCursorSettings).pipe(

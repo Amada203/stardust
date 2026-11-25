@@ -34,7 +34,9 @@ const EMPTY_CAPABILITIES: ModelCapabilities = createModelCapabilities({
   optionDescriptors: [],
 });
 
-const CURSOR_SDK_CATALOG_TIMEOUT_MS = 15_000;
+// api.cursor.com is intermittently slow; 15s was too eager and painted a red
+// error while chat still worked. Prefer a longer probe and soft-fail on timeout.
+const CURSOR_SDK_CATALOG_TIMEOUT_MS = 30_000;
 
 export const buildInitialCursorProviderSnapshot = Effect.fn(
   "CursorProviderStatus.buildInitialCursorProviderSnapshot",
@@ -343,17 +345,21 @@ export const checkCursorProviderStatus = Effect.fn("checkCursorProviderStatus")(
   }
 
   if (Option.isNone(catalogResult.success)) {
+    // Keep Cursor usable: timeout only means model discovery was slow, not that
+    // the signed-in session is dead. Surface a warning instead of a hard error.
+    yield* Effect.logWarning("Cursor SDK catalog probe timed out", { timeoutMs });
     return buildServerProvider({
       presentation: CURSOR_PRESENTATION,
       enabled: cursorSettings.enabled,
       checkedAt,
       models: fallbackModels,
+      slashCommands: [COMPACT_SLASH_COMMAND],
       probe: {
         installed: true,
         version: null,
-        status: "error",
-        auth: { status: "unknown" },
-        message: `Cursor SDK catalog request timed out after ${timeoutMs}ms.`,
+        status: "warning",
+        auth: cursorSdkAuth(undefined, authenticationType),
+        message: `Cursor model catalog is slow (timed out after ${timeoutMs}ms). You can keep chatting; refresh to reload the model list.`,
       },
     });
   }
