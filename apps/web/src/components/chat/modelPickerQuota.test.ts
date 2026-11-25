@@ -4,6 +4,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   computeModelPickerTags,
   modelPickerQuota as formatQuota,
+  modelPickerQuotaInfo,
   resolveModelPickerRowMeta,
 } from "./modelPickerQuota";
 function modelPickerQuota(limits: ServerProviderUsageLimits | undefined, now: number) {
@@ -34,6 +35,48 @@ describe("model picker remaining quota", () => {
     expect(modelPickerQuota(limits(120), now)).toEqual({ label: "剩 0%", low: true });
     expect(modelPickerQuota(limits(-10), now)).toEqual({ label: "剩 100%", low: false });
   });
+  it("shows the applicable Cursor pool and hides a missing pool", () => {
+    using _locale = testUiLocale("zh-CN");
+    const provider = {
+      driver: ProviderDriverKind.make("cursor"),
+      usageLimits: {
+        checkedAt: new Date(now).toISOString(),
+        windows: [
+          { id: "totalPercentUsed", kind: "monthly", label: "Overall", usedPercent: 100 },
+          { id: "autoPercentUsed", kind: "monthly", label: "Cursor Models", usedPercent: 42 },
+          { id: "apiPercentUsed", kind: "monthly", label: "Other Models", usedPercent: 100 },
+        ],
+      },
+    } satisfies Parameters<typeof modelPickerQuotaInfo>[0];
+    for (const slug of ["auto", "default", "grok-4.7", "grok-4.6", "composer-2.5"]) {
+      expect(modelPickerQuotaInfo(provider, now, slug)).toEqual({
+        label: "剩 58%",
+        low: false,
+        remaining: 58,
+      });
+    }
+    expect(modelPickerQuotaInfo(provider, now, "claude-sonnet-4-6")).toEqual({
+      label: "剩 0%",
+      low: true,
+      remaining: 0,
+    });
+    expect(
+      modelPickerQuotaInfo(
+        {
+          ...provider,
+          usageLimits: {
+            ...provider.usageLimits,
+            windows: provider.usageLimits.windows.filter(
+              (window) => window.id !== "autoPercentUsed",
+            ),
+          },
+        },
+        now,
+        "composer-2.5",
+      ),
+    ).toBeNull();
+  });
+
   it("hides unknown, stale, failed, unsupported and reset readings", () => {
     using _locale = testUiLocale("zh-CN");
     expect(modelPickerQuota(undefined, now)).toBeNull();

@@ -25,6 +25,10 @@ import { isLocalLoopbackHost, isWildcardHost } from "./hostClassification.ts";
 
 const MINUTE = 60_000;
 
+export function cursorModelQuotaWindowId(model: string): "autoPercentUsed" | "apiPercentUsed" {
+  return /^(auto|default|grok|composer)/.test(model) ? "autoPercentUsed" : "apiPercentUsed";
+}
+
 export function exhaustedUsageWindow(
   provider: ServerProvider | undefined,
   now: number,
@@ -47,7 +51,7 @@ export function exhaustedUsageWindow(
     case "cursor": {
       const api = exhausted.find((window) => window.id === "apiPercentUsed");
       const auto = exhausted.find((window) => window.id === "autoPercentUsed");
-      return /^(auto|default|grok|composer)/.test(model) ? auto && api : api;
+      return cursorModelQuotaWindowId(model) === "autoPercentUsed" ? auto && api : api;
     }
     case "antigravity": {
       const family = model.match(/^(gemini|claude|gpt)-/)?.[1];

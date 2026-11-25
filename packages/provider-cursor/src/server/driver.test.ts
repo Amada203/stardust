@@ -22,6 +22,7 @@ import * as Option from "effect/Option";
 import * as Stream from "effect/Stream";
 import { vi } from "vite-plus/test";
 import * as HttpClient from "effect/http/HttpClient";
+import * as HttpClientError from "effect/http/HttpClientError";
 import * as HttpClientResponse from "effect/http/HttpClientResponse";
 import * as Deferred from "effect/Deferred";
 
@@ -67,7 +68,7 @@ const layerTest = TestProviderHost.layer({ runBackgroundWork: false }).pipe(
 
 it.layer(layerTest)("CursorDriver", (it) => {
   it.effect(
-    "persists browser credentials, uses them for chat, and closes the SDK session on logout",
+    "keeps browser credentials across a catalog outage, uses them after refresh, and clears them on logout or rejection",
     () =>
       Effect.gen(function* () {
         const login = vi.spyOn(Cursor.auth, "login").mockImplementation(async (options) => {
@@ -83,8 +84,28 @@ it.layer(layerTest)("CursorDriver", (it) => {
           return { apiKey: "instance-browser-key", apiKeyExpiresAtMs: 4_000_000_000_000 };
         });
         const requests: Array<{ url: string; authorization: string | undefined }> = [];
+        let modelsStatus: "offline" | "ready" | "rejected" = "offline";
         const client = HttpClient.make((request) => {
           requests.push({ url: request.url, authorization: request.headers.authorization });
+          if (request.url.endsWith("/v1/models")) {
+            if (modelsStatus === "offline") {
+              return Effect.fail(
+                new HttpClientError.HttpClientError({
+                  reason: new HttpClientError.TransportError({
+                    request,
+                    cause: new TypeError("fetch failed", {
+                      cause: Object.assign(new Error("Connection reset"), { code: "ECONNRESET" }),
+                    }),
+                  }),
+                }),
+              );
+            }
+            if (modelsStatus === "rejected") {
+              return Effect.succeed(
+                HttpClientResponse.fromWeb(request, new Response(null, { status: 401 })),
+              );
+            }
+          }
           return Effect.succeed(
             HttpClientResponse.fromWeb(
               request,
@@ -134,11 +155,18 @@ it.layer(layerTest)("CursorDriver", (it) => {
         );
         expect((yield* instance.snapshot.refresh).auth.status).toBe("unauthenticated");
         yield* instance.auth!.start("client");
-        yield* instance.auth!.subscribe("client").pipe(
-          Stream.filter((state) => state.phase === "succeeded"),
+        const awaitLogin = instance.auth!.subscribe("client").pipe(
+          Stream.filter((state) => state.phase === "succeeded" || state.phase === "failed"),
           Stream.runHead,
           Effect.map(Option.getOrThrow),
         );
+        expect((yield* awaitLogin).phase).toBe("succeeded");
+        expect(yield* instance.snapshot.getSnapshot).toMatchObject({
+          status: "error",
+          auth: { status: "unknown" },
+        });
+        modelsStatus = "ready";
+        yield* instance.snapshot.refresh;
         expect(requests).toContainEqual({
           url: "https://api.cursor.com/v1/me",
           authorization: "Bearer instance-browser-key",
@@ -183,6 +211,22 @@ it.layer(layerTest)("CursorDriver", (it) => {
         ).toBe("Failure");
         expect(openedKeys).toEqual(["instance-browser-key"]);
         expect(closed).toBe(1);
+
+        modelsStatus = "rejected";
+        // Recreate the driver so its successful model cache cannot hide the 401.
+        const rejectedInstance = yield* CursorDriver.create(input).pipe(
+          Effect.provideService(HttpClient.HttpClient, client),
+        );
+        yield* rejectedInstance.auth!.start("client");
+        const rejected = yield* rejectedInstance.auth!.subscribe("client").pipe(
+          Stream.filter((state) => state.phase === "succeeded" || state.phase === "failed"),
+          Stream.runHead,
+          Effect.map(Option.getOrThrow),
+        );
+        expect(rejected.phase).toBe("failed");
+        expect(rejected.message).toContain("expired or was rejected");
+        modelsStatus = "ready";
+        expect((yield* rejectedInstance.snapshot.refresh).auth.status).toBe("unauthenticated");
       }),
   );
 

@@ -1122,7 +1122,10 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
                   return null;
                 }
                 const entry = entryByInstanceId.get(model.instanceId);
-                const quota = quotaByInstanceId.get(model.instanceId) ?? null;
+                const quota =
+                  entry?.snapshot.driver === "cursor"
+                    ? modelPickerQuotaInfo(entry.snapshot, nowMs, model.slug)
+                    : (quotaByInstanceId.get(model.instanceId) ?? null);
                 const rowMeta = resolveModelPickerRowMeta({
                   quota,
                   tag: modelTagsByKey.get(modelKey),

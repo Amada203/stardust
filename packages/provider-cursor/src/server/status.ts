@@ -307,10 +307,12 @@ export const checkCursorProviderStatus = Effect.fn("checkCursorProviderStatus")(
   );
 
   if (Result.isFailure(catalogResult)) {
-    yield* Effect.logWarning("Cursor SDK catalog probe failed", {
-      cause: catalogResult.failure.cause,
-    });
     const failure = catalogResult.failure;
+    yield* Effect.logWarning("Cursor SDK catalog probe failed", {
+      endpoint: failure.endpoint,
+      status: failure.status,
+      networkCode: failure.networkCode,
+    });
     let message = "Cursor SDK catalog request failed. Check server logs for details.";
     if (failure.authenticationFailure) {
       message =
@@ -322,6 +324,8 @@ export const checkCursorProviderStatus = Effect.fn("checkCursorProviderStatus")(
         authenticationType === "browser"
           ? "Cursor needs a paid plan to run in T3 Code. Upgrade this account or sign in with a different one."
           : "Cursor needs a paid plan to run in T3 Code. Upgrade the account that owns CURSOR_API_KEY or use a key from a paid account.";
+    } else if (authenticationType === "browser") {
+      message = "Cursor model catalog could not be loaded. Refresh provider status to retry.";
     }
     return buildServerProvider({
       presentation: CURSOR_PRESENTATION,

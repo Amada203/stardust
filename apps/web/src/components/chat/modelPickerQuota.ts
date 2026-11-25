@@ -1,9 +1,6 @@
 import { uiText } from "../../i18n";
-import type {
-  ProviderDriverKind,
-  ServerProvider,
-  UsageProviderKind,
-} from "@t3tools/contracts";
+import type { ProviderDriverKind, ServerProvider, UsageProviderKind } from "@t3tools/contracts";
+import { cursorModelQuotaWindowId } from "@t3tools/shared/usageLimits";
 import type { ModelThroughputTotals } from "@t3tools/shared/usageMerge";
 import { DEFAULT_QUOTA_PREFERENCES, quotaState, quotaWindow } from "../usage/quotaTopbarModel";
 
@@ -83,6 +80,7 @@ export function lookupModelUnitPrice(
 export function modelPickerQuotaInfo(
   provider: Pick<ServerProvider, "driver" | "usageLimits">,
   now: number,
+  model?: string,
 ): ModelPickerQuotaInfo | null {
   const limits = provider.usageLimits;
   const account = {
@@ -97,7 +95,11 @@ export function modelPickerQuotaInfo(
     connected: true,
     failed: !!limits?.unavailable,
   };
-  const status = quotaState(account, quotaWindow(account, DEFAULT_QUOTA_PREFERENCES), now);
+  const window =
+    provider.driver === "cursor" && model !== undefined
+      ? (limits?.windows.find((window) => window.id === cursorModelQuotaWindowId(model)) ?? null)
+      : quotaWindow(account, DEFAULT_QUOTA_PREFERENCES);
+  const status = quotaState(account, window, now);
   if (limits?.unavailable || status.state !== "current" || status.remaining === null) return null;
   return {
     label: uiText("{remaining}% left", { remaining: status.remaining }),

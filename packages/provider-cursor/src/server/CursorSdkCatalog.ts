@@ -21,6 +21,8 @@ export class CursorSdkCatalogError extends Schema.TaggedError<CursorSdkCatalogEr
   "CursorSdkCatalogError",
   {
     authenticationFailure: Schema.Boolean,
+    endpoint: Schema.optionalKey(Schema.String),
+    networkCode: Schema.optionalKey(Schema.String),
     status: Schema.optionalKey(Schema.Number),
     code: Schema.optionalKey(Schema.String),
     cause: Schema.Defect(),
@@ -112,14 +114,32 @@ const makeLiveProbes = Effect.gen(function* () {
     Effect.orDie,
   )).replace(/\/$/, "");
   const request = Effect.fn("CursorSdkCatalog.request")(function* (apiKey: string, path: string) {
+    const catalogRequest = HttpClientRequest.get(`${baseUrl}${path}`).pipe(
+      HttpClientRequest.bearerToken(apiKey),
+    );
     const response = yield* client
       .execute(
-        HttpClientRequest.get(`${baseUrl}${path}`).pipe(HttpClientRequest.bearerToken(apiKey)),
+        // Cursor's model endpoint can close the socket during the parallel account
+        // and model checks. Use a dedicated connection for model discovery.
+        path === "/v1/models"
+          ? HttpClientRequest.setHeader(catalogRequest, "connection", "close")
+          : catalogRequest,
       )
       .pipe(
-        Effect.mapError(
-          (cause) => new CursorSdkCatalogError({ authenticationFailure: false, cause }),
-        ),
+        Effect.mapError((cause) => {
+          const transport = cause.reason._tag === "TransportError" ? cause.reason.cause : undefined;
+          const socketError =
+            transport instanceof Error ? (transport.cause ?? transport) : undefined;
+          const code = socketError instanceof Error ? Reflect.get(socketError, "code") : undefined;
+          return new CursorSdkCatalogError({
+            authenticationFailure: false,
+            endpoint: path,
+            ...(typeof code === "string" && /^[A-Z][A-Z0-9_]{1,79}$/.test(code)
+              ? { networkCode: code }
+              : {}),
+            cause,
+          });
+        }),
       );
     if (response.status < 200 || response.status >= 300) {
       const body = yield* response.json.pipe(Effect.orElseSucceed(() => undefined));
@@ -128,6 +148,7 @@ const makeLiveProbes = Effect.gen(function* () {
       const error = Option.getOrUndefined(parsed);
       return yield* new CursorSdkCatalogError({
         authenticationFailure: response.status === 401,
+        endpoint: path,
         status: response.status,
         ...(error?.code === undefined ? {} : { code: error.code }),
         cause: new Error(error?.message ?? `Cursor ${path} returned HTTP ${response.status}.`),
@@ -142,7 +163,11 @@ const makeLiveProbes = Effect.gen(function* () {
         Effect.mapError((cause) =>
           isCatalogError(cause)
             ? cause
-            : new CursorSdkCatalogError({ authenticationFailure: false, cause }),
+            : new CursorSdkCatalogError({
+                authenticationFailure: false,
+                endpoint: "/v1/me",
+                cause,
+              }),
         ),
       ),
     readModels: (apiKey) =>
@@ -152,7 +177,11 @@ const makeLiveProbes = Effect.gen(function* () {
         Effect.mapError((cause) =>
           isCatalogError(cause)
             ? cause
-            : new CursorSdkCatalogError({ authenticationFailure: false, cause }),
+            : new CursorSdkCatalogError({
+                authenticationFailure: false,
+                endpoint: "/v1/models",
+                cause,
+              }),
         ),
       ),
   } satisfies CursorSdkCatalogProbes;

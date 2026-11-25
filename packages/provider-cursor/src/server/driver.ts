@@ -145,7 +145,9 @@ export const CursorDriver: ProviderDriver<
       onChanged: (signedIn): Effect.Effect<void, ProviderSetupError> =>
         snapshot.refresh.pipe(
           Effect.flatMap((provider) =>
-            !signedIn || provider.auth.status === "authenticated"
+            // The SDK already issued a key. A failed catalog check can leave its
+            // validity unknown, so keep it for the next provider refresh.
+            !signedIn || provider.auth.status !== "unauthenticated"
               ? Effect.void
               : Effect.fail(
                   new ProviderSetupError({
