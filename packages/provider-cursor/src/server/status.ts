@@ -36,7 +36,8 @@ const EMPTY_CAPABILITIES: ModelCapabilities = createModelCapabilities({
 
 // api.cursor.com is intermittently slow; 15s was too eager and painted a red
 // error while chat still worked. Prefer a longer probe and soft-fail on timeout.
-const CURSOR_SDK_CATALOG_TIMEOUT_MS = 30_000;
+// 45s covers most slow /v1/models reads; one retry still applies on top.
+const CURSOR_SDK_CATALOG_TIMEOUT_MS = 45_000;
 
 export const buildInitialCursorProviderSnapshot = Effect.fn(
   "CursorProviderStatus.buildInitialCursorProviderSnapshot",

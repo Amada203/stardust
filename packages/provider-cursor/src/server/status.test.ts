@@ -231,7 +231,7 @@ describe("checkCursorProviderStatus", () => {
     Effect.gen(function* () {
       const fiber = yield* checkCursorProviderStatus(baseCursorSettings, {
         CURSOR_API_KEY: "test-key",
-        T3CODE_CURSOR_PROBE_TIMEOUT_MS: "30000",
+        T3CODE_CURSOR_PROBE_TIMEOUT_MS: "60000",
       }).pipe(
         Effect.provide(
           CursorSdkCatalog.layerTest(() =>
@@ -451,7 +451,7 @@ describe("checkCursorProviderStatus", () => {
         Effect.provide(CursorSdkCatalog.layerTest(() => Effect.never)),
         Effect.forkChild({ startImmediately: true }),
       );
-      // Default probe is 30s and retries once on timeout.
+      // Default probe is 45s and retries once on timeout.
       yield* TestClock.adjust("2 minutes");
       const provider = yield* Fiber.join(fiber);
 
