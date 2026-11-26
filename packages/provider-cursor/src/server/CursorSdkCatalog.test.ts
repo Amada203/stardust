@@ -7,6 +7,7 @@ import * as Deferred from "effect/Deferred";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as HttpClient from "effect/http/HttpClient";
+import * as HttpClientError from "effect/http/HttpClientError";
 import * as HttpClientResponse from "effect/http/HttpClientResponse";
 import { vi } from "vite-plus/test";
 
@@ -124,6 +125,45 @@ describe("CursorSdkCatalog", () => {
         }
         expect(sdkLoad).not.toHaveBeenCalled();
       }),
+  );
+
+  it.effect("retries a reset model socket and does not ask the connection to close", () =>
+    Effect.gen(function* () {
+      let modelAttempts = 0;
+      const client = HttpClient.make((request) => {
+        expect(request.headers.connection).toBeUndefined();
+        if (request.url.endsWith("/v1/models")) {
+          modelAttempts += 1;
+          if (modelAttempts === 1) {
+            return Effect.fail(
+              new HttpClientError.HttpClientError({
+                reason: new HttpClientError.TransportError({
+                  request,
+                  cause: new TypeError("fetch failed", {
+                    cause: Object.assign(new Error("other side closed"), {
+                      code: "UND_ERR_SOCKET",
+                    }),
+                  }),
+                }),
+              }),
+            );
+          }
+        }
+        const body = request.url.endsWith("/v1/me") ? user : { items: [model] };
+        return Effect.succeed(
+          HttpClientResponse.fromWeb(request, Response.json(body)),
+        );
+      });
+      const catalog = yield* CursorSdkCatalog.CursorSdkCatalog.pipe(
+        Effect.provide(
+          CursorSdkCatalog.layer.pipe(
+            Layer.provide(Layer.succeed(HttpClient.HttpClient, client)),
+          ),
+        ),
+      );
+      expect((yield* catalog.read("test-key")).models).toEqual([model]);
+      expect(modelAttempts).toBe(2);
+    }),
   );
 
   it.effect("shares concurrent first model discovery until the response arrives", () =>

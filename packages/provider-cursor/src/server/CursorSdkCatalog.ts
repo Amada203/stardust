@@ -117,30 +117,29 @@ const makeLiveProbes = Effect.gen(function* () {
     const catalogRequest = HttpClientRequest.get(`${baseUrl}${path}`).pipe(
       HttpClientRequest.bearerToken(apiKey),
     );
-    const response = yield* client
-      .execute(
-        // Cursor's model endpoint can close the socket during the parallel account
-        // and model checks. Use a dedicated connection for model discovery.
-        path === "/v1/models"
-          ? HttpClientRequest.setHeader(catalogRequest, "connection", "close")
-          : catalogRequest,
-      )
-      .pipe(
-        Effect.mapError((cause) => {
-          const transport = cause.reason._tag === "TransportError" ? cause.reason.cause : undefined;
-          const socketError =
-            transport instanceof Error ? (transport.cause ?? transport) : undefined;
-          const code = socketError instanceof Error ? Reflect.get(socketError, "code") : undefined;
-          return new CursorSdkCatalogError({
-            authenticationFailure: false,
-            endpoint: path,
-            ...(typeof code === "string" && /^[A-Z][A-Z0-9_]{1,79}$/.test(code)
-              ? { networkCode: code }
-              : {}),
-            cause,
-          });
-        }),
-      );
+    // Do not send Connection: close. On Node's fetch it keeps /v1/models open
+    // until the status probe times out. A reset still happens sometimes; retry
+    // that transport failure instead of pinning the shared connection.
+    const response = yield* client.execute(catalogRequest).pipe(
+      Effect.mapError((cause) => {
+        const transport = cause.reason._tag === "TransportError" ? cause.reason.cause : undefined;
+        const socketError =
+          transport instanceof Error ? (transport.cause ?? transport) : undefined;
+        const code = socketError instanceof Error ? Reflect.get(socketError, "code") : undefined;
+        return new CursorSdkCatalogError({
+          authenticationFailure: false,
+          endpoint: path,
+          ...(typeof code === "string" && /^[A-Z][A-Z0-9_]{1,79}$/.test(code)
+            ? { networkCode: code }
+            : {}),
+          cause,
+        });
+      }),
+      Effect.retry({
+        times: 2,
+        while: (error) => error.status === undefined,
+      }),
+    );
     if (response.status < 200 || response.status >= 300) {
       const body = yield* response.json.pipe(Effect.orElseSucceed(() => undefined));
       const nested = decodeApiErrorEnvelope(body);
